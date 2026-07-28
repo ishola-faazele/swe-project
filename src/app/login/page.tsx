@@ -1,10 +1,12 @@
 import { login } from './actions'
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { message: string }
+  searchParams: Promise<{ message: string }>
 }) {
+  const resolvedSearchParams = await searchParams;
+  
   return (
     <div className="flex-1 flex flex-col w-full px-8 sm:max-w-md justify-center gap-2 mx-auto min-h-screen">
       <form
@@ -26,9 +28,9 @@ export default function LoginPage({
         >
           Send Magic Link
         </button>
-        {searchParams?.message && (
+        {resolvedSearchParams?.message && (
           <p className="mt-4 p-4 bg-muted text-foreground text-center">
-            {searchParams.message}
+            {resolvedSearchParams.message}
           </p>
         )}
       </form>
