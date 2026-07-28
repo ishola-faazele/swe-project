@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String?  @unique
+  phone     String?  @unique
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+}
+
+model InventoryItem {
+  id              String   @id @default(uuid())
+  name            String
+  category        Category
+  unit            String   // e.g., kg, pieces, crates
+  currentStock    Float    @default(0)
+  minimumThreshold Float   @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orderLogs       OrderIngredientLog[]
+}
+
+enum Category {
+  INGREDIENT
+  DRINK
+  PACKAGING
+  OTHER
+}
+
+model Order {
+  id          String   @id @default(uuid())
+  customerId  String
+  customer    User     @relation(fields: [customerId], references: [id])
+  description String   // e.g., "40 pies, 40 bowls of jollof"
+  status      OrderStatus @default(PENDING)
+  totalPrice  Float    @default(0)
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ingredientLogs OrderIngredientLog[]
+}
+
+enum OrderStatus {
+  PENDING
+  PREPPING
+  COOKING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+model OrderIngredientLog {
+  id              String   @id @default(uuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id])
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  quantityUsed    Float    // Amount deducted from inventory
+  createdAt       DateTime @default(now())
+}
