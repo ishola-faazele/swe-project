@@ -11,7 +11,7 @@ export async function login(formData: FormData) {
   // in practice, you should validate your inputs
   const email = formData.get('email') as string
 
-  const { error } = await supabase.auth.signInWithOtp({
+  const response = await supabase.auth.signInWithOtp({
     email,
     options: {
       shouldCreateUser: true,
@@ -19,8 +19,10 @@ export async function login(formData: FormData) {
     },
   })
 
-  if (error) {
-    redirect('/login?message=Could not authenticate user')
+  if (response.error) {
+    console.error('Login error FULL OBJECT:', JSON.stringify(response.error, null, 2))
+    console.error('Login error plain:', response.error)
+    redirect(`/login?message=Could not authenticate user: ${response.error.message || JSON.stringify(response.error)}`)
   }
 
   redirect('/login?message=Check your email for the magic link')

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Order, User, InventoryItem, OrderStatus, OrderIngredientLog } from "@prisma/client"
 import {
   createColumnHelper,
@@ -49,6 +50,10 @@ export function OrderClient({
   const [selectedIngredients, setSelectedIngredients] = useState<{ id: string, quantity: number }[]>([])
 
   const columns = [
+    columnHelper.accessor("shortId", {
+      header: "ID",
+      cell: (info) => `#${info.getValue()}`,
+    }),
     columnHelper.accessor("description", {
       header: "Order",
       cell: (info) => info.getValue(),
@@ -57,7 +62,7 @@ export function OrderClient({
       header: "Customer",
       cell: (info) => {
         const c = info.getValue()
-        return c.email || c.phone || "Unknown"
+        return c.name || c.email || c.phone || "Unknown"
       },
     }),
     columnHelper.accessor("status", {
@@ -102,6 +107,8 @@ export function OrderClient({
     columns,
     getCoreRowModel: getCoreRowModel(),
   })
+  
+  const router = useRouter()
 
   async function handleAdd(formData: FormData) {
     const customerId = formData.get("customerId") as string
@@ -126,8 +133,8 @@ export function OrderClient({
     <div className="space-y-4">
       <div className="flex justify-end">
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button>Create Order</Button>
+          <DialogTrigger render={<Button />}>
+            Create Order
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -232,6 +239,13 @@ export function OrderClient({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
+                  className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
+                  onClick={(e) => {
+                    // Prevent navigation if clicking on select or button
+                    if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'BUTTON') {
+                      router.push(`/admin/orders/${row.original.id}`)
+                    }
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>

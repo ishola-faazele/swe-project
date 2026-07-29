@@ -19,9 +19,10 @@ export async function getCustomers() {
   })
 }
 
-export async function createCustomer(data: { email?: string, phone?: string }) {
+export async function createCustomer(data: { name?: string, email?: string, phone?: string }) {
   const item = await prisma.user.create({
     data: {
+      name: data.name || null,
       email: data.email || null,
       phone: data.phone || null,
       role: 'CUSTOMER'
@@ -38,4 +39,18 @@ export async function deleteCustomer(id: string) {
   })
   
   revalidatePath('/admin/customers')
+}
+
+export async function updateCustomer(id: string, data: { name?: string, email?: string, phone?: string }) {
+  const item = await prisma.user.update({
+    where: { id },
+    data: {
+      name: data.name || null,
+      email: data.email || null,
+      phone: data.phone || null,
+    }
+  })
+  
+  revalidatePath('/admin/customers')
+  return item
 }

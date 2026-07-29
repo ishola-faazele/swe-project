@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { OrderStatus } from '@prisma/client'
+import { notifyOrderStatusChange, notifyLowStock } from '@/lib/notifications'
 
 export async function getOrders() {
   return await prisma.order.findMany({
@@ -62,18 +63,56 @@ export async function createOrder(data: {
     return newOrder
   })
 
+  // After order created, check for low stock items and notify admin
+  const customer = await prisma.user.findUnique({ where: { id: data.customerId } })
+  if (customer) {
+    // Fire-and-forget: notify customer of new order
+    notifyOrderStatusChange({
+      customerEmail: customer.email,
+      customerPhone: customer.phone,
+      orderId: order.id,
+      orderDescription: data.description,
+      newStatus: 'PENDING',
+    }).catch(console.error)
+  }
+
+  // Check all deducted items for low stock
+  for (const ingredient of data.ingredients) {
+    const item = await prisma.inventoryItem.findUnique({ where: { id: ingredient.inventoryItemId } })
+    if (item && item.minimumThreshold > 0 && item.currentStock <= item.minimumThreshold) {
+      // Send low stock alert (fire-and-forget)
+      notifyLowStock({
+        itemName: item.name,
+        currentStock: item.currentStock,
+        unit: item.unit,
+        adminEmail: process.env.ADMIN_ALERT_EMAIL,
+      }).catch(console.error)
+    }
+  }
+
   revalidatePath('/admin/orders')
   return order
 }
 
 export async function updateOrderStatus(id: string, status: OrderStatus) {
-  const item = await prisma.order.update({
+  const order = await prisma.order.update({
     where: { id },
-    data: { status }
+    data: { status },
+    include: { customer: true },
   })
+
+  // Fire-and-forget: notify customer of status change
+  notifyOrderStatusChange({
+    customerEmail: order.customer.email,
+    customerPhone: order.customer.phone,
+    orderId: order.id,
+    orderDescription: order.description,
+    newStatus: status,
+    dueDate: order.dueDate?.toLocaleDateString() ?? null,
+  }).catch(console.error)
   
   revalidatePath('/admin/orders')
-  return item
+  return order
 }
 
 export async function deleteOrder(id: string) {

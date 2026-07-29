@@ -27,10 +27,13 @@ export async function createInventoryItem(data: { name: string, currentStock: nu
   return item
 }
 
-export async function updateInventoryItem(id: string, data: { name?: string, currentStock?: number, unit?: string, minimumThreshold?: number | null, category?: Category }) {
+export async function updateInventoryItem(id: string, data: { name?: string, currentStock?: number, unit?: string, minimumThreshold?: number, category?: Category }) {
   const item = await prisma.inventoryItem.update({
     where: { id },
-    data
+    data: {
+      ...data,
+      minimumThreshold: data.minimumThreshold ?? undefined,
+    }
   })
   
   revalidatePath('/admin/inventory')

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Food Business Management",
+  title: "Chop with Rosty",
   description: "Manage orders and inventory",
 };
 

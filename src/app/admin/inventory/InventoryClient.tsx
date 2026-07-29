@@ -95,8 +95,8 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     <div className="space-y-4">
       <div className="flex justify-end">
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button>Add Item</Button>
+          <DialogTrigger render={<Button />}>
+            Add Item
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>

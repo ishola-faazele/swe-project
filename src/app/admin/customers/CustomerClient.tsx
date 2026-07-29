@@ -26,7 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { createCustomer, deleteCustomer } from "./actions"
+import { createCustomer, deleteCustomer, updateCustomer } from "./actions"
 
 type CustomerWithCount = User & { _count: { orders: number } }
 
@@ -35,8 +35,17 @@ const columnHelper = createColumnHelper<CustomerWithCount>()
 export function CustomerClient({ initialData }: { initialData: CustomerWithCount[] }) {
   const [data, setData] = useState<CustomerWithCount[]>(initialData)
   const [isOpen, setIsOpen] = useState(false)
+  const [editingCustomer, setEditingCustomer] = useState<CustomerWithCount | null>(null)
 
   const columns = [
+    columnHelper.accessor("shortId", {
+      header: "ID",
+      cell: (info) => `#${info.getValue()}`,
+    }),
+    columnHelper.accessor("name", {
+      header: "Name",
+      cell: (info) => info.getValue() || "N/A",
+    }),
     columnHelper.accessor("email", {
       header: "Email",
       cell: (info) => info.getValue() || "N/A",
@@ -52,16 +61,27 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     columnHelper.display({
       id: "actions",
       cell: (info) => (
-        <Button 
-          variant="destructive" 
-          size="sm"
-          onClick={async () => {
-            await deleteCustomer(info.row.original.id)
-            setData(data.filter(i => i.id !== info.row.original.id))
-          }}
-        >
-          Delete
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setEditingCustomer(info.row.original)}
+          >
+            Edit
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm"
+            onClick={async () => {
+              if(confirm("Are you sure you want to delete this customer?")) {
+                await deleteCustomer(info.row.original.id)
+                setData(prev => prev.filter(i => i.id !== info.row.original.id))
+              }
+            }}
+          >
+            Delete
+          </Button>
+        </div>
       ),
     })
   ]
@@ -73,27 +93,42 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
   })
 
   async function handleAdd(formData: FormData) {
+    const name = formData.get("name") as string
     const email = formData.get("email") as string
     const phone = formData.get("phone") as string
 
-    const newItem = await createCustomer({ email, phone })
-    // Ensure we append with _count initialized to 0
-    setData([...data, { ...newItem, _count: { orders: 0 } }])
+    const newItem = await createCustomer({ name, email, phone })
+    setData([{ ...newItem, _count: { orders: 0 } }, ...data])
     setIsOpen(false)
+  }
+
+  async function handleEdit(formData: FormData) {
+    if (!editingCustomer) return
+    const name = formData.get("name") as string
+    const email = formData.get("email") as string
+    const phone = formData.get("phone") as string
+
+    const updatedItem = await updateCustomer(editingCustomer.id, { name, email, phone })
+    setData(prev => prev.map(c => c.id === updatedItem.id ? { ...c, ...updatedItem } : c))
+    setEditingCustomer(null)
   }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button>Add Customer</Button>
+          <DialogTrigger render={<Button />}>
+            Add Customer
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add New Customer</DialogTitle>
             </DialogHeader>
             <form action={handleAdd} className="space-y-4">
+              <div>
+                <Label htmlFor="name">Name</Label>
+                <Input id="name" name="name" placeholder="Optional" />
+              </div>
               <div>
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" placeholder="Optional" />
@@ -108,6 +143,29 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           </DialogContent>
         </Dialog>
       </div>
+
+      <Dialog open={!!editingCustomer} onOpenChange={(open) => !open && setEditingCustomer(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Customer</DialogTitle>
+          </DialogHeader>
+          <form action={handleEdit} className="space-y-4">
+            <div>
+              <Label htmlFor="edit-name">Name</Label>
+              <Input id="edit-name" name="name" defaultValue={editingCustomer?.name || ""} placeholder="Optional" />
+            </div>
+            <div>
+              <Label htmlFor="edit-email">Email</Label>
+              <Input id="edit-email" name="email" type="email" defaultValue={editingCustomer?.email || ""} placeholder="Optional" />
+            </div>
+            <div>
+              <Label htmlFor="edit-phone">Phone Number</Label>
+              <Input id="edit-phone" name="phone" defaultValue={editingCustomer?.phone || ""} placeholder="Optional" />
+            </div>
+            <Button type="submit" className="w-full">Update Customer</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <div className="rounded-md border bg-card">
         <Table>

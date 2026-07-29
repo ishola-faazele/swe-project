@@ -10,6 +10,8 @@ datasource db {
 
 model User {
   id        String   @id @default(uuid())
+  shortId   Int      @unique @default(autoincrement())
+  name      String?
   email     String?  @unique
   phone     String?  @unique
   role      Role     @default(CUSTOMER)
@@ -46,6 +48,7 @@ enum Category {
 
 model Order {
   id          String   @id @default(uuid())
+  shortId     Int      @unique @default(autoincrement())
   customerId  String
   customer    User     @relation(fields: [customerId], references: [id])
   description String   // e.g., "40 pies, 40 bowls of jollof"
