@@ -6,7 +6,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ---
 
-# Project: Chop with Rosty
+# Project: Chop with Rostty
 
 This file provides orientation for AI coding agents (Copilot, Gemini, Claude, Cursor, etc.)
 working in this repository. Read this before writing any code.
@@ -15,7 +15,7 @@ working in this repository. Read this before writing any code.
 
 ## What This Project Is
 
-**Chop with Rosty** is a full-stack operations management platform built for a real West African
+**Chop with Rostty** is a full-stack operations management platform built for a real West African
 catering business. The business owner receives orders by phone or WhatsApp, cooks the food
 in-house, and needs software to:
 

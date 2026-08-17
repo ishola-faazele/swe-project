@@ -1,4 +1,4 @@
-# 🍲 Chop with Rosty
+# 🍲 Chop with Rostty
 
 > **A full-stack web application designed for modern West African food business management.**  
 > Streamlining customer orders, inventory tracking, role-based portals, and transactional notifications in one unified platform.
@@ -7,7 +7,7 @@
 
 ## 🌟 Overview
 
-**Chop with Rosty** is a modern management system crafted specifically for West African catering and food businesses. It empowers business owners with real-time order tracking, precise inventory control with automated stock deduction, magic-link customer authentication, and instant email notifications for order status updates.
+**Chop with Rostty** is a modern management system crafted specifically for West African catering and food businesses. It empowers business owners with real-time order tracking, precise inventory control with automated stock deduction, magic-link customer authentication, and instant email notifications for order status updates.
 
 ---
 
@@ -109,7 +109,7 @@ stateDiagram-v2
 
 ## 💻 Local Development Setup
 
-Follow these step-by-step instructions to get **Chop with Rosty** running locally.
+Follow these step-by-step instructions to get **Chop with Rostty** running locally.
 
 ### 1. Prerequisites
 Ensure you have the following installed on your machine:
@@ -178,10 +178,10 @@ npm run dev
 | `DATABASE_URL` | PostgreSQL connection pooled URL (Transaction mode) | **Yes** | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
 | `DIRECT_URL` | PostgreSQL direct connection URL (Session mode) | **Yes** | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
 | `RESEND_API_KEY` | API Key for Resend email notifications | No | `re_123456789` |
-| `FROM_EMAIL` | Sender address for outgoing transactional emails | No | `Chop with Rosty <orders@yourdomain.com>` |
-| `ADMIN_EMAIL` | Email address automatically assigned `ADMIN` role | **Yes** | `admin@chopwithrosty.com` |
+| `FROM_EMAIL` | Sender address for outgoing transactional emails | No | `Chop with Rostty <orders@yourdomain.com>` |
+| `ADMIN_EMAIL` | Email address automatically assigned `ADMIN` role | **Yes** | `admin@chopwithrostty.com` |
 | `ADMIN_PHONE` | Phone number automatically assigned `ADMIN` role | No | `+2348000000000` |
-| `ADMIN_ALERT_EMAIL` | Recipient email for automated low-stock notifications | No | `admin@chopwithrosty.com` |
+| `ADMIN_ALERT_EMAIL` | Recipient email for automated low-stock notifications | No | `admin@chopwithrostty.com` |
 | `NEXT_PUBLIC_SITE_URL` | Application root URL (used for Auth redirects) | **Yes** | `http://127.0.0.1:3000` |
 
 ---
@@ -249,5 +249,5 @@ This project is released under the [MIT License](LICENSE).
 ---
 
 <p align="center">
-  Crafted with ❤️ for <b>Chop with Rosty</b>
+  Crafted with ❤️ for <b>Chop with Rostty</b>
 </p>
