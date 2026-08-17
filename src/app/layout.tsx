@@ -1,21 +1,24 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Syne, DM_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const syne = Syne({
+  variable: "--font-syne",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const dmMono = DM_Mono({
+  variable: "--font-dm-mono",
   subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
-  title: "Chop with Rosty",
-  description: "Manage orders and inventory",
+  title: "Chop with Rosty — Kitchen Command Center",
+  description: "Enterprise order and inventory management for Chop with Rosty",
 };
 
 export default function RootLayout({
@@ -26,7 +29,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${syne.variable} ${dmMono.variable} dark h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <Providers>{children}</Providers>

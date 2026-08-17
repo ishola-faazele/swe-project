@@ -38,6 +38,11 @@
     "prisma": "^6.19.3",
     "supabase": "^2.110.0",
     "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.9",
     "typescript": "^5"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }

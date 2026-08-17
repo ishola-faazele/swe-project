@@ -9,14 +9,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table"
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -215,54 +208,57 @@ export function OrderClient({
         </Dialog>
       </div>
 
-      <div className="rounded-md border bg-card">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
+      <div className="rounded-lg overflow-hidden" style={{ border: '1px solid oklch(0.20 0.008 65)' }}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: 'oklch(0.13 0.005 65)', borderBottom: '1px solid oklch(0.20 0.008 65)' }}>
+              {table.getHeaderGroups().map(hg => hg.headers.map(header => (
+                <th
+                  key={header.id}
+                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest"
+                  style={{ color: 'oklch(0.40 0.008 65)', fontFamily: 'var(--font-dm-mono)', letterSpacing: '0.10em' }}
+                >
+                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                </th>
+              )))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.length ? (
+              table.getRowModel().rows.map((row, idx) => (
+                <tr
                   key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
+                  className="cursor-pointer transition-colors"
+                  style={{
+                    background: idx % 2 === 0 ? 'oklch(0.10 0.004 65)' : 'transparent',
+                    borderBottom: '1px solid oklch(0.16 0.005 65)',
+                  }}
                   onClick={(e) => {
-                    // Prevent navigation if clicking on select or button
                     if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'BUTTON') {
                       router.push(`/admin/orders/${row.original.id}`)
                     }
                   }}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                  {row.getVisibleCells().map(cell => (
+                    <td key={cell.id} className="px-4 py-3">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
+                    </td>
                   ))}
-                </TableRow>
+                </tr>
               ))
             ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+              <tr>
+                <td
+                  colSpan={columns.length}
+                  className="px-4 py-12 text-center text-sm"
+                  style={{ color: 'oklch(0.40 0.008 65)' }}
+                >
                   No orders found.
-                </TableCell>
-              </TableRow>
+                </td>
+              </tr>
             )}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
     </div>
   )
