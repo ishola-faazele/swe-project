@@ -2,7 +2,18 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
+  // Deliberately NOT `new URL(request.url).origin`: Next.js's dev server resolves that to
+  // `http://localhost:3000` even when the browser actually requested `127.0.0.1:3000`, so a
+  // redirect built from it lands the browser on a different origin than the one that holds the
+  // PKCE code_verifier cookie set by signInWithOtp — the exchange above succeeds, but the app
+  // then looks logged-out, and clicking "sign in" again from that wrong origin sets a NEW
+  // code_verifier cookie there, which does NOT match the *next* magic link's code (still built
+  // against NEXT_PUBLIC_SITE_URL), producing "PKCE code verifier not found in storage" on the
+  // following attempt. Use the same env var login/actions.ts already uses for emailRedirectTo,
+  // so the origin that sets the cookie and the origin that redirects after reading it always
+  // agree.
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
   const code = searchParams.get('code')
   // if "next" is in param, use it as the redirect URL
   const next = searchParams.get('next') ?? '/'
