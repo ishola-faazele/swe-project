@@ -61,14 +61,23 @@ export function OrderClient({
     columnHelper.accessor("status", {
       header: "Status",
       cell: (info) => (
-        <select 
+        <select
           value={info.getValue()}
+          disabled={info.row.original.status === 'CANCELLED'}
           onChange={async (e) => {
             const val = e.target.value as OrderStatus
-            await updateOrderStatus(info.row.original.id, val)
-            setData(data.map(d => d.id === info.row.original.id ? { ...d, status: val } : d))
+            try {
+              const result = await updateOrderStatus(info.row.original.id, val)
+              if (!result.ok) {
+                alert(result.error)
+                return // controlled <select> reverts on its own — data state is simply left unchanged
+              }
+              setData(data.map(d => d.id === info.row.original.id ? { ...d, status: val } : d))
+            } catch (err) {
+              alert(err instanceof Error ? err.message : 'Could not update this order.')
+            }
           }}
-          className="bg-transparent border rounded text-sm px-1 py-1"
+          className="bg-transparent border rounded text-sm px-1 py-1 disabled:opacity-60"
         >
           {Object.values(OrderStatus).map(s => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -85,8 +94,16 @@ export function OrderClient({
           variant="destructive" 
           size="sm"
           onClick={async () => {
-            await deleteOrder(info.row.original.id)
-            setData(data.filter(i => i.id !== info.row.original.id))
+            try {
+              const result = await deleteOrder(info.row.original.id)
+              if (!result.ok) {
+                alert(result.error)
+                return
+              }
+              setData(data.filter(i => i.id !== info.row.original.id))
+            } catch (err) {
+              alert(err instanceof Error ? err.message : 'Could not delete this order.')
+            }
           }}
         >
           Delete
@@ -113,13 +130,21 @@ export function OrderClient({
       .filter(i => i.id && i.quantity > 0)
       .map(i => ({ inventoryItemId: i.id, quantityUsed: i.quantity }))
 
-    const newOrder = await createOrder({ customerId, description, totalPrice, ingredients })
-    
-    // Quick optimistic update hack to add it to UI without full reload
-    const c = customers.find(c => c.id === customerId)!
-    setData([{ ...newOrder, customer: c, ingredientLogs: [] }, ...data])
-    setIsOpen(false)
-    setSelectedIngredients([])
+    try {
+      const result = await createOrder({ customerId, description, totalPrice, ingredients })
+      if (!result.ok) {
+        alert(result.error)
+        return
+      }
+
+      // Quick optimistic update hack to add it to UI without full reload
+      const c = customers.find(c => c.id === customerId)!
+      setData([{ ...result.data, customer: c, ingredientLogs: [] }, ...data])
+      setIsOpen(false)
+      setSelectedIngredients([])
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not create this order.')
+    }
   }
 
   return (

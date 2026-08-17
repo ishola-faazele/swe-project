@@ -89,9 +89,19 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             variant="destructive"
             size="sm"
             onClick={async () => {
-              if (confirm(`Delete customer #${info.row.original.shortId}?`)) {
-                await deleteCustomer(info.row.original.id)
+              if (!confirm(`Delete customer #${info.row.original.shortId}?`)) return
+              try {
+                const result = await deleteCustomer(info.row.original.id)
+                if (!result.ok) {
+                  // The row must stay visible here: a customer with orders on file is refused
+                  // server-side, and filtering it out anyway would imply a delete that never
+                  // happened.
+                  alert(result.error)
+                  return
+                }
                 setData(prev => prev.filter(i => i.id !== info.row.original.id))
+              } catch (err) {
+                alert(err instanceof Error ? err.message : 'Could not delete this customer.')
               }
             }}
           >
@@ -112,9 +122,17 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     const name = formData.get("name") as string
     const email = formData.get("email") as string
     const phone = formData.get("phone") as string
-    const newItem = await createCustomer({ name, email, phone })
-    setData([{ ...newItem, _count: { orders: 0 } }, ...data])
-    setIsOpen(false)
+    try {
+      const result = await createCustomer({ name, email, phone })
+      if (!result.ok) {
+        alert(result.error)
+        return
+      }
+      setData([{ ...result.data, _count: { orders: 0 } }, ...data])
+      setIsOpen(false)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not create this customer.')
+    }
   }
 
   async function handleEdit(formData: FormData) {
@@ -122,9 +140,17 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     const name = formData.get("name") as string
     const email = formData.get("email") as string
     const phone = formData.get("phone") as string
-    const updatedItem = await updateCustomer(editingCustomer.id, { name, email, phone })
-    setData(prev => prev.map(c => c.id === updatedItem.id ? { ...c, ...updatedItem } : c))
-    setEditingCustomer(null)
+    try {
+      const result = await updateCustomer(editingCustomer.id, { name, email, phone })
+      if (!result.ok) {
+        alert(result.error)
+        return
+      }
+      setData(prev => prev.map(c => c.id === result.data.id ? { ...c, ...result.data } : c))
+      setEditingCustomer(null)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not update this customer.')
+    }
   }
 
   return (
