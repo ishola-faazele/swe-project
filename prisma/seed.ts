@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client'
-import { computeDishSubtotal, expandDishesToIngredients } from '../src/lib/recipe'
+import { computeDishSubtotal, expandDishesToIngredients, type DishWithRecipe } from '../src/lib/recipe'
 
 const prisma = new PrismaClient()
 
@@ -143,7 +143,7 @@ async function main() {
     },
   ]
 
-  const dishes = []
+  const dishes: DishWithRecipe[] = []
   for (const data of dishData) {
     const dish = await prisma.dish.create({
       data: {
