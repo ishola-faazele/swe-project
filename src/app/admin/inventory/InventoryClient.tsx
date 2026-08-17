@@ -128,9 +128,16 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           variant="destructive"
           size="sm"
           onClick={async () => {
-            if (confirm(`Delete "${info.row.original.name}"?`)) {
-              await deleteInventoryItem(info.row.original.id)
+            if (!confirm(`Delete "${info.row.original.name}"?`)) return
+            try {
+              const result = await deleteInventoryItem(info.row.original.id)
+              if (!result.ok) {
+                alert(result.error)
+                return
+              }
               setData(data.filter(i => i.id !== info.row.original.id))
+            } catch (err) {
+              alert(err instanceof Error ? err.message : 'Could not delete this inventory item.')
             }
           }}
         >
@@ -156,9 +163,17 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     const thresholdStr = formData.get("minimumThreshold") as string
     const minimumThreshold = thresholdStr ? Number(thresholdStr) : null
 
-    const newItem = await createInventoryItem({ name, currentStock, unit, minimumThreshold, category })
-    setData([...data, newItem])
-    setIsOpen(false)
+    try {
+      const result = await createInventoryItem({ name, currentStock, unit, minimumThreshold, category })
+      if (!result.ok) {
+        alert(result.error)
+        return
+      }
+      setData([...data, result.data])
+      setIsOpen(false)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not create this inventory item.')
+    }
   }
 
   return (

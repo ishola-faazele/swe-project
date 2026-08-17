@@ -41,9 +41,20 @@ export function OrderDetailsClient({
       .filter(i => i.id && i.quantity > 0)
       .map(i => ({ inventoryItemId: i.id, quantityUsed: i.quantity }))
       
-    await updateOrderIngredients(order.id, payload)
-    setIsEditing(false)
-    setIsSaving(false)
+    try {
+      const result = await updateOrderIngredients(order.id, payload)
+      if (!result.ok) {
+        alert(result.error)
+        return
+      }
+      setIsEditing(false)
+      // revalidatePath inside the action already re-renders this route in the same round trip,
+      // so no explicit router.refresh() is needed here — matching existing behavior.
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not update this order's ingredients.")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -72,14 +83,23 @@ export function OrderDetailsClient({
             <p><span className="font-medium text-slate-500">Total Price:</span> ${order.totalPrice}</p>
             <div className="flex items-center gap-2 mt-2">
               <span className="font-medium text-slate-500">Status:</span>
-              <select 
+              <select
                 value={order.status}
+                disabled={order.status === 'CANCELLED'}
                 onChange={async (e) => {
                   const val = e.target.value as OrderStatus
-                  await updateOrderStatus(order.id, val)
-                  router.refresh()
+                  try {
+                    const result = await updateOrderStatus(order.id, val)
+                    if (!result.ok) {
+                      alert(result.error)
+                      return
+                    }
+                    router.refresh()
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : 'Could not update this order.')
+                  }
                 }}
-                className="bg-slate-100 dark:bg-slate-800 border rounded text-sm px-2 py-1"
+                className="bg-slate-100 dark:bg-slate-800 border rounded text-sm px-2 py-1 disabled:opacity-60"
               >
                 {Object.values(OrderStatus).map(s => <option key={s} value={s}>{s}</option>)}
               </select>
