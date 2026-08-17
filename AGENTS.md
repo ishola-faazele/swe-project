@@ -93,6 +93,7 @@ swe-project/
 │   │   │   │   ├── actions.ts        # "use server" — createOrder, updateOrderStatus, deleteOrder
 │   │   │   │   └── [id]/             # Full order detail + ingredient editor
 │   │   │   ├── inventory/            # Same page / *Client / actions pattern
+│   │   │   ├── menu/                 # Dish catalog + recipes — same pattern, no [id] route
 │   │   │   └── customers/            # Same page / *Client / actions pattern
 │   │   ├── auth/callback/route.ts    # Supabase PKCE callback — creates Prisma User on first login
 │   │   ├── dashboard/                # Customer portal (order history)
@@ -109,6 +110,7 @@ swe-project/
 │   │   └── providers.tsx             # QueryClientProvider (installed but unused)
 │   ├── lib/
 │   │   ├── prisma.ts                 # Singleton PrismaClient
+│   │   ├── recipe.ts                 # PURE recipe/pricing math — no Prisma, no next/*
 │   │   ├── notifications/
 │   │   │   ├── index.ts              # Fan-out: email + SMS (fire-and-forget)
 │   │   │   ├── email.ts              # Resend integration
@@ -145,7 +147,32 @@ Order           id, shortId (auto-increment), customerId → User, description, 
 
 OrderIngredientLog  orderId → Order, inventoryItemId → InventoryItem, quantityUsed
                     (audit trail; always written in the same transaction as stock changes)
+
+Dish            id, shortId (auto-increment), name, price, isActive
+                the reusable menu catalog; archived (isActive: false) rather than deleted
+                whenever an OrderDish row references it
+
+DishIngredient  dishId → Dish, inventoryItemId → InventoryItem, quantityPerDish
+                the recipe — how much of an InventoryItem ONE unit of the dish consumes
+                @@unique([dishId, inventoryItemId]), so duplicate picks must be summed
+                before writing (see mergeDuplicateIngredients in src/lib/recipe.ts)
+
+OrderDish       orderId → Order, dishId → Dish, dishName, unitPrice, quantity
+                the order's line items. dishName/unitPrice are SNAPSHOTS taken from the
+                Dish row server-side at create/edit time — never re-joined for display,
+                so renaming or repricing a dish can't rewrite order history.
 ```
+
+`OrderDish` and `OrderIngredientLog` are two separate records of truth and neither is derived
+from the other at read time: `OrderDish` is what the customer ordered and was charged, while
+`OrderIngredientLog` is what the kitchen consumed. Both are written once, together, in the same
+transaction. When several dishes share an ingredient, the log gets **one merged row per
+`InventoryItem`**, not one per dish. Orders created before this feature simply have `dishes: []`.
+
+The recipe/pricing math (`expandDishesToIngredients`, `computeDishSubtotal`,
+`mergeDuplicateIngredients`) lives in `src/lib/recipe.ts` and is deliberately pure — no Prisma,
+no `next/*` — so the same functions run inside a server transaction and in the browser for the
+live total-price preview. Keep it that way; don't inline that math into a `"use server"` body.
 
 **Always use `shortId` in user-facing strings** (e.g. "Order #42"). Use `id` (UUID) for
 URL parameters, relations, and DB lookups.
@@ -162,8 +189,11 @@ URL parameters, relations, and DB lookups.
 
 ### Inventory Mutations
 Always use `prisma.$transaction` when touching `InventoryItem.currentStock`. The two canonical
-locations are `createOrder` (deduct) and `updateOrderIngredients` (revert old + apply new).
-Never mutate stock outside a transaction.
+locations are `createOrder` (deduct) and `updateOrderItems` (revert old + apply new).
+Never mutate stock outside a transaction. `updateOrderItems` — in
+`src/app/admin/orders/[id]/actions.ts` — is the single writer of `OrderIngredientLog`/`OrderDish`
+in the edit flow; don't add a second one, or two "delete all and recreate" writers will clobber
+each other.
 
 ### Dialog Triggers
 `<DialogTrigger render={<Button />}>` from Base UI **does not work** with our `Button` component.
