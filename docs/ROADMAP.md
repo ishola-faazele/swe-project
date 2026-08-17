@@ -8,16 +8,25 @@ this file is the short, update-as-you-go version).
 
 | Phase | What | Branch / worktree | Status |
 |---|---|---|---|
-| Phase 0 | Order & Inventory Integrity + Auth Hardening | `fix/order-inventory-integrity-hardening` → `../swe-project-integrity-hardening` | ✅ Implemented + tested (73 tests passing) — ready for review/merge |
-| Phase 1 | Quick-Win Polish Pack (mobile nav, currency, due-date alerts, brand assets) | `feature/polish-pack` → `../swe-project-polish-pack` | ⏸️ Paused (stopped mid-implementation, not yet resumed) |
-| Phase 2 | Menu & Recipe System | `feature/menu-recipe-system` → `../swe-project-menu-recipe-system` | ✅ Implemented + tested (66 tests passing) — ready for review/merge |
+| Phase 0 | Order & Inventory Integrity + Auth Hardening | `fix/order-inventory-integrity-hardening` → `../swe-project-integrity-hardening` | ✅ Merged into `main` (`e6f2854`) |
+| Phase 1 | Quick-Win Polish Pack + enterprise UI overhaul (mobile nav, currency, due-date alerts, brand assets, full visual design pass via `/frontend-design` + `/web-design-guidelines`) | `feature/polish-pack` → `../swe-project-polish-pack` | 🔄 In progress — rebased onto merged `main`, scope expanded 2026-08-17 |
+| Phase 2 | Menu & Recipe System | `feature/menu-recipe-system` → `../swe-project-menu-recipe-system` | ✅ Merged into `main` (`e6f2854`) |
 | Phase 3 | Compounding features (repeat-order, stock-aware fulfillment, weekly snapshot, table search, real SMS) | — | ⬜ Not started |
 
-Update the Status column as each pipeline finishes and merges. Note: Phase 2 was built ahead of
-Phase 0 by explicit user choice, so **it still inherits the integrity bugs Phase 0 fixes until
-the two branches are merged together** — merging Phase 0 first (or together with Phase 2) is
-recommended before either goes live, since Phase 2's new Server Actions were written without the
-authorization/validation pattern Phase 0 establishes.
+**Phase 0 and Phase 2 are both on `main` as of commit `e6f2854`.** They were developed in
+parallel on independent worktrees and had to be reconciled by hand — both branches modified the
+same order-management files (`orders/actions.ts`, `OrderClient.tsx`, `orders/[id]/actions.ts`,
+`OrderDetailsClient.tsx`), so `git merge` produced real conflicts rather than an automatic
+combination. The merge combined Phase 2's dish-based order creation with Phase 0's
+authorization/validation wrapper at every call site, added `requireAdmin()` to `menu/actions.ts`
+(which had no authorization at all — it existed only on the Phase 2 branch and never went through
+Phase 0's hardening), reconciled two independently-bootstrapped Vitest configs, and relocated
+tests that hit a real database out of the unit-test tree. Verified after merging: 139 tests
+passing (60 unit/component + 79 integration), lint clean, production build succeeds on all 11
+routes. Phase 1 was then rebased onto this merged `main` so it builds on the same combined
+foundation, and its scope was expanded on user request to include a full enterprise-grade UI
+overhaul (not just the original 4 functional items) using the `/frontend-design` and
+`/web-design-guidelines` skills.
 
 **Next step:** review both branches, decide merge order (Phase 0 first is recommended — see
 above), and either merge directly or open PRs. Phase 1 remains paused; resume it explicitly when
@@ -79,7 +88,7 @@ truth**.
 
 | # | Feature | Why it matters to *her* specifically | Effort | Status |
 |---|---|---|---|---|
-| 1 | Menu & Recipe system (`Dish` + `DishIngredient` models; hybrid structured line-items + freeform notes) | Cuts order entry from "remember every ingredient, retype a price" to two taps; makes the existing deduction/audit machinery finally pay for itself | Large | 🔄 In progress (Phase 2) |
+| 1 | Menu & Recipe system (`Dish` + `DishIngredient` models; hybrid structured line-items + freeform notes) | Cuts order entry from "remember every ingredient, retype a price" to two taps; makes the existing deduction/audit machinery finally pay for itself | Large | ✅ Merged into `main` (Phase 2) |
 | 2 | Mobile-responsive admin nav (drawer/hamburger below `md`) | She'll use this one-handed, on her phone, mid-shift — currently impossible | Small | 🔄 In progress (Phase 1) |
 | 3 | WhatsApp-native order sharing (`/o/[token]` read-only page + `wa.me` share button) | Solves "nobody actually gets notified" for free, on the channel she already uses; must use a non-guessable token, not the raw sequential `shortId`, or customers could enumerate each other's orders | Small–Medium | ⬜ Not started |
 | 4 | Due-date/overdue alerting (dashboard widget + row highlighting) | Zero schema change — `dueDate` already exists. Prevents the most reputation-damaging failure mode (missed delivery) | Small | 🔄 In progress (Phase 1) |
@@ -138,3 +147,21 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
   running containers immediately (no disruption to the two live pipelines, which only need
   db/auth/kong) and disabled them in `supabase/config.toml` so they stay off on the next
   `supabase start`. New baseline: ~320MB, an 85% reduction.
+- **2026-08-17** — User asked to merge Phase 0 and Phase 2 into `main` so both could be tested
+  manually together. Merged Phase 0 first (clean, no conflicts — it never touched
+  `prisma/schema.prisma`), then Phase 2 (real conflicts on every order-management file both
+  branches had modified). Resolved by hand: combined Phase 2's dish-based order logic with Phase
+  0's `requireAdmin()`/`ActionResult`/validation wrapper at each call site; discovered and fixed
+  a gap the merge would otherwise have silently reintroduced — `src/app/admin/menu/actions.ts`
+  (Dish CRUD) existed only on the Phase 2 branch and had zero authorization, since Phase 0 never
+  knew that file existed to harden it. Also reconciled two independently-bootstrapped Vitest
+  configs and relocated 3 test files that hit a real database out of the unit-test tree (Phase
+  0's unit config deliberately poisons `DATABASE_URL` to guarantee unit tests never touch a
+  database — those 3 files were integration tests mislabeled as unit tests). Final state on
+  `main` (`e6f2854`): 139 tests passing, lint clean, production build succeeds on all 11 routes.
+- **2026-08-17** — Phase 1's worktree was rebased onto the newly-merged `main` (clean, docs-only
+  diff, no conflicts) so it builds on the combined Phase 0 + Phase 2 foundation. Its scope was
+  then expanded on user request to include a full enterprise-grade UI/visual design overhaul
+  (explicitly: not a generic "AI-ish" look) across the admin portal, using the `/frontend-design`
+  and `/web-design-guidelines` skills, delivered alongside the original 4 functional items rather
+  than as a separate pass.
