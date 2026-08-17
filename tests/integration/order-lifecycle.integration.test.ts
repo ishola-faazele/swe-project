@@ -19,7 +19,7 @@ vi.mock('@/lib/notifications', () => ({
 import { createClient } from '@/utils/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { createOrder, deleteOrder, updateOrderStatus } from '@/app/admin/orders/actions'
-import { updateOrderIngredients } from '@/app/admin/orders/[id]/actions'
+import { updateOrderItems } from '@/app/admin/orders/[id]/actions'
 import {
   cleanupRegistry,
   createTestAdmin,
@@ -29,6 +29,7 @@ import {
   newRegistry,
   type TestRegistry,
 } from './helpers'
+import { createDishWithRecipe } from '../../test/helpers/fixtures'
 import type { User } from '@prisma/client'
 
 const createClientMock = vi.mocked(createClient)
@@ -37,28 +38,50 @@ describe('order-lifecycle invariants (TEST-013)', () => {
   let reg: TestRegistry
   let admin: User
   let customer: User
+  let dishIds: string[]
 
   beforeEach(async () => {
     reg = newRegistry()
     admin = await createTestAdmin(reg)
     customer = await createTestCustomer(reg)
+    dishIds = []
     mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
   })
 
   afterEach(async () => {
     vi.clearAllMocks()
+    // OrderDish rows on this registry's orders reference Dish rows (must clear before Dish can
+    // be deleted); DishIngredient rows reference this registry's InventoryItem ids (must clear
+    // before cleanupRegistry tries to delete those items). Order matters both ways.
+    if (reg.orderIds.length) {
+      await prisma.orderDish.deleteMany({ where: { orderId: { in: reg.orderIds } } })
+    }
+    if (dishIds.length) {
+      await prisma.dishIngredient.deleteMany({ where: { dishId: { in: dishIds } } })
+      await prisma.dish.deleteMany({ where: { id: { in: dishIds } } })
+    }
     await cleanupRegistry(reg)
   })
+
+  /** A dish requiring exactly `quantityPerDish` of `inventoryItemId`, ordered at quantity 1. */
+  async function dishFor(inventoryItemId: string, quantityPerDish: number) {
+    const dish = await createDishWithRecipe('Lifecycle test dish', 10, [
+      { inventoryItemId, quantityPerDish },
+    ])
+    dishIds.push(dish.id)
+    return dish
+  }
 
   test('cancellation restores stock to the pre-order level and is idempotent on a repeated cancel', async () => {
     const item = await createTestInventoryItem(reg, { currentStock: 20 })
     const preOrderStock = 20
+    const dish = await dishFor(item.id, 5)
 
     const created = await createOrder({
       customerId: customer.id,
       description: 'Idempotency test order',
       totalPrice: 10,
-      ingredients: [{ inventoryItemId: item.id, quantityUsed: 5 }],
+      dishes: [{ dishId: dish.id, quantity: 1 }],
     })
     if (!created.ok) throw new Error('fixture setup failed: ' + created.error)
     reg.orderIds.push(created.data.id)
@@ -80,12 +103,13 @@ describe('order-lifecycle invariants (TEST-013)', () => {
 
   test('delete-after-cancel does not double-restore stock', async () => {
     const item = await createTestInventoryItem(reg, { currentStock: 20 })
+    const dish = await dishFor(item.id, 5)
 
     const created = await createOrder({
       customerId: customer.id,
       description: 'Delete-after-cancel test order',
       totalPrice: 10,
-      ingredients: [{ inventoryItemId: item.id, quantityUsed: 5 }],
+      dishes: [{ dishId: dish.id, quantity: 1 }],
     })
     if (!created.ok) throw new Error('fixture setup failed: ' + created.error)
     reg.orderIds.push(created.data.id)
@@ -103,12 +127,13 @@ describe('order-lifecycle invariants (TEST-013)', () => {
 
   test('delete-without-cancel restores stock exactly once to the pre-order level', async () => {
     const item = await createTestInventoryItem(reg, { currentStock: 20 })
+    const dish = await dishFor(item.id, 5)
 
     const created = await createOrder({
       customerId: customer.id,
       description: 'Delete-without-cancel test order',
       totalPrice: 10,
-      ingredients: [{ inventoryItemId: item.id, quantityUsed: 5 }],
+      dishes: [{ dishId: dish.id, quantity: 1 }],
     })
     if (!created.ok) throw new Error('fixture setup failed: ' + created.error)
     reg.orderIds.push(created.data.id)
@@ -124,11 +149,12 @@ describe('order-lifecycle invariants (TEST-013)', () => {
 
   test('rejects moving a CANCELLED order to an active status, leaving it CANCELLED', async () => {
     const item = await createTestInventoryItem(reg, { currentStock: 20 })
+    const dish = await dishFor(item.id, 5)
     const created = await createOrder({
       customerId: customer.id,
       description: 'Un-cancel rejection test order',
       totalPrice: 10,
-      ingredients: [{ inventoryItemId: item.id, quantityUsed: 5 }],
+      dishes: [{ dishId: dish.id, quantity: 1 }],
     })
     if (!created.ok) throw new Error('fixture setup failed: ' + created.error)
     reg.orderIds.push(created.data.id)
@@ -143,13 +169,14 @@ describe('order-lifecycle invariants (TEST-013)', () => {
     expect(reFetched.status).toBe('CANCELLED')
   })
 
-  test('rejects editing ingredients on a CANCELLED order, leaving logs and stock untouched', async () => {
+  test('rejects editing items on a CANCELLED order, leaving logs and stock untouched', async () => {
     const item = await createTestInventoryItem(reg, { currentStock: 20 })
+    const dish = await dishFor(item.id, 5)
     const created = await createOrder({
       customerId: customer.id,
       description: 'Cancelled-order-edit rejection test order',
       totalPrice: 10,
-      ingredients: [{ inventoryItemId: item.id, quantityUsed: 5 }],
+      dishes: [{ dishId: dish.id, quantity: 1 }],
     })
     if (!created.ok) throw new Error('fixture setup failed: ' + created.error)
     reg.orderIds.push(created.data.id)
@@ -162,9 +189,11 @@ describe('order-lifecycle invariants (TEST-013)', () => {
     })
     const stockBefore = await prisma.inventoryItem.findUniqueOrThrow({ where: { id: item.id } })
 
-    const editResult = await updateOrderIngredients(created.data.id, [
-      { inventoryItemId: item.id, quantityUsed: 3 },
-    ])
+    const editResult = await updateOrderItems(created.data.id, {
+      dishes: [],
+      extraIngredients: [{ inventoryItemId: item.id, quantityUsed: 3 }],
+      totalPrice: 10,
+    })
     expect(editResult).toMatchObject({ ok: false, code: 'INVALID_TRANSITION' })
 
     const logsAfter = await prisma.orderIngredientLog.findMany({

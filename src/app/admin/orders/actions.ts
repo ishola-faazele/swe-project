@@ -8,6 +8,7 @@ import { requireAdmin } from '@/lib/auth'
 import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { decrementStockOrThrow, restoreStockForOrder } from '@/lib/inventory'
 import { createOrderSchema, idSchema, updateOrderStatusSchema } from '@/lib/validation'
+import { expandDishesToIngredients } from '@/lib/recipe'
 
 export async function getOrders() {
   await requireAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
@@ -18,7 +19,8 @@ export async function getOrders() {
         include: {
           inventoryItem: true
         }
-      }
+      },
+      dishes: true
     },
     orderBy: {
       createdAt: 'desc'
@@ -31,15 +33,23 @@ export async function createOrder(data: {
   description: string
   totalPrice: number
   dueDate?: Date | null
-  ingredients: { inventoryItemId: string; quantityUsed: number }[]
+  dishes: { dishId: string; quantity: number }[]
 }): Promise<ActionResult<Order>> {
   await requireAdmin() // throws AuthError — uncaught here, rejects the promise for the client
 
   let order: Order
+  let ingredientTotals: { inventoryItemId: string; quantityUsed: number }[]
   try {
     const input = createOrderSchema.parse(data)
 
-    order = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
+      // Re-read dishes fresh inside the transaction — client-supplied prices and recipes are
+      // never trusted for the snapshot or the stock deduction.
+      const dishRecords = await tx.dish.findMany({
+        where: { id: { in: input.dishes.map(d => d.dishId) } },
+        include: { ingredients: true }
+      })
+
       // 1. Create the order
       const newOrder = await tx.order.create({
         data: {
@@ -51,25 +61,50 @@ export async function createOrder(data: {
         }
       })
 
-      // 2. Deduct inventory and log ingredients
-      for (const ingredient of input.ingredients) {
-        // Guard first, log second. decrementStockOrThrow throws ActionError('...',
-        // 'INSUFFICIENT_STOCK') when stock is short; because that throw happens inside the
-        // $transaction callback, Prisma rolls back everything written so far (including
-        // newOrder and any earlier logs) before the error reaches the catch block below.
-        await decrementStockOrThrow(tx, ingredient.inventoryItemId, ingredient.quantityUsed)
+      // 2. Snapshot each selected dish's name and price onto the order
+      for (const selection of input.dishes) {
+        const dish = dishRecords.find(d => d.id === selection.dishId)
+        // A dish archived or deleted by another session between page load and submit no longer
+        // resolves — skip that line rather than failing the whole order.
+        if (!dish || selection.quantity <= 0) continue
 
-        await tx.orderIngredientLog.create({
+        await tx.orderDish.create({
           data: {
             orderId: newOrder.id,
-            inventoryItemId: ingredient.inventoryItemId,
-            quantityUsed: ingredient.quantityUsed
+            dishId: dish.id,
+            dishName: dish.name,
+            unitPrice: dish.price,
+            quantity: selection.quantity
           }
         })
       }
 
-      return newOrder
+      // 3. Deduct inventory and log ingredients — one merged, guarded line per InventoryItem, so
+      // two dishes sharing an ingredient produce a single log row with the summed quantity.
+      // Guard first, log second: decrementStockOrThrow throws ActionError('...',
+      // 'INSUFFICIENT_STOCK') when stock is short; because that throw happens inside the
+      // $transaction callback, Prisma rolls back everything written so far (including newOrder
+      // and any earlier logs) before the error reaches the catch block below.
+      const ingredientTotals = expandDishesToIngredients(input.dishes, dishRecords)
+      for (const line of ingredientTotals) {
+        if (line.quantityUsed <= 0) continue
+
+        await decrementStockOrThrow(tx, line.inventoryItemId, line.quantityUsed)
+
+        await tx.orderIngredientLog.create({
+          data: {
+            orderId: newOrder.id,
+            inventoryItemId: line.inventoryItemId,
+            quantityUsed: line.quantityUsed
+          }
+        })
+      }
+
+      return { order: newOrder, ingredientTotals }
     })
+
+    order = result.order
+    ingredientTotals = result.ingredientTotals
   } catch (err) {
     return toErrorResult(err, 'Could not create this order. Please try again.')
   }
@@ -82,14 +117,15 @@ export async function createOrder(data: {
       customerEmail: customer.email,
       customerPhone: customer.phone,
       orderId: order.id,
-      orderDescription: data.description,
+      orderDescription: order.description,
       newStatus: 'PENDING',
     }).catch(console.error)
   }
 
-  // Check all deducted items for low stock
-  for (const ingredient of data.ingredients) {
-    const item = await prisma.inventoryItem.findUnique({ where: { id: ingredient.inventoryItemId } })
+  // Check all deducted items for low stock — driven by what was actually deducted, since the
+  // deduction list is derived from the selected dishes' recipes rather than passed in directly.
+  for (const line of ingredientTotals) {
+    const item = await prisma.inventoryItem.findUnique({ where: { id: line.inventoryItemId } })
     if (item && item.minimumThreshold > 0 && item.currentStock <= item.minimumThreshold) {
       // Send low stock alert (fire-and-forget)
       notifyLowStock({
@@ -179,6 +215,9 @@ export async function deleteOrder(id: string): Promise<ActionResult<void>> {
       }
 
       await tx.orderIngredientLog.deleteMany({
+        where: { orderId: parsedId }
+      })
+      await tx.orderDish.deleteMany({
         where: { orderId: parsedId }
       })
       await tx.order.delete({

@@ -34,10 +34,16 @@ export function newRegistry(): TestRegistry {
  * Deletes every row a test created, in FK-safe order (logs -> orders/items -> users). Safe to
  * call even if some rows were already deleted by the action under test (e.g. a successful
  * deleteOrder) — deleteMany on a non-matching id simply matches zero rows.
+ *
+ * Callers that also create Dish/DishIngredient fixtures (via test/helpers/fixtures.ts's
+ * createDishWithRecipe) must delete those FIRST, before calling cleanupRegistry — a Dish row
+ * referencing one of this registry's InventoryItem ids via DishIngredient, or an OrderDish row
+ * on one of this registry's orders, would otherwise violate the FK constraints below.
  */
 export async function cleanupRegistry(reg: TestRegistry): Promise<void> {
   if (reg.orderIds.length) {
     await prisma.orderIngredientLog.deleteMany({ where: { orderId: { in: reg.orderIds } } })
+    await prisma.orderDish.deleteMany({ where: { orderId: { in: reg.orderIds } } })
     await prisma.order.deleteMany({ where: { id: { in: reg.orderIds } } })
   }
   if (reg.inventoryItemIds.length) {

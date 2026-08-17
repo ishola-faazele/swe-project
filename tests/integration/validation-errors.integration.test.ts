@@ -51,21 +51,21 @@ describe('validation expected-error paths (TEST-012)', () => {
     })
   })
 
-  test('createOrder resolves { ok: false, code: VALIDATION } for an oversized (51-entry) ingredient array', async () => {
+  test('createOrder resolves { ok: false, code: VALIDATION } for an oversized (51-entry) dish array', async () => {
     const admin = await createTestAdmin(reg)
     const customer = await createTestCustomer(reg)
     mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
 
-    const ingredients = Array.from({ length: 51 }, () => ({
-      inventoryItemId: randomUUID(),
-      quantityUsed: 1,
+    const dishes = Array.from({ length: 51 }, () => ({
+      dishId: randomUUID(),
+      quantity: 1,
     }))
 
     const result = await createOrder({
       customerId: customer.id,
-      description: 'Pathologically large ingredient list',
+      description: 'Pathologically large dish list',
       totalPrice: 1,
-      ingredients,
+      dishes,
     })
 
     expect(result).toMatchObject({ ok: false, code: 'VALIDATION' })

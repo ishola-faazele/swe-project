@@ -5,16 +5,24 @@ import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/auth'
 import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { decrementStockOrThrow } from '@/lib/inventory'
-import { updateOrderIngredientsSchema } from '@/lib/validation'
+import { updateOrderItemsSchema } from '@/lib/validation'
+import { expandDishesToIngredients } from '@/lib/recipe'
 
-export async function updateOrderIngredients(
-  orderId: string,
-  ingredients: { inventoryItemId: string, quantityUsed: number }[]
-): Promise<ActionResult<void>> {
+/**
+ * The single writer of OrderIngredientLog and OrderDish for the edit flow. Dishes and manually
+ * added extra ingredients are saved together, in one transaction, because both feed the same
+ * merged deduction — two independent actions would each "delete all logs and recreate them" and
+ * silently clobber whichever was saved first.
+ */
+export async function updateOrderItems(orderId: string, data: {
+  dishes: { dishId: string; quantity: number }[]
+  extraIngredients: { inventoryItemId: string; quantityUsed: number }[]
+  totalPrice: number
+}): Promise<ActionResult<void>> {
   await requireAdmin()
 
   try {
-    const input = updateOrderIngredientsSchema.parse({ orderId, ingredients })
+    const input = updateOrderItemsSchema.parse({ orderId, ...data })
 
     await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: input.orderId } })
@@ -22,7 +30,7 @@ export async function updateOrderIngredients(
       // A cancelled order has already had its stock restored. Running the revert-then-reapply
       // logic below against it would deduct stock a second time for an order meant to be inert.
       if (order.status === 'CANCELLED') {
-        throw new ActionError('Cannot edit ingredients on a cancelled order.', 'INVALID_TRANSITION')
+        throw new ActionError('Cannot edit items on a cancelled order.', 'INVALID_TRANSITION')
       }
 
       // 1. Get existing logs
@@ -38,30 +46,64 @@ export async function updateOrderIngredients(
         })
       }
 
-      // 3. Delete old logs
+      // 3. Delete old logs and old dish snapshots
       await tx.orderIngredientLog.deleteMany({
         where: { orderId: input.orderId }
       })
+      await tx.orderDish.deleteMany({
+        where: { orderId: input.orderId }
+      })
 
-      // 4. Apply new deductions and create new logs
-      for (const ing of input.ingredients) {
-        if (ing.quantityUsed <= 0) continue
+      // 4. Re-read dish data fresh. Price is deliberately re-snapshotted at edit time: re-saving
+      // an order's dish list is an active decision happening now, so it records the price the
+      // admin is actually looking at rather than a stale one.
+      const dishRecords = await tx.dish.findMany({
+        where: { id: { in: input.dishes.map(d => d.dishId) } },
+        include: { ingredients: true }
+      })
 
-        // Guard runs AFTER the revert above, so it correctly checks against
-        // (currentStock + oldQty), not the stale pre-revert value.
-        await decrementStockOrThrow(tx, ing.inventoryItemId, ing.quantityUsed)
+      for (const selection of input.dishes) {
+        const dish = dishRecords.find(d => d.id === selection.dishId)
+        // Skip a dish that no longer resolves (archived/deleted mid-edit) rather than failing the save.
+        if (!dish || selection.quantity <= 0) continue
+
+        await tx.orderDish.create({
+          data: {
+            orderId: input.orderId,
+            dishId: dish.id,
+            dishName: dish.name,
+            unitPrice: dish.price,
+            quantity: selection.quantity
+          }
+        })
+      }
+
+      // 5. Merge dish-derived and manually-added ingredient lines, then apply the new
+      // deductions — one log row and one guarded decrement per InventoryItem. The revert above
+      // ran first, so the guard here correctly checks against (currentStock + oldQty), not the
+      // stale pre-revert value.
+      const merged = expandDishesToIngredients(input.dishes, dishRecords, input.extraIngredients)
+      for (const line of merged) {
+        if (line.quantityUsed <= 0) continue
+
+        await decrementStockOrThrow(tx, line.inventoryItemId, line.quantityUsed)
 
         await tx.orderIngredientLog.create({
           data: {
             orderId: input.orderId,
-            inventoryItemId: ing.inventoryItemId,
-            quantityUsed: ing.quantityUsed
+            inventoryItemId: line.inventoryItemId,
+            quantityUsed: line.quantityUsed
           }
         })
       }
+
+      await tx.order.update({
+        where: { id: input.orderId },
+        data: { totalPrice: input.totalPrice }
+      })
     })
   } catch (err) {
-    return toErrorResult(err, "Could not update this order's ingredients.")
+    return toErrorResult(err, "Could not update this order's items.")
   }
 
   revalidatePath(`/admin/orders/${orderId}`)

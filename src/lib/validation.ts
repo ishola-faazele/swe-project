@@ -31,7 +31,7 @@ const AT_LEAST_ONE_CONTACT_MESSAGE = 'At least one contact method (name, email, 
 
 export const ingredientInputSchema = z.object({
   inventoryItemId: z.uuid('Select a valid inventory item.'),
-  // Non-negative rather than positive: updateOrderIngredients deliberately skips zero-quantity
+  // Non-negative rather than positive: updateOrderItems deliberately skips zero-quantity
   // lines rather than rejecting them. Negatives must never pass — a negative "decrement" would
   // silently inflate stock.
   quantityUsed: z
@@ -43,6 +43,19 @@ const ingredientArraySchema = z
   .array(ingredientInputSchema)
   .max(MAX_INGREDIENT_LINES, 'An order cannot list more than 50 distinct ingredient lines.')
 
+// A dish line on an order (as opposed to a DishIngredient, which is a line in a dish's recipe).
+export const dishSelectionSchema = z.object({
+  dishId: z.uuid('Select a valid dish.'),
+  quantity: z
+    .number('Enter a quantity for each dish.')
+    .int('Dish quantity must be a whole number.')
+    .positive('Dish quantity must be greater than zero.'),
+})
+
+const dishSelectionArraySchema = z
+  .array(dishSelectionSchema)
+  .max(MAX_INGREDIENT_LINES, 'An order cannot list more than 50 distinct dish lines.')
+
 export const orderStatusSchema = z.enum(OrderStatus)
 
 export const idSchema = z.uuid('That record reference is not valid.')
@@ -51,10 +64,12 @@ export const deleteByIdSchema = idSchema
 
 export const createOrderSchema = z.object({
   customerId: z.uuid('Select a customer for this order.'),
-  description: z.string().trim().min(1, 'Order details are required.'),
+  // Free-text notes, not a required description — dishes now carry the structured "what was
+  // ordered" data. An empty string is a valid value for the non-nullable description column.
+  description: z.string().trim(),
   totalPrice: z.number('Enter a total price for this order.').nonnegative('Total price cannot be negative.'),
   dueDate: z.date().nullish(),
-  ingredients: ingredientArraySchema,
+  dishes: dishSelectionArraySchema,
 })
 
 export const updateOrderStatusSchema = z.object({
@@ -62,9 +77,16 @@ export const updateOrderStatusSchema = z.object({
   status: orderStatusSchema,
 })
 
-export const updateOrderIngredientsSchema = z.object({
+/**
+ * updateOrderItems replaced the old ingredients-only updateOrderIngredients action once orders
+ * moved to dish-based line items. `extraIngredients` covers one-off manual deductions (e.g. a
+ * customization not captured by any dish's recipe) alongside the dish-derived ones.
+ */
+export const updateOrderItemsSchema = z.object({
   orderId: idSchema,
-  ingredients: ingredientArraySchema,
+  dishes: dishSelectionArraySchema,
+  extraIngredients: ingredientArraySchema,
+  totalPrice: z.number('Enter a total price for this order.').nonnegative('Total price cannot be negative.'),
 })
 
 export const createInventoryItemSchema = z.object({

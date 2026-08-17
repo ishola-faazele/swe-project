@@ -1,11 +1,17 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, type OrderStatus } from '@prisma/client'
+import { computeDishSubtotal, expandDishesToIngredients, type DishWithRecipe } from '../src/lib/recipe'
 
 const prisma = new PrismaClient()
 
 async function main() {
+  // Children before parents — no `onDelete` is declared anywhere in schema.prisma, so every
+  // relation is RESTRICT and this ordering is what makes a re-run of the seed succeed.
   console.log('Cleaning up existing data...')
   await prisma.orderIngredientLog.deleteMany()
+  await prisma.orderDish.deleteMany()
+  await prisma.dishIngredient.deleteMany()
   await prisma.order.deleteMany()
+  await prisma.dish.deleteMany()
   await prisma.user.deleteMany()
   await prisma.inventoryItem.deleteMany()
 
@@ -58,6 +64,97 @@ async function main() {
   })
 
   const inventoryItems = await prisma.inventoryItem.findMany()
+  const inventoryByName = new Map(inventoryItems.map(item => [item.name, item]))
+
+  function recipeLine(itemName: string, quantityPerDish: number) {
+    const item = inventoryByName.get(itemName)
+    if (!item) throw new Error(`Seed error: no inventory item named "${itemName}"`)
+    return { inventoryItemId: item.id, quantityPerDish }
+  }
+
+  console.log('Seeding Dishes...')
+  const dishData = [
+    {
+      name: 'Jollof Rice',
+      price: 1200,
+      ingredients: [
+        recipeLine('Long Grain Rice', 0.25),
+        recipeLine('Tomatoes', 0.15),
+        recipeLine('Red Pepper', 0.05),
+        recipeLine('Groundnut Oil', 0.05),
+        recipeLine('Onions', 0.05),
+        recipeLine('Stock Cubes', 1),
+        recipeLine('Food Packs', 1),
+      ],
+    },
+    {
+      name: 'Fried Rice',
+      price: 1300,
+      ingredients: [
+        recipeLine('Long Grain Rice', 0.25),
+        recipeLine('Chicken', 0.1),
+        recipeLine('Groundnut Oil', 0.06),
+        recipeLine('Onions', 0.04),
+        recipeLine('Maggi Seasoning', 1),
+        recipeLine('Food Packs', 1),
+      ],
+    },
+    {
+      name: 'Meat Pie',
+      price: 350,
+      ingredients: [
+        recipeLine('Chicken', 0.05),
+        recipeLine('Onions', 0.02),
+        recipeLine('Groundnut Oil', 0.02),
+        recipeLine('Takeaway Bags', 1),
+      ],
+    },
+    {
+      name: 'Waakye',
+      price: 1000,
+      ingredients: [
+        recipeLine('Long Grain Rice', 0.2),
+        recipeLine('Palm Oil', 0.05),
+        recipeLine('Onions', 0.03),
+        recipeLine('Stock Cubes', 1),
+        recipeLine('Food Packs', 1),
+      ],
+    },
+    {
+      name: 'Egusi Soup & Pounded Yam',
+      price: 1800,
+      ingredients: [
+        recipeLine('Egusi', 0.15),
+        recipeLine('Palm Oil', 0.08),
+        recipeLine('Turkey', 0.12),
+        recipeLine('Scotch Bonnet', 0.01),
+        recipeLine('Foil Trays', 1),
+      ],
+    },
+    {
+      name: 'Grilled Chicken',
+      price: 900,
+      ingredients: [
+        recipeLine('Chicken', 0.3),
+        recipeLine('Red Pepper', 0.02),
+        recipeLine('Groundnut Oil', 0.03),
+        recipeLine('Maggi Seasoning', 1),
+      ],
+    },
+  ]
+
+  const dishes: DishWithRecipe[] = []
+  for (const data of dishData) {
+    const dish = await prisma.dish.create({
+      data: {
+        name: data.name,
+        price: data.price,
+        ingredients: { create: data.ingredients },
+      },
+      include: { ingredients: true },
+    })
+    dishes.push(dish)
+  }
 
   console.log('Seeding Orders...')
   const orderData = [
@@ -78,26 +175,78 @@ async function main() {
     { customerIndex: 4, description: '1 pot of party jollof', status: 'CANCELLED', totalPrice: 20000 },
   ]
 
-  for (const data of orderData) {
+  // Only a subset of orders carries structured dish line items. The rest deliberately keep zero
+  // OrderDish rows so a fresh local database exercises BOTH the new dish-based rendering path and
+  // the legacy (pre-Menu) empty-dishes path side by side.
+  const orderDishPlan: Record<number, { dishName: string; quantity: number }[]> = {
+    0: [{ dishName: 'Jollof Rice', quantity: 5 }, { dishName: 'Grilled Chicken', quantity: 10 }],
+    2: [{ dishName: 'Jollof Rice', quantity: 20 }, { dishName: 'Grilled Chicken', quantity: 20 }],
+    4: [{ dishName: 'Egusi Soup & Pounded Yam', quantity: 10 }],
+    6: [{ dishName: 'Jollof Rice', quantity: 10 }, { dishName: 'Grilled Chicken', quantity: 10 }],
+    7: [
+      { dishName: 'Jollof Rice', quantity: 25 },
+      { dishName: 'Fried Rice', quantity: 25 },
+      { dishName: 'Meat Pie', quantity: 20 },
+    ],
+    9: [{ dishName: 'Fried Rice', quantity: 4 }],
+  }
+
+  for (const [index, data] of orderData.entries()) {
+    const selections = (orderDishPlan[index] ?? []).map(planned => {
+      const dish = dishes.find(d => d.name === planned.dishName)
+      if (!dish) throw new Error(`Seed error: no dish named "${planned.dishName}"`)
+      return { dish, quantity: planned.quantity }
+    })
+    const dishSelections = selections.map(s => ({ dishId: s.dish.id, quantity: s.quantity }))
+
     const order = await prisma.order.create({
       data: {
         customerId: customers[data.customerIndex].id,
         description: data.description,
-        status: data.status as any,
-        totalPrice: data.totalPrice,
+        status: data.status as OrderStatus,
+        // Dish-backed orders price themselves off the catalog, exactly as the create-order form does.
+        totalPrice: selections.length > 0
+          ? computeDishSubtotal(dishSelections, dishes)
+          : data.totalPrice,
       }
     })
 
-    const numLogs = Math.floor(Math.random() * 2) + 2
-    for (let i = 0; i < numLogs; i++) {
-      const item = inventoryItems[Math.floor(Math.random() * inventoryItems.length)]
-      await prisma.orderIngredientLog.create({
-        data: {
-          orderId: order.id,
-          inventoryItemId: item.id,
-          quantityUsed: Math.floor(Math.random() * 5) + 1
-        }
-      })
+    if (selections.length > 0) {
+      for (const selection of selections) {
+        await prisma.orderDish.create({
+          data: {
+            orderId: order.id,
+            dishId: selection.dish.id,
+            dishName: selection.dish.name,
+            unitPrice: selection.dish.price,
+            quantity: selection.quantity,
+          }
+        })
+      }
+
+      // Ingredient logs for a dish-backed order are the merged expansion of its recipes — the same
+      // shape createOrder writes — so seeded orders stay internally consistent.
+      for (const line of expandDishesToIngredients(dishSelections, dishes)) {
+        await prisma.orderIngredientLog.create({
+          data: {
+            orderId: order.id,
+            inventoryItemId: line.inventoryItemId,
+            quantityUsed: line.quantityUsed,
+          }
+        })
+      }
+    } else {
+      const numLogs = Math.floor(Math.random() * 2) + 2
+      for (let i = 0; i < numLogs; i++) {
+        const item = inventoryItems[Math.floor(Math.random() * inventoryItems.length)]
+        await prisma.orderIngredientLog.create({
+          data: {
+            orderId: order.id,
+            inventoryItemId: item.id,
+            quantityUsed: Math.floor(Math.random() * 5) + 1
+          }
+        })
+      }
     }
   }
 

@@ -29,18 +29,31 @@ import {
   newRegistry,
   type TestRegistry,
 } from './helpers'
+import { createDishWithRecipe } from '../../test/helpers/fixtures'
 
 const createClientMock = vi.mocked(createClient)
 
 describe('createOrder concurrency guard (TEST-014)', () => {
   let reg: TestRegistry
+  let dishIds: string[]
 
   beforeEach(() => {
     reg = newRegistry()
+    dishIds = []
   })
 
   afterEach(async () => {
     vi.clearAllMocks()
+    // OrderDish rows on this registry's orders reference Dish rows (must clear before Dish can
+    // be deleted); DishIngredient rows reference this registry's InventoryItem ids (must clear
+    // before cleanupRegistry tries to delete those items). Order matters both ways.
+    if (reg.orderIds.length) {
+      await prisma.orderDish.deleteMany({ where: { orderId: { in: reg.orderIds } } })
+    }
+    if (dishIds.length) {
+      await prisma.dishIngredient.deleteMany({ where: { dishId: { in: dishIds } } })
+      await prisma.dish.deleteMany({ where: { id: { in: dishIds } } })
+    }
     await cleanupRegistry(reg)
   })
 
@@ -49,6 +62,11 @@ describe('createOrder concurrency guard (TEST-014)', () => {
     const customerA = await createTestCustomer(reg)
     const customerB = await createTestCustomer(reg)
     const item = await createTestInventoryItem(reg, { currentStock: 10 })
+    // 10 units of `item` per dish; ordering exactly 1 requests all 10 units of stock.
+    const dish = await createDishWithRecipe('Concurrency dish', 10, [
+      { inventoryItemId: item.id, quantityPerDish: 10 },
+    ])
+    dishIds.push(dish.id)
     mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
 
     const [resultA, resultB] = await Promise.all([
@@ -56,13 +74,13 @@ describe('createOrder concurrency guard (TEST-014)', () => {
         customerId: customerA.id,
         description: 'Concurrency order A',
         totalPrice: 10,
-        ingredients: [{ inventoryItemId: item.id, quantityUsed: 10 }],
+        dishes: [{ dishId: dish.id, quantity: 1 }],
       }),
       createOrder({
         customerId: customerB.id,
         description: 'Concurrency order B',
         totalPrice: 10,
-        ingredients: [{ inventoryItemId: item.id, quantityUsed: 10 }],
+        dishes: [{ dishId: dish.id, quantity: 1 }],
       }),
     ])
 

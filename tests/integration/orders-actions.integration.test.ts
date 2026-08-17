@@ -52,14 +52,14 @@ describe('orders/actions.ts auth matrix (TEST-006)', () => {
     test('rejects when unauthenticated', async () => {
       mockNoSession(createClientMock)
       await expect(
-        createOrder({ customerId: customer.id, description: 'x', totalPrice: 1, ingredients: [] })
+        createOrder({ customerId: customer.id, description: 'x', totalPrice: 1, dishes: [] })
       ).rejects.toThrow(AuthError)
     })
 
     test('rejects for a CUSTOMER session', async () => {
       mockAuthSession(createClientMock, { id: customer.id, email: customer.email })
       await expect(
-        createOrder({ customerId: customer.id, description: 'x', totalPrice: 1, ingredients: [] })
+        createOrder({ customerId: customer.id, description: 'x', totalPrice: 1, dishes: [] })
       ).rejects.toThrow(AuthError)
     })
 
@@ -69,7 +69,7 @@ describe('orders/actions.ts auth matrix (TEST-006)', () => {
         customerId: customer.id,
         description: 'Integration test order',
         totalPrice: 42,
-        ingredients: [],
+        dishes: [],
       })
       expect(result.ok).toBe(true)
       if (result.ok) reg.orderIds.push(result.data.id)
