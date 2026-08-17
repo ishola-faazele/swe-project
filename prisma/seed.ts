@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, type OrderStatus } from '@prisma/client'
 import { computeDishSubtotal, expandDishesToIngredients, type DishWithRecipe } from '../src/lib/recipe'
 
 const prisma = new PrismaClient()
@@ -203,7 +203,7 @@ async function main() {
       data: {
         customerId: customers[data.customerIndex].id,
         description: data.description,
-        status: data.status as any,
+        status: data.status as OrderStatus,
         // Dish-backed orders price themselves off the catalog, exactly as the create-order form does.
         totalPrice: selections.length > 0
           ? computeDishSubtotal(dishSelections, dishes)

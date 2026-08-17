@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Order, User, InventoryItem, OrderStatus, OrderIngredientLog } from "@prisma/client"
+import { Order, User, InventoryItem, OrderStatus, OrderIngredientLog, OrderDish } from "@prisma/client"
 import {
   createColumnHelper,
   flexRender,
@@ -21,26 +21,42 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { createOrder, updateOrderStatus, deleteOrder } from "./actions"
+import { computeDishSubtotal, type DishSelection, type DishWithRecipe } from "@/lib/recipe"
 
-type OrderWithRelations = Order & { 
-  customer: User, 
-  ingredientLogs: (OrderIngredientLog & { inventoryItem: InventoryItem })[] 
+type OrderWithRelations = Order & {
+  customer: User,
+  ingredientLogs: (OrderIngredientLog & { inventoryItem: InventoryItem })[],
+  dishes: OrderDish[]
 }
 
 const columnHelper = createColumnHelper<OrderWithRelations>()
 
-export function OrderClient({ 
-  initialData, 
-  customers, 
-  inventory 
-}: { 
+export function OrderClient({
+  initialData,
+  customers,
+  dishes
+}: {
   initialData: OrderWithRelations[],
   customers: User[],
-  inventory: InventoryItem[]
+  // Still fetched and passed by OrdersPage — kept on the props so the page's fetch shape stays
+  // aligned with the order-detail flow, which does read it.
+  inventory: InventoryItem[],
+  dishes: DishWithRecipe[]
 }) {
   const [data, setData] = useState<OrderWithRelations[]>(initialData)
   const [isOpen, setIsOpen] = useState(false)
-  const [selectedIngredients, setSelectedIngredients] = useState<{ id: string, quantity: number }[]>([])
+  const [selectedDishes, setSelectedDishes] = useState<DishSelection[]>([])
+  const [totalPriceInput, setTotalPriceInput] = useState<number | ''>('')
+
+  const activeDishes = dishes.filter(d => d.isActive)
+
+  // Every dish-row mutation goes through here so the total re-derives in the same event handler —
+  // no useEffect, matching the rest of this codebase. Typing in the total field overrides the
+  // derived value until the next dish-row change.
+  function applyDishSelections(next: DishSelection[]) {
+    setSelectedDishes(next)
+    setTotalPriceInput(computeDishSubtotal(next, dishes))
+  }
 
   const columns = [
     columnHelper.accessor("shortId", {
@@ -107,19 +123,18 @@ export function OrderClient({
     const customerId = formData.get("customerId") as string
     const description = formData.get("description") as string
     const totalPrice = Number(formData.get("totalPrice"))
-    
-    // Only pass ingredients that actually have a selected ID and quantity > 0
-    const ingredients = selectedIngredients
-      .filter(i => i.id && i.quantity > 0)
-      .map(i => ({ inventoryItemId: i.id, quantityUsed: i.quantity }))
 
-    const newOrder = await createOrder({ customerId, description, totalPrice, ingredients })
-    
+    // Only pass rows that actually have a dish selected and a positive quantity
+    const orderedDishes = selectedDishes.filter(d => d.dishId && d.quantity > 0)
+
+    const newOrder = await createOrder({ customerId, description, totalPrice, dishes: orderedDishes })
+
     // Quick optimistic update hack to add it to UI without full reload
     const c = customers.find(c => c.id === customerId)!
-    setData([{ ...newOrder, customer: c, ingredientLogs: [] }, ...data])
+    setData([{ ...newOrder, customer: c, ingredientLogs: [], dishes: [] }, ...data])
     setIsOpen(false)
-    setSelectedIngredients([])
+    setSelectedDishes([])
+    setTotalPriceInput('')
   }
 
   return (
@@ -146,55 +161,69 @@ export function OrderClient({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="totalPrice">Total Price ($)</Label>
-                  <Input id="totalPrice" name="totalPrice" type="number" step="any" required />
+                  <Input
+                    id="totalPrice"
+                    name="totalPrice"
+                    type="number"
+                    step="any"
+                    required
+                    value={totalPriceInput}
+                    onChange={(e) => setTotalPriceInput(e.target.value === '' ? '' : Number(e.target.value))}
+                  />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Order Details (e.g. 40 meat pies, 20 drinks)</Label>
-                <Input id="description" name="description" required />
+                <Label htmlFor="description">Notes (optional)</Label>
+                <Input id="description" name="description" placeholder="Notes (e.g. no pepper, extra meat pies, delivery instructions)" />
               </div>
 
               <div className="space-y-4 border-t pt-4">
                 <div className="flex items-center justify-between">
-                  <Label>Ingredients Used (Auto-deducted from Inventory)</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setSelectedIngredients([...selectedIngredients, { id: '', quantity: 0 }])}>
-                    Add Ingredient
+                  <Label>Dishes (Ingredients Auto-deducted from Inventory)</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={() => applyDishSelections([...selectedDishes, { dishId: '', quantity: 1 }])}>
+                    Add Dish
                   </Button>
                 </div>
-                {selectedIngredients.map((ingredient, index) => (
+                {activeDishes.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No dishes on the menu yet — add one under Menu to build orders from dishes.
+                  </p>
+                )}
+                {selectedDishes.map((selection, index) => (
                   <div key={index} className="flex gap-4 items-center">
                     <select
                       className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                      value={ingredient.id}
+                      value={selection.dishId}
                       onChange={(e) => {
-                        const newArr = [...selectedIngredients]
-                        newArr[index].id = e.target.value
-                        setSelectedIngredients(newArr)
+                        const newArr = [...selectedDishes]
+                        newArr[index] = { ...newArr[index], dishId: e.target.value }
+                        applyDishSelections(newArr)
                       }}
                     >
-                      <option value="" disabled>Select item...</option>
-                      {inventory.map(inv => (
-                        <option key={inv.id} value={inv.id}>{inv.name} (Stock: {inv.currentStock} {inv.unit})</option>
+                      <option value="" disabled>Select dish...</option>
+                      {activeDishes.map(dish => (
+                        <option key={dish.id} value={dish.id}>{dish.name} (${dish.price})</option>
                       ))}
                     </select>
-                    <Input 
-                      type="number" 
-                      step="any"
-                      placeholder="Qty" 
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      placeholder="Qty"
                       className="w-24"
-                      value={ingredient.quantity || ''}
+                      value={selection.quantity || ''}
                       onChange={(e) => {
-                        const newArr = [...selectedIngredients]
-                        newArr[index].quantity = Number(e.target.value)
-                        setSelectedIngredients(newArr)
+                        const newArr = [...selectedDishes]
+                        newArr[index] = { ...newArr[index], quantity: Number(e.target.value) }
+                        applyDishSelections(newArr)
                       }}
                     />
-                    <Button 
-                      type="button" 
-                      variant="ghost" 
+                    <Button
+                      type="button"
+                      variant="ghost"
                       size="sm"
-                      onClick={() => setSelectedIngredients(selectedIngredients.filter((_, i) => i !== index))}
+                      onClick={() => applyDishSelections(selectedDishes.filter((_, i) => i !== index))}
                     >
                       X
                     </Button>

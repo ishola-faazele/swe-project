@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Package, ShoppingCart, Flame } from 'lucide-react'
+import { LayoutDashboard, Users, Package, ShoppingCart, Flame, UtensilsCrossed } from 'lucide-react'
 
 const navItems = [
   { label: 'OPERATIONS', items: [
@@ -11,6 +11,7 @@ const navItems = [
   ]},
   { label: 'MANAGEMENT', items: [
     { name: 'Inventory', href: '/admin/inventory', icon: Package, exact: false },
+    { name: 'Menu', href: '/admin/menu', icon: UtensilsCrossed, exact: false },
     { name: 'Customers', href: '/admin/customers', icon: Users, exact: false },
   ]},
 ]
