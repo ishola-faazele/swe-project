@@ -37,6 +37,7 @@ model InventoryItem {
   updatedAt       DateTime @updatedAt
 
   orderLogs       OrderIngredientLog[]
+  dishIngredients DishIngredient[]
 }
 
 enum Category {
@@ -59,6 +60,7 @@ model Order {
   updatedAt   DateTime @updatedAt
 
   ingredientLogs OrderIngredientLog[]
+  dishes         OrderDish[]
 }
 
 enum OrderStatus {
@@ -78,4 +80,41 @@ model OrderIngredientLog {
   inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
   quantityUsed    Float    // Amount deducted from inventory
   createdAt       DateTime @default(now())
+}
+
+model Dish {
+  id          String   @id @default(uuid())
+  shortId     Int      @unique @default(autoincrement())
+  name        String
+  price       Float
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ingredients DishIngredient[]
+  orderDishes OrderDish[]
+}
+
+model DishIngredient {
+  id              String        @id @default(uuid())
+  dishId          String
+  dish            Dish          @relation(fields: [dishId], references: [id])
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  quantityPerDish Float         // amount of InventoryItem.unit consumed per ONE unit of the dish
+  createdAt       DateTime      @default(now())
+
+  @@unique([dishId, inventoryItemId]) // one row per (dish, ingredient) — no silent duplicates
+}
+
+model OrderDish {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  dishId    String
+  dish      Dish     @relation(fields: [dishId], references: [id])
+  dishName  String   // snapshot of Dish.name at order time — survives a later rename/archive
+  unitPrice Float    // snapshot of Dish.price at order time
+  quantity  Int
+  createdAt DateTime @default(now())
 }
