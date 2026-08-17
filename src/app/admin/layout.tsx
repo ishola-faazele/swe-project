@@ -1,5 +1,6 @@
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { createClient } from '@/utils/supabase/server'
+import { getCurrentDbUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
@@ -10,8 +11,12 @@ export default async function Layout({ children }: { children: React.ReactNode }
     redirect('/login')
   }
 
-  // NOTE: For now, everyone logging in goes to admin. 
-  // We can add role checks here later (e.g. if (user.role !== 'ADMIN') redirect('/dashboard'))
+  // Route-level half of authorization. Shares getCurrentDbUser() with requireAdmin() so the
+  // id-or-email lockout fallback stays defined in exactly one place.
+  const dbUser = await getCurrentDbUser()
+  if (!dbUser || dbUser.role !== 'ADMIN') {
+    redirect('/dashboard')
+  }
 
   return (
     <AdminLayout>

@@ -2,10 +2,15 @@
 
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
-import { OrderStatus } from '@prisma/client'
+import { OrderStatus, type Order, type User } from '@prisma/client'
 import { notifyOrderStatusChange, notifyLowStock } from '@/lib/notifications'
+import { requireAdmin } from '@/lib/auth'
+import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
+import { decrementStockOrThrow, restoreStockForOrder } from '@/lib/inventory'
+import { createOrderSchema, idSchema, updateOrderStatusSchema } from '@/lib/validation'
 
 export async function getOrders() {
+  await requireAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
   return await prisma.order.findMany({
     include: {
       customer: true,
@@ -27,44 +32,50 @@ export async function createOrder(data: {
   totalPrice: number
   dueDate?: Date | null
   ingredients: { inventoryItemId: string; quantityUsed: number }[]
-}) {
-  const order = await prisma.$transaction(async (tx) => {
-    // 1. Create the order
-    const newOrder = await tx.order.create({
-      data: {
-        customerId: data.customerId,
-        description: data.description,
-        totalPrice: data.totalPrice,
-        dueDate: data.dueDate,
-        status: 'PENDING'
-      }
-    })
+}): Promise<ActionResult<Order>> {
+  await requireAdmin() // throws AuthError — uncaught here, rejects the promise for the client
 
-    // 2. Log ingredients and deduct inventory
-    for (const ingredient of data.ingredients) {
-      await tx.orderIngredientLog.create({
+  let order: Order
+  try {
+    const input = createOrderSchema.parse(data)
+
+    order = await prisma.$transaction(async (tx) => {
+      // 1. Create the order
+      const newOrder = await tx.order.create({
         data: {
-          orderId: newOrder.id,
-          inventoryItemId: ingredient.inventoryItemId,
-          quantityUsed: ingredient.quantityUsed
+          customerId: input.customerId,
+          description: input.description,
+          totalPrice: input.totalPrice,
+          dueDate: input.dueDate ?? null,
+          status: 'PENDING'
         }
       })
 
-      await tx.inventoryItem.update({
-        where: { id: ingredient.inventoryItemId },
-        data: {
-          currentStock: {
-            decrement: ingredient.quantityUsed
+      // 2. Deduct inventory and log ingredients
+      for (const ingredient of input.ingredients) {
+        // Guard first, log second. decrementStockOrThrow throws ActionError('...',
+        // 'INSUFFICIENT_STOCK') when stock is short; because that throw happens inside the
+        // $transaction callback, Prisma rolls back everything written so far (including
+        // newOrder and any earlier logs) before the error reaches the catch block below.
+        await decrementStockOrThrow(tx, ingredient.inventoryItemId, ingredient.quantityUsed)
+
+        await tx.orderIngredientLog.create({
+          data: {
+            orderId: newOrder.id,
+            inventoryItemId: ingredient.inventoryItemId,
+            quantityUsed: ingredient.quantityUsed
           }
-        }
-      })
-    }
+        })
+      }
 
-    return newOrder
-  })
+      return newOrder
+    })
+  } catch (err) {
+    return toErrorResult(err, 'Could not create this order. Please try again.')
+  }
 
   // After order created, check for low stock items and notify admin
-  const customer = await prisma.user.findUnique({ where: { id: data.customerId } })
+  const customer = await prisma.user.findUnique({ where: { id: order.customerId } })
   if (customer) {
     // Fire-and-forget: notify customer of new order
     notifyOrderStatusChange({
@@ -91,15 +102,50 @@ export async function createOrder(data: {
   }
 
   revalidatePath('/admin/orders')
-  return order
+  return okResult(order)
 }
 
-export async function updateOrderStatus(id: string, status: OrderStatus) {
-  const order = await prisma.order.update({
-    where: { id },
-    data: { status },
-    include: { customer: true },
-  })
+export async function updateOrderStatus(
+  id: string,
+  status: OrderStatus
+): Promise<ActionResult<Order & { customer: User }>> {
+  await requireAdmin()
+
+  let order: Order & { customer: User }
+  try {
+    const input = updateOrderStatusSchema.parse({ id, status })
+
+    order = await prisma.$transaction(async (tx) => {
+      // Read inside the transaction so the status check and the stock restoration below are
+      // atomic against the same row.
+      const existing = await tx.order.findUnique({ where: { id: input.id } })
+      if (!existing) throw new ActionError('Order not found.', 'NOT_FOUND')
+
+      // Only a transition INTO cancelled restores stock. Re-cancelling an already-cancelled
+      // order makes this false, which is what keeps a double-submit or a slow retry from
+      // crediting the same ingredients back twice.
+      const enteringCancelled = input.status === 'CANCELLED' && existing.status !== 'CANCELLED'
+      const leavingCancelled = existing.status === 'CANCELLED' && input.status !== 'CANCELLED'
+
+      if (leavingCancelled) {
+        throw new ActionError(
+          'Cancelled orders cannot be reactivated. Create a new order instead.',
+          'INVALID_TRANSITION'
+        )
+      }
+      if (enteringCancelled) {
+        await restoreStockForOrder(tx, input.id)
+      }
+
+      return tx.order.update({
+        where: { id: input.id },
+        data: { status: input.status },
+        include: { customer: true },
+      })
+    })
+  } catch (err) {
+    return toErrorResult(err, 'Could not update this order.')
+  }
 
   // Fire-and-forget: notify customer of status change
   notifyOrderStatusChange({
@@ -107,26 +153,42 @@ export async function updateOrderStatus(id: string, status: OrderStatus) {
     customerPhone: order.customer.phone,
     orderId: order.id,
     orderDescription: order.description,
-    newStatus: status,
+    newStatus: order.status,
     dueDate: order.dueDate?.toLocaleDateString() ?? null,
   }).catch(console.error)
-  
+
   revalidatePath('/admin/orders')
-  return order
+  return okResult(order)
 }
 
-export async function deleteOrder(id: string) {
-  // $transaction is needed to delete logs first
-  await prisma.$transaction(async (tx) => {
-    // Optionally restore inventory here if deleting? 
-    // Usually, if an order is cancelled, we might restore, but if deleted maybe just clean up logs.
-    await tx.orderIngredientLog.deleteMany({
-      where: { orderId: id }
+export async function deleteOrder(id: string): Promise<ActionResult<void>> {
+  await requireAdmin()
+
+  try {
+    const parsedId = idSchema.parse(id)
+
+    await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { id: parsedId } })
+      if (!order) throw new ActionError('Order not found.', 'NOT_FOUND')
+
+      // Only restore stock if it hasn't already been restored by a prior CANCELLED transition,
+      // otherwise deleting a cancelled order would credit its ingredients back a second time.
+      // Must run before the logs are deleted — it reads the rows it reverts.
+      if (order.status !== 'CANCELLED') {
+        await restoreStockForOrder(tx, parsedId)
+      }
+
+      await tx.orderIngredientLog.deleteMany({
+        where: { orderId: parsedId }
+      })
+      await tx.order.delete({
+        where: { id: parsedId }
+      })
     })
-    await tx.order.delete({
-      where: { id }
-    })
-  })
-  
+  } catch (err) {
+    return toErrorResult(err, 'Could not delete this order.')
+  }
+
   revalidatePath('/admin/orders')
+  return okResult(undefined)
 }

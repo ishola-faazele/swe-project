@@ -2,8 +2,13 @@
 
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { type User } from '@prisma/client'
+import { requireAdmin } from '@/lib/auth'
+import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
+import { createCustomerSchema, idSchema, updateCustomerSchema } from '@/lib/validation'
 
 export async function getCustomers() {
+  await requireAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
   return await prisma.user.findMany({
     where: {
       role: 'CUSTOMER'
@@ -19,38 +24,80 @@ export async function getCustomers() {
   })
 }
 
-export async function createCustomer(data: { name?: string, email?: string, phone?: string }) {
-  const item = await prisma.user.create({
-    data: {
-      name: data.name || null,
-      email: data.email || null,
-      phone: data.phone || null,
-      role: 'CUSTOMER'
-    }
-  })
-  
+export async function createCustomer(data: { name?: string, email?: string, phone?: string }): Promise<ActionResult<User>> {
+  await requireAdmin()
+
+  let item: User
+  try {
+    const input = createCustomerSchema.parse(data)
+
+    item = await prisma.user.create({
+      data: {
+        name: input.name || null,
+        email: input.email || null,
+        phone: input.phone || null,
+        role: 'CUSTOMER'
+      }
+    })
+  } catch (err) {
+    return toErrorResult(err, 'Could not create this customer. Please try again.')
+  }
+
   revalidatePath('/admin/customers')
-  return item
+  return okResult(item)
 }
 
-export async function deleteCustomer(id: string) {
-  await prisma.user.delete({
-    where: { id }
-  })
-  
+export async function deleteCustomer(id: string): Promise<ActionResult<void>> {
+  await requireAdmin()
+
+  try {
+    const parsedId = idSchema.parse(id)
+
+    // Pre-check gives a specific, useful count instead of relying only on the P2003 catch.
+    // Order.customer has no onDelete clause (Prisma defaults to Restrict), so without this the
+    // delete surfaces as a raw 500. The small TOCTOU window between this count and the delete is
+    // accepted for a single-admin tool; toErrorResult's P2003 branch backstops it.
+    const orderCount = await prisma.order.count({ where: { customerId: parsedId } })
+    if (orderCount > 0) {
+      throw new ActionError(
+        `Cannot delete this customer — they have ${orderCount} order${orderCount === 1 ? '' : 's'} on file. Delete or reassign those orders first.`,
+        'FK_CONSTRAINT'
+      )
+    }
+
+    await prisma.user.delete({
+      where: { id: parsedId }
+    })
+  } catch (err) {
+    return toErrorResult(err, 'Could not delete this customer. Please try again.')
+  }
+
   revalidatePath('/admin/customers')
+  return okResult(undefined)
 }
 
-export async function updateCustomer(id: string, data: { name?: string, email?: string, phone?: string }) {
-  const item = await prisma.user.update({
-    where: { id },
-    data: {
-      name: data.name || null,
-      email: data.email || null,
-      phone: data.phone || null,
-    }
-  })
-  
+export async function updateCustomer(id: string, data: { name?: string, email?: string, phone?: string }): Promise<ActionResult<User>> {
+  await requireAdmin()
+
+  let item: User
+  try {
+    const input = updateCustomerSchema.parse({ id, ...data })
+
+    // All three fields are overwritten on every call, preserving existing behavior — which is
+    // why updateCustomerSchema's at-least-one-contact-method refinement also prevents an edit
+    // that would blank out every way of reaching this customer.
+    item = await prisma.user.update({
+      where: { id: input.id },
+      data: {
+        name: input.name || null,
+        email: input.email || null,
+        phone: input.phone || null,
+      }
+    })
+  } catch (err) {
+    return toErrorResult(err, 'Could not update this customer. Please try again.')
+  }
+
   revalidatePath('/admin/customers')
-  return item
+  return okResult(item)
 }
