@@ -195,16 +195,28 @@ Never mutate stock outside a transaction. `updateOrderItems` — in
 in the edit flow; don't add a second one, or two "delete all and recreate" writers will clobber
 each other.
 
-### Dialog Triggers
-`<DialogTrigger render={<Button />}>` from Base UI **does not work** with our `Button` component.
-Always use the direct pattern instead:
-```tsx
-// ✅ Works
-<Button onClick={() => setIsOpen(true)}>Open</Button>
+### ⚠️ Dev server: `127.0.0.1` requires `allowedDevOrigins`, or NOTHING is clickable
+This app requires `http://127.0.0.1:3000` for local dev (see Auth Flow below — Supabase's PKCE
+cookie is scoped to the exact sign-in origin). But Next.js's dev server only trusts `localhost`
+for dev-only asset/HMR requests **by default**, so without `allowedDevOrigins: ["127.0.0.1"]` in
+`next.config.ts`, every request from `127.0.0.1` — including the HMR WebSocket upgrade — gets
+silently blocked as untrusted cross-origin. This Next.js version's dev-mode `hydrate()` call
+creates that WebSocket directly, so a blocked handshake takes client-side interactivity down
+with it: **no `onClick` handler anywhere fires**, for any component, using any pattern. If you
+ever see "nothing on the page responds to clicks" together with
+`WebSocket connection to '.../_next/webpack-hmr' failed` in the browser console, this config is
+missing or was reverted — that is the fix, not a code change in whatever component you were
+about to blame. Verified end-to-end with a scripted browser session: config present → HMR
+connects, deletes/dialogs/dropdowns all work; config absent → HMR fails, nothing responds.
 
-// ❌ Silently broken — click events swallowed
-<DialogTrigger render={<Button />}>Open</DialogTrigger>
-```
+**This was previously misdiagnosed in this file** as `<DialogTrigger render={<Button />}>` being
+incompatible with Base UI's composition model (a "❌ silently broken" pattern, with guidance to
+always use `<Button onClick={...}>` instead). That guidance was wrong — `DialogTrigger` works
+fine once `allowedDevOrigins` is set; it just happened to be the first thing someone clicked
+while *all* interactivity was broken by the origin-blocking issue above, and the wrong conclusion
+stuck. Both patterns are fine now. Existing code that already avoids `DialogTrigger` doesn't need
+to be changed back — it's not broken, just unnecessary caution — but don't keep telling new code
+to avoid it.
 
 ### Auth Flow
 - Supabase Auth is the identity layer (magic-link, sessions, cookies).
