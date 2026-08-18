@@ -199,6 +199,23 @@ Never mutate stock outside a transaction. `updateOrderItems` — in
 in the edit flow; don't add a second one, or two "delete all and recreate" writers will clobber
 each other.
 
+### TanStack Table — `data` must be referentially stable
+Every `*Client.tsx` passes its `useState` array straight into `useReactTable({ data })`, which is
+stable across renders by construction. If you ever pass a **derived** array instead — a
+`.filter(...)`/`.map(...)` computed in the render body — wrap it in `useMemo`:
+
+```tsx
+// ✅ Stable: the table rebuilds its row model only when the inputs actually change.
+const visibleData = useMemo(() => data.filter(i => showArchived || i.isActive), [data, showArchived])
+
+// ❌ New array identity every render — the table re-renders continuously and REMOUNTS every row's
+// DOM. Row buttons then silently drop clicks, because the node pressed is replaced mid-interaction.
+const visibleData = data.filter(i => showArchived || i.isActive)
+```
+The failure is nasty because it looks like an event-wiring bug, not a memoization one: the handler
+is correct and `fireEvent.click` triggers it fine, while real clicks and `userEvent.click` do
+nothing. `InventoryClient.tsx`'s `showArchived` filter is the one place this applies today.
+
 ### Dialog Triggers
 `<DialogTrigger render={<Button />}>` from Base UI **does not work** with our `Button` component.
 Always use the direct pattern instead:

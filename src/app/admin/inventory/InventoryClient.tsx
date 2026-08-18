@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { InventoryItem, Category } from "@prisma/client"
 import {
   createColumnHelper,
@@ -82,7 +82,17 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const [showArchived, setShowArchived] = useState(false)
 
   // Client-side filter over the full array the page already fetched — no second query.
-  const visibleData = data.filter(i => showArchived || i.isActive)
+  //
+  // useMemo is load-bearing, not a micro-optimization: useReactTable requires a referentially
+  // stable `data`. A fresh `data.filter(...)` array on every render makes the table rebuild its
+  // row model each pass and re-render continuously, which remounts every row's DOM — buttons
+  // lose clicks because the node they were pressed on is replaced mid-interaction. The sibling
+  // tables get this for free by passing their raw state array; this one filters, so it must
+  // memoize explicitly.
+  const visibleData = useMemo(
+    () => data.filter(i => showArchived || i.isActive),
+    [data, showArchived]
+  )
   const archivedCount = data.filter(i => !i.isActive).length
 
   async function handleDelete(item: InventoryItem) {

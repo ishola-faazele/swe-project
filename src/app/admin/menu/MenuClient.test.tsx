@@ -212,6 +212,76 @@ describe('MenuClient — edit dialog', () => {
   })
 })
 
+/**
+ * FE-022. getInventoryItems() is active-only by default, so an archived ingredient is absent
+ * from the `inventory` prop. A recipe row that already references one must still resolve its
+ * real name and unit — reinjected from the dish's own ingredients join.
+ */
+describe('MenuClient — archived ingredient reinjection (recipe builder)', () => {
+  // Rice is deliberately NOT in the `inventory` prop below, standing in for an item archived
+  // after this dish's recipe was written.
+  const dishWithArchivedIngredient = makeDish({
+    id: 'dish-legacy',
+    shortId: 7,
+    name: 'Legacy Jollof',
+    price: 1000,
+    ingredients: [
+      {
+        id: 'di-legacy',
+        dishId: 'dish-legacy',
+        inventoryItemId: rice.id,
+        quantityPerDish: 0.3,
+        createdAt: new Date('2026-01-01'),
+        inventoryItem: { ...rice, isActive: false },
+      },
+    ],
+  })
+
+  it('keeps the archived ingredient selectable, named, and unit-labelled when editing', async () => {
+    const user = userEvent.setup()
+    render(<MenuClient initialData={[dishWithArchivedIngredient]} inventory={[chicken]} />)
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+
+    const select = screen.getByRole('combobox')
+    // Without reinjection the <select> would hold an unmatched value and fall back to the
+    // first option (chicken), silently rewriting the recipe on the next save.
+    expect(select).toHaveValue(rice.id)
+    expect(screen.getByRole('option', { name: 'Long Grain Rice (archived) (kg)' })).toBeInTheDocument()
+    // The unit label beside the row reads through the same reinjected option.
+    expect(screen.getByText('kg')).toBeInTheDocument()
+  })
+
+  it('does not offer archived items on a brand-new recipe row', async () => {
+    const user = userEvent.setup()
+    render(<MenuClient initialData={[dishWithArchivedIngredient]} inventory={[chicken]} />)
+
+    await user.click(screen.getByRole('button', { name: /add dish/i }))
+    await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
+
+    expect(screen.getByRole('option', { name: 'Chicken (kg)' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /archived/ })).not.toBeInTheDocument()
+  })
+
+  it('does not crash the recipe column when saving a dish that keeps an archived ingredient', async () => {
+    const user = userEvent.setup()
+    mockUpdateDish.mockResolvedValue({ ...dishWithArchivedIngredient, name: 'Legacy Jollof II' })
+    render(<MenuClient initialData={[dishWithArchivedIngredient]} inventory={[chicken]} />)
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    const nameInput = screen.getByLabelText('Dish Name')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Legacy Jollof II')
+
+    await user.click(screen.getByRole('button', { name: 'Update Dish' }))
+
+    // buildIngredients used to resolve this row via `inventory.find(...)!` and hand the RECIPE
+    // column an undefined inventoryItem, throwing on `.name` during the optimistic re-render.
+    expect(await screen.findByText('Legacy Jollof II')).toBeInTheDocument()
+    expect(screen.getByText(/Long Grain Rice 0.3kg/)).toBeInTheDocument()
+  })
+})
+
 describe('MenuClient — archive/restore', () => {
   it('archive toggle calls toggleDishActive(id, false) and flips the badge to ARCHIVED', async () => {
     const user = userEvent.setup()
