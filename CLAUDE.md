@@ -30,11 +30,30 @@ npm run supabase:stop      # stop local Supabase Docker containers
 npx prisma studio            # inspect the local DB visually
 ```
 
-### No test suite exists
+### The test suite
 
-There's no `test` script in `package.json` and no test framework installed (no Jest, Vitest,
-Playwright, etc.). Don't assume one exists or invent an `npm test` invocation — if a task calls
-for tests, check with the user before picking and installing a framework.
+Vitest is installed and wired up across two separate configs. Both suites are expected to be
+green before any merge:
+
+```bash
+npm test                 # unit — vitest.config.mts, `node` + `jsdom` projects
+npm run test:watch       # unit, watch mode
+npm run test:integration # integration — vitest.integration.config.mts, real Postgres
+```
+
+- **Unit** (`vitest.config.mts`) — two projects. `node` covers pure logic and Server Action unit
+  tests (`src/**/*.test.ts`); `jsdom` covers React Testing Library component tests
+  (`src/**/*.test.tsx`). `next/cache` is aliased to a stub, and `DATABASE_URL` points at a closed
+  port so a stray query fails loudly instead of silently hitting a real database.
+- **Integration** (`vitest.integration.config.mts`) — `tests/integration/**`, running against an
+  isolated `rosty_integrity_test` database configured via `.env.test` (gitignored — it will not
+  survive a fresh worktree checkout and must be recreated). `tests/integration/guard-database-url.ts`
+  hard-fails the run if it is pointed anywhere else. **Never** point it at the shared `postgres`
+  database, and never run `prisma db seed` as part of a test loop — `prisma/seed.ts` opens with
+  destructive `deleteMany()` calls.
+
+Add new unit tests alongside the module they cover (`src/lib/foo.ts` → `src/lib/foo.test.ts`);
+they are auto-discovered by the include globs, so no config change is needed.
 
 ### Keeping the docs in sync
 

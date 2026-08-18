@@ -8,7 +8,7 @@ function getResend() {
   return _resend
 }
 
-const FROM_EMAIL = process.env.FROM_EMAIL || 'Chop with Rosty <onboarding@resend.dev>'
+const FROM_EMAIL = process.env.FROM_EMAIL || 'Chop with Rostty <onboarding@resend.dev>'
 
 export type OrderStatusEmailData = {
   customerEmail: string
@@ -46,7 +46,7 @@ export async function sendOrderStatusEmail(data: OrderStatusEmailData) {
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">🍽️ Chop with Rosty</h1>
+            <h1 style="color: white; margin: 0; font-size: 24px;">🍽️ Chop with Rostty</h1>
           </div>
           <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
             <p style="font-size: 16px; color: #374151;">Hi ${data.customerName || 'there'},</p>

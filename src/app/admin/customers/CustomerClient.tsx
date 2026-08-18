@@ -16,10 +16,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { createCustomer, deleteCustomer, updateCustomer } from "./actions"
-import { Plus, ShoppingBag } from "lucide-react"
+import { Plus, ShoppingBag, Users } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 type CustomerWithCount = User & { _count: { orders: number } }
 
@@ -34,7 +34,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     columnHelper.accessor("shortId", {
       header: "ID",
       cell: (info) => (
-        <span className="font-mono-data font-bold" style={{ color: 'oklch(0.72 0.15 65)' }}>
+        <span className="font-mono-data tabular-nums font-bold text-primary">
           #{info.getValue()}
         </span>
       ),
@@ -42,7 +42,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     columnHelper.accessor("name", {
       header: "NAME",
       cell: (info) => (
-        <span className="font-medium" style={{ color: info.getValue() ? 'oklch(0.85 0.008 65)' : 'oklch(0.38 0.006 65)' }}>
+        <span className={cn('font-medium', info.getValue() ? 'text-foreground' : 'text-muted-foreground/70')}>
           {info.getValue() || 'No name'}
         </span>
       ),
@@ -50,7 +50,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     columnHelper.accessor("email", {
       header: "EMAIL",
       cell: (info) => (
-        <span className="font-mono-data text-xs" style={{ color: 'oklch(0.55 0.008 65)' }}>
+        <span className="font-mono-data text-xs text-muted-foreground">
           {info.getValue() || '—'}
         </span>
       ),
@@ -58,7 +58,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     columnHelper.accessor("phone", {
       header: "PHONE",
       cell: (info) => (
-        <span className="font-mono-data text-xs" style={{ color: 'oklch(0.55 0.008 65)' }}>
+        <span className="font-mono-data text-xs text-muted-foreground">
           {info.getValue() || '—'}
         </span>
       ),
@@ -67,8 +67,8 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
       header: "ORDERS",
       cell: (info) => (
         <div className="flex items-center gap-1.5">
-          <ShoppingBag className="h-3 w-3" style={{ color: 'oklch(0.45 0.008 65)' }} />
-          <span className="font-mono-data font-medium" style={{ color: 'oklch(0.72 0.15 65)' }}>
+          <ShoppingBag className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+          <span className="font-mono-data tabular-nums font-medium text-primary">
             {info.getValue()}
           </span>
         </div>
@@ -157,13 +157,14 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     <div className="space-y-5">
       {/* Toolbar */}
       <div className="flex items-center justify-between">
-        <p className="text-sm" style={{ color: 'oklch(0.40 0.008 65)', fontFamily: 'var(--font-dm-mono)' }}>
+        <p className="meta-text text-sm">
           {data.length} customer{data.length !== 1 ? 's' : ''} registered
         </p>
+        {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
+        <Button onClick={() => setIsOpen(true)}>
+          <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Add Customer
+        </Button>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger render={<Button />}>
-            <Plus className="h-4 w-4 mr-1.5" /> Add Customer
-          </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add New Customer</DialogTitle>
@@ -181,7 +182,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
                 <Label htmlFor="phone">Phone Number</Label>
                 <Input id="phone" name="phone" placeholder="Optional" />
               </div>
-              <p className="text-xs" style={{ color: 'oklch(0.45 0.008 65)' }}>
+              <p className="text-xs text-muted-foreground">
                 At least one contact method is required.
               </p>
               <Button type="submit" className="w-full">Save Customer</Button>
@@ -215,16 +216,12 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
       </Dialog>
 
       {/* Table */}
-      <div className="rounded-lg overflow-hidden" style={{ border: '1px solid oklch(0.20 0.008 65)' }}>
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'oklch(0.13 0.005 65)', borderBottom: '1px solid oklch(0.20 0.008 65)' }}>
+            <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th
-                  key={header.id}
-                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest"
-                  style={{ color: 'oklch(0.40 0.008 65)', fontFamily: 'var(--font-dm-mono)', letterSpacing: '0.10em' }}
-                >
+                <th key={header.id} className="table-head-cell">
                   {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                 </th>
               )))}
@@ -233,13 +230,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           <tbody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row, idx) => (
-                <tr
-                  key={row.id}
-                  style={{
-                    background: idx % 2 === 0 ? 'oklch(0.10 0.004 65)' : 'transparent',
-                    borderBottom: '1px solid oklch(0.16 0.005 65)',
-                  }}
-                >
+                <tr key={row.id} className={cn('table-row', idx % 2 === 0 && 'bg-card/40')}>
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id} className="px-4 py-3">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -249,12 +240,16 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
               ))
             ) : (
               <tr>
-                <td
-                  colSpan={columns.length}
-                  className="px-4 py-12 text-center text-sm"
-                  style={{ color: 'oklch(0.40 0.008 65)' }}
-                >
-                  No customers yet.
+                <td colSpan={columns.length}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon">
+                      <Users className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <p className="empty-state-title">No customers yet</p>
+                    <p className="empty-state-hint">
+                      Add a customer to start booking orders against their record.
+                    </p>
+                  </div>
                 </td>
               </tr>
             )}

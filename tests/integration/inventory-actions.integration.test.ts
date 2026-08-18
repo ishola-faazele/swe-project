@@ -2,8 +2,14 @@
  * Integration: auth matrix for src/app/admin/inventory/actions.ts — TEST-008.
  *
  * Same three-case pattern as TEST-006, applied to createInventoryItem, updateInventoryItem,
- * deleteInventoryItem, and getInventoryItems. updateInventoryItem has no frontend call site
- * (BE-014) but the auth requirement still applies regardless of UI reachability.
+ * deleteInventoryItem, getInventoryItems, and — added by TEST-008 — toggleInventoryItemActive.
+ * updateInventoryItem has no frontend call site (BE-014) but the auth requirement still applies
+ * regardless of UI reachability.
+ *
+ * The pre-existing deleteInventoryItem/getInventoryItems cases were reviewed against BE-005's
+ * behavior change and needed no inverted assertions: the delete case here uses an unreferenced
+ * fixture, which still hard-deletes. Archive-on-conflict is covered in
+ * fk-guarded-deletes.integration.test.ts; the new active-only filtering cases are below.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -12,10 +18,12 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 import { createClient } from '@/utils/supabase/server'
 import { AuthError } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import {
   createInventoryItem,
   deleteInventoryItem,
   getInventoryItems,
+  toggleInventoryItemActive,
   updateInventoryItem,
 } from '@/app/admin/inventory/actions'
 import {
@@ -115,6 +123,53 @@ describe('inventory/actions.ts auth matrix (TEST-008)', () => {
       mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
       const result = await deleteInventoryItem(item.id)
       expect(result.ok).toBe(true)
+      // Unaffected by BE-005's archive branch: this fixture is referenced by neither
+      // OrderIngredientLog nor DishIngredient, so it still takes the hard-delete path. The
+      // archive-instead-of-delete cases live in fk-guarded-deletes.integration.test.ts.
+      if (result.ok) expect(result.data.archived).toBe(false)
+    })
+  })
+
+  describe('toggleInventoryItemActive', () => {
+    test('rejects when unauthenticated', async () => {
+      const item = await createTestInventoryItem(reg)
+      mockNoSession(createClientMock)
+      await expect(toggleInventoryItemActive(item.id, false)).rejects.toThrow(AuthError)
+    })
+
+    test('rejects for a CUSTOMER session', async () => {
+      const item = await createTestInventoryItem(reg)
+      mockAuthSession(createClientMock, { id: customer.id, email: customer.email })
+      await expect(toggleInventoryItemActive(item.id, false)).rejects.toThrow(AuthError)
+    })
+
+    test('succeeds for an ADMIN session', async () => {
+      const item = await createTestInventoryItem(reg)
+      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
+
+      const result = await toggleInventoryItemActive(item.id, false)
+
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.data.isActive).toBe(false)
+    })
+
+    test('restores an archived item unconditionally — restoring references nothing', async () => {
+      const item = await createTestInventoryItem(reg)
+      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
+      await toggleInventoryItemActive(item.id, false)
+
+      const result = await toggleInventoryItemActive(item.id, true)
+
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.data.isActive).toBe(true)
+      const persisted = await prisma.inventoryItem.findUnique({ where: { id: item.id } })
+      expect(persisted?.isActive).toBe(true)
+    })
+
+    test('rejects a malformed id through idSchema rather than reaching the database', async () => {
+      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
+      const result = await toggleInventoryItemActive('not-a-uuid', false)
+      expect(result).toMatchObject({ ok: false, code: 'VALIDATION' })
     })
   })
 
@@ -133,6 +188,32 @@ describe('inventory/actions.ts auth matrix (TEST-008)', () => {
       mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
       const result = await getInventoryItems()
       expect(Array.isArray(result)).toBe(true)
+    })
+
+    // BE-005 made active-only the DEFAULT, which is what keeps archived items out of every
+    // picker (recipe builder, extra-ingredients editor) with no change at those call sites.
+    test('excludes archived items by default', async () => {
+      const active = await createTestInventoryItem(reg)
+      const archived = await createTestInventoryItem(reg)
+      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
+      await toggleInventoryItemActive(archived.id, false)
+
+      const ids = (await getInventoryItems()).map(i => i.id)
+
+      expect(ids).toContain(active.id)
+      expect(ids).not.toContain(archived.id)
+    })
+
+    test('includes archived items when explicitly asked — the inventory screen’s reveal toggle', async () => {
+      const active = await createTestInventoryItem(reg)
+      const archived = await createTestInventoryItem(reg)
+      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
+      await toggleInventoryItemActive(archived.id, false)
+
+      const ids = (await getInventoryItems({ includeArchived: true })).map(i => i.id)
+
+      expect(ids).toContain(active.id)
+      expect(ids).toContain(archived.id)
     })
   })
 })

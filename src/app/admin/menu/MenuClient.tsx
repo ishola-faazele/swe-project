@@ -18,9 +18,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/toast"
+import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
 import { mergeDuplicateIngredients } from "@/lib/recipe"
 import { createDish, updateDish, deleteDish, toggleDishActive } from "./actions"
-import { Plus } from "lucide-react"
+import { Plus, UtensilsCrossed } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 type DishWithIngredients = Dish & {
   ingredients: (DishIngredient & { inventoryItem: InventoryItem })[]
@@ -30,24 +32,62 @@ type DishWithIngredients = Dish & {
 // ingredient-row pattern in OrderDetailsClient.
 type RecipeRow = { inventoryItemId: string; quantityPerDish: number; internalId: number }
 
-const statusColors: Record<string, string> = {
-  ACTIVE:   'oklch(0.60 0.14 150)',
-  ARCHIVED: 'oklch(0.50 0.01 65)',
-}
+// Badge styling lives in globals.css (.dish-active/.dish-archived), replacing
+// the old runtime oklch string-concatenation map.
 
 const columnHelper = createColumnHelper<DishWithIngredients>()
 
 const RECIPE_SUMMARY_LIMIT = 3
 
+type IngredientOption = { id: string; name: string; unit: string }
+
+/**
+ * getInventoryItems() now returns active items only, so an archived ingredient is correctly
+ * absent from the "add an ingredient" picker — but a recipe row that ALREADY references one
+ * would then render an unmatched <select> value and a blank unit label. The dish's own
+ * `ingredients` join carries that item's real name and unit independently of the inventory
+ * query, so the missing option is reinjected from there, flagged as archived.
+ *
+ * Same pattern OrderDetailsClient's dish-focused optionsForRow already uses for archived dishes.
+ * `dish` is null on the create form — a brand-new recipe cannot reference an already-archived
+ * item, because the picker never offered one.
+ */
+function optionsForRow(
+  row: RecipeRow,
+  inventory: InventoryItem[],
+  dish: DishWithIngredients | null
+): IngredientOption[] {
+  const options: IngredientOption[] = inventory.map(inv => ({
+    id: inv.id,
+    name: inv.name,
+    unit: inv.unit,
+  }))
+
+  if (row.inventoryItemId && !options.some(o => o.id === row.inventoryItemId)) {
+    const fromRecipe = dish?.ingredients.find(i => i.inventoryItemId === row.inventoryItemId)?.inventoryItem
+    if (fromRecipe) {
+      options.unshift({
+        id: fromRecipe.id,
+        name: `${fromRecipe.name} (archived)`,
+        unit: fromRecipe.unit,
+      })
+    }
+  }
+
+  return options
+}
+
 function RecipeBuilder({
   rows,
   setRows,
   inventory,
+  dish,
   onAddRow,
 }: {
   rows: RecipeRow[]
   setRows: (rows: RecipeRow[]) => void
   inventory: InventoryItem[]
+  dish: DishWithIngredients | null
   onAddRow: () => void
 }) {
   return (
@@ -60,16 +100,17 @@ function RecipeBuilder({
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-xs" style={{ color: 'oklch(0.45 0.008 65)' }}>
+        <p className="text-xs text-muted-foreground">
           No ingredients yet. A dish with no recipe still sells — it just won&apos;t deduct any stock.
         </p>
       ) : (
         rows.map((row, index) => {
-          const selected = inventory.find(inv => inv.id === row.inventoryItemId)
+          const options = optionsForRow(row, inventory, dish)
+          const selected = options.find(option => option.id === row.inventoryItemId)
           return (
             <div key={row.internalId} className="flex gap-4 items-center">
               <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                className="select-field"
                 value={row.inventoryItemId}
                 onChange={(e) => {
                   const newRows = [...rows]
@@ -77,9 +118,9 @@ function RecipeBuilder({
                   setRows(newRows)
                 }}
               >
-                <option value="" disabled>Select item...</option>
-                {inventory.map(inv => (
-                  <option key={inv.id} value={inv.id}>{inv.name} ({inv.unit})</option>
+                <option value="" disabled>Select item…</option>
+                {options.map(option => (
+                  <option key={option.id} value={option.id}>{option.name} ({option.unit})</option>
                 ))}
               </select>
               <Input
@@ -95,9 +136,7 @@ function RecipeBuilder({
                   setRows(newRows)
                 }}
               />
-              <span className="w-16 text-xs" style={{ color: 'oklch(0.45 0.008 65)', fontFamily: 'var(--font-dm-mono)' }}>
-                {selected?.unit ?? ''}
-              </span>
+              <span className="meta-text w-16">{selected?.unit ?? ''}</span>
               <Button
                 type="button"
                 variant="ghost"
@@ -136,17 +175,31 @@ export function MenuClient({
   // Rebuilds the joined `ingredients` shape the table renders from, so an optimistic row looks
   // exactly like one that came back from getDishes. Duplicate picks are summed the same way the
   // server sums them, so the table never shows a recipe the database doesn't hold.
-  function buildIngredients(dishId: string, rows: RecipeRow[]) {
+  //
+  // `inventory` is active-only, so an edited dish whose recipe keeps an archived ingredient has
+  // no match there — the old `inventory.find(...)!` non-null assertion would hand the RECIPE
+  // column an undefined `inventoryItem` and crash the render on `.name`. Fall back to the dish's
+  // own join (the same source optionsForRow reinjects from), and drop any line that resolves in
+  // neither: the server already persisted the true recipe, and revalidatePath reconciles it.
+  function buildIngredients(dishId: string, rows: RecipeRow[], fallbackDish: DishWithIngredients | null) {
     return mergeDuplicateIngredients(
       rows.filter(row => row.inventoryItemId && row.quantityPerDish > 0)
-    ).map(line => ({
-      id: `${dishId}-${line.inventoryItemId}`,
-      dishId,
-      inventoryItemId: line.inventoryItemId,
-      quantityPerDish: line.quantityPerDish,
-      createdAt: new Date(),
-      inventoryItem: inventory.find(inv => inv.id === line.inventoryItemId)!,
-    }))
+    ).flatMap(line => {
+      const inventoryItem =
+        inventory.find(inv => inv.id === line.inventoryItemId)
+        ?? fallbackDish?.ingredients.find(i => i.inventoryItemId === line.inventoryItemId)?.inventoryItem
+
+      if (!inventoryItem) return []
+
+      return [{
+        id: `${dishId}-${line.inventoryItemId}`,
+        dishId,
+        inventoryItemId: line.inventoryItemId,
+        quantityPerDish: line.quantityPerDish,
+        createdAt: new Date(),
+        inventoryItem,
+      }]
+    })
   }
 
   function recipePayload(rows: RecipeRow[]) {
@@ -161,7 +214,7 @@ export function MenuClient({
 
     const newDish = await createDish({ name, price, ingredients: recipePayload(newRecipe) })
 
-    setData([...data, { ...newDish, ingredients: buildIngredients(newDish.id, newRecipe) }])
+    setData([...data, { ...newDish, ingredients: buildIngredients(newDish.id, newRecipe, null) }])
     setIsOpen(false)
     setNewRecipe([])
     toast.add({ title: 'Dish created', description: `"${name}" was added to the menu.`, type: 'success' })
@@ -179,7 +232,7 @@ export function MenuClient({
     })
 
     setData(prev => prev.map(d => d.id === updated.id
-      ? { ...d, ...updated, ingredients: buildIngredients(updated.id, editRecipe) }
+      ? { ...d, ...updated, ingredients: buildIngredients(updated.id, editRecipe, editingDish) }
       : d
     ))
     setEditingDish(null)
@@ -233,7 +286,7 @@ export function MenuClient({
     columnHelper.accessor("shortId", {
       header: "ID",
       cell: (info) => (
-        <span className="font-mono-data font-bold" style={{ color: 'oklch(0.72 0.15 65)' }}>
+        <span className="font-mono-data tabular-nums font-bold text-primary">
           #{info.getValue()}
         </span>
       ),
@@ -241,7 +294,7 @@ export function MenuClient({
     columnHelper.accessor("name", {
       header: "DISH",
       cell: (info) => (
-        <span className="font-medium" style={{ color: 'oklch(0.85 0.008 65)' }}>
+        <span className="font-medium text-foreground">
           {info.getValue()}
         </span>
       ),
@@ -249,8 +302,8 @@ export function MenuClient({
     columnHelper.accessor("price", {
       header: "PRICE",
       cell: (info) => (
-        <span className="font-mono-data text-sm" style={{ color: 'oklch(0.85 0.008 65)' }}>
-          ${info.getValue()}
+        <span className="font-mono-data table-cell-num text-sm text-foreground">
+          {formatCurrency(info.getValue())}
         </span>
       ),
     }),
@@ -260,12 +313,12 @@ export function MenuClient({
       cell: (info) => {
         const ingredients = info.row.original.ingredients
         if (ingredients.length === 0) {
-          return <span className="text-xs" style={{ color: 'oklch(0.38 0.006 65)' }}>No recipe</span>
+          return <span className="text-xs text-muted-foreground/70">No recipe</span>
         }
         const shown = ingredients.slice(0, RECIPE_SUMMARY_LIMIT)
         const remaining = ingredients.length - shown.length
         return (
-          <span className="text-xs" style={{ color: 'oklch(0.55 0.008 65)' }}>
+          <span className="text-xs text-muted-foreground">
             {shown.map(i => `${i.inventoryItem.name} ${i.quantityPerDish}${i.inventoryItem.unit}`).join(', ')}
             {remaining > 0 ? ` +${remaining} more` : ''}
           </span>
@@ -277,14 +330,7 @@ export function MenuClient({
       cell: (info) => {
         const status = info.getValue() ? 'ACTIVE' : 'ARCHIVED'
         return (
-          <span
-            className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium font-mono-data"
-            style={{
-              background: `${statusColors[status]}20`,
-              color: statusColors[status],
-              border: `1px solid ${statusColors[status]}40`,
-            }}
-          >
+          <span className={info.getValue() ? 'dish-active' : 'dish-archived'}>
             {status}
           </span>
         )
@@ -318,7 +364,7 @@ export function MenuClient({
     <div className="space-y-5">
       {/* Toolbar */}
       <div className="flex items-center justify-between">
-        <p className="text-sm" style={{ color: 'oklch(0.40 0.008 65)', fontFamily: 'var(--font-dm-mono)' }}>
+        <p className="meta-text text-sm">
           {data.filter(d => d.isActive).length} active dish{data.filter(d => d.isActive).length !== 1 ? 'es' : ''}
         </p>
         {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
@@ -340,7 +386,7 @@ export function MenuClient({
                 <Input id="name" name="name" placeholder="e.g. Jollof Rice" required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="price">Price ($)</Label>
+                <Label htmlFor="price">Price ({getCurrencySymbol()})</Label>
                 <Input id="price" name="price" type="number" step="any" min="0" required />
               </div>
             </div>
@@ -349,6 +395,7 @@ export function MenuClient({
               rows={newRecipe}
               setRows={setNewRecipe}
               inventory={inventory}
+              dish={null}
               onAddRow={() => addRow(newRecipe, setNewRecipe)}
             />
 
@@ -370,7 +417,7 @@ export function MenuClient({
                 <Input id="edit-name" name="name" defaultValue={editingDish?.name ?? ''} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-price">Price ($)</Label>
+                <Label htmlFor="edit-price">Price ({getCurrencySymbol()})</Label>
                 <Input id="edit-price" name="price" type="number" step="any" min="0" defaultValue={editingDish?.price ?? 0} required />
               </div>
             </div>
@@ -379,10 +426,11 @@ export function MenuClient({
               rows={editRecipe}
               setRows={setEditRecipe}
               inventory={inventory}
+              dish={editingDish}
               onAddRow={() => addRow(editRecipe, setEditRecipe)}
             />
 
-            <p className="text-xs" style={{ color: 'oklch(0.45 0.008 65)' }}>
+            <p className="text-xs text-muted-foreground">
               Recipe changes only affect future orders — past orders keep the ingredients they were
               placed with.
             </p>
@@ -393,16 +441,12 @@ export function MenuClient({
       </Dialog>
 
       {/* Table */}
-      <div className="rounded-lg overflow-hidden" style={{ border: '1px solid oklch(0.20 0.008 65)' }}>
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'oklch(0.13 0.005 65)', borderBottom: '1px solid oklch(0.20 0.008 65)' }}>
+            <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th
-                  key={header.id}
-                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest"
-                  style={{ color: 'oklch(0.40 0.008 65)', fontFamily: 'var(--font-dm-mono)', letterSpacing: '0.10em' }}
-                >
+                <th key={header.id} className="table-head-cell">
                   {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                 </th>
               )))}
@@ -413,11 +457,11 @@ export function MenuClient({
               table.getRowModel().rows.map((row, idx) => (
                 <tr
                   key={row.id}
-                  style={{
-                    background: idx % 2 === 0 ? 'oklch(0.10 0.004 65)' : 'transparent',
-                    borderBottom: '1px solid oklch(0.16 0.005 65)',
-                    opacity: row.original.isActive ? 1 : 0.6,
-                  }}
+                  className={cn(
+                    'table-row',
+                    idx % 2 === 0 && 'bg-card/40',
+                    !row.original.isActive && 'opacity-60'
+                  )}
                 >
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id} className="px-4 py-3">
@@ -428,12 +472,16 @@ export function MenuClient({
               ))
             ) : (
               <tr>
-                <td
-                  colSpan={columns.length}
-                  className="px-4 py-12 text-center text-sm"
-                  style={{ color: 'oklch(0.40 0.008 65)' }}
-                >
-                  No dishes yet.
+                <td colSpan={columns.length}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon">
+                      <UtensilsCrossed className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <p className="empty-state-title">No dishes yet</p>
+                    <p className="empty-state-hint">
+                      Add a dish and its recipe so orders can deduct stock automatically.
+                    </p>
+                  </div>
                 </td>
               </tr>
             )}

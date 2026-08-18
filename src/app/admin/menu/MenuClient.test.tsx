@@ -36,6 +36,7 @@ const rice: InventoryItem = {
   unit: 'kg',
   currentStock: 80,
   minimumThreshold: 15,
+  isActive: true,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 }
@@ -47,6 +48,7 @@ const chicken: InventoryItem = {
   unit: 'kg',
   currentStock: 40,
   minimumThreshold: 10,
+  isActive: true,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 }
@@ -92,7 +94,7 @@ describe('MenuClient — table', () => {
 
     expect(screen.getByText('#1')).toBeInTheDocument()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()
-    expect(screen.getByText('$1200')).toBeInTheDocument()
+    expect(screen.getByText('GH₵1,200.00')).toBeInTheDocument()
     expect(screen.getByText(/Long Grain Rice 0.25kg/)).toBeInTheDocument()
     expect(screen.getByText('ACTIVE')).toBeInTheDocument()
 
@@ -102,9 +104,9 @@ describe('MenuClient — table', () => {
     expect(screen.getByText('No recipe')).toBeInTheDocument()
   })
 
-  it('renders "No dishes yet." when initialData is empty', () => {
+  it('renders the empty state when initialData is empty', () => {
     render(<MenuClient initialData={[]} inventory={[]} />)
-    expect(screen.getByText('No dishes yet.')).toBeInTheDocument()
+    expect(screen.getByText('No dishes yet')).toBeInTheDocument()
   })
 })
 
@@ -153,7 +155,7 @@ describe('MenuClient — create dialog', () => {
     await user.click(screen.getByRole('button', { name: /add dish/i }))
 
     await user.type(screen.getByLabelText('Dish Name'), 'Fried Rice')
-    await user.type(screen.getByLabelText('Price ($)'), '1300')
+    await user.type(screen.getByLabelText('Price (GH₵)'), '1300')
     await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
     await user.selectOptions(screen.getByRole('combobox'), rice.id)
     await user.type(screen.getByPlaceholderText('Qty'), '0.25')
@@ -181,7 +183,7 @@ describe('MenuClient — edit dialog', () => {
 
     expect(screen.getByRole('heading', { name: 'Edit Dish #1' })).toBeInTheDocument()
     expect(screen.getByLabelText('Dish Name')).toHaveValue('Jollof Rice')
-    expect(screen.getByLabelText('Price ($)')).toHaveValue(1200)
+    expect(screen.getByLabelText('Price (GH₵)')).toHaveValue(1200)
     expect(screen.getByRole('combobox')).toHaveValue(rice.id)
     expect(screen.getByPlaceholderText('Qty')).toHaveValue(0.25)
   })
@@ -195,7 +197,7 @@ describe('MenuClient — edit dialog', () => {
     const nameInput = screen.getByLabelText('Dish Name')
     await user.clear(nameInput)
     await user.type(nameInput, 'Jollof Rice (Large)')
-    const priceInput = screen.getByLabelText('Price ($)')
+    const priceInput = screen.getByLabelText('Price (GH₵)')
     await user.clear(priceInput)
     await user.type(priceInput, '1500')
 
@@ -206,7 +208,77 @@ describe('MenuClient — edit dialog', () => {
       expect.objectContaining({ name: 'Jollof Rice (Large)', price: 1500 })
     )
     expect(await screen.findByText('Jollof Rice (Large)')).toBeInTheDocument()
-    expect(screen.getByText('$1500')).toBeInTheDocument()
+    expect(screen.getByText('GH₵1,500.00')).toBeInTheDocument()
+  })
+})
+
+/**
+ * FE-022. getInventoryItems() is active-only by default, so an archived ingredient is absent
+ * from the `inventory` prop. A recipe row that already references one must still resolve its
+ * real name and unit — reinjected from the dish's own ingredients join.
+ */
+describe('MenuClient — archived ingredient reinjection (recipe builder)', () => {
+  // Rice is deliberately NOT in the `inventory` prop below, standing in for an item archived
+  // after this dish's recipe was written.
+  const dishWithArchivedIngredient = makeDish({
+    id: 'dish-legacy',
+    shortId: 7,
+    name: 'Legacy Jollof',
+    price: 1000,
+    ingredients: [
+      {
+        id: 'di-legacy',
+        dishId: 'dish-legacy',
+        inventoryItemId: rice.id,
+        quantityPerDish: 0.3,
+        createdAt: new Date('2026-01-01'),
+        inventoryItem: { ...rice, isActive: false },
+      },
+    ],
+  })
+
+  it('keeps the archived ingredient selectable, named, and unit-labelled when editing', async () => {
+    const user = userEvent.setup()
+    render(<MenuClient initialData={[dishWithArchivedIngredient]} inventory={[chicken]} />)
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+
+    const select = screen.getByRole('combobox')
+    // Without reinjection the <select> would hold an unmatched value and fall back to the
+    // first option (chicken), silently rewriting the recipe on the next save.
+    expect(select).toHaveValue(rice.id)
+    expect(screen.getByRole('option', { name: 'Long Grain Rice (archived) (kg)' })).toBeInTheDocument()
+    // The unit label beside the row reads through the same reinjected option.
+    expect(screen.getByText('kg')).toBeInTheDocument()
+  })
+
+  it('does not offer archived items on a brand-new recipe row', async () => {
+    const user = userEvent.setup()
+    render(<MenuClient initialData={[dishWithArchivedIngredient]} inventory={[chicken]} />)
+
+    await user.click(screen.getByRole('button', { name: /add dish/i }))
+    await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
+
+    expect(screen.getByRole('option', { name: 'Chicken (kg)' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /archived/ })).not.toBeInTheDocument()
+  })
+
+  it('does not crash the recipe column when saving a dish that keeps an archived ingredient', async () => {
+    const user = userEvent.setup()
+    mockUpdateDish.mockResolvedValue({ ...dishWithArchivedIngredient, name: 'Legacy Jollof II' })
+    render(<MenuClient initialData={[dishWithArchivedIngredient]} inventory={[chicken]} />)
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    const nameInput = screen.getByLabelText('Dish Name')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Legacy Jollof II')
+
+    await user.click(screen.getByRole('button', { name: 'Update Dish' }))
+
+    // buildIngredients used to resolve this row via `inventory.find(...)!` and hand the RECIPE
+    // column an undefined inventoryItem, throwing on `.name` during the optimistic re-render.
+    expect(await screen.findByText('Legacy Jollof II')).toBeInTheDocument()
+    expect(screen.getByText(/Long Grain Rice 0.3kg/)).toBeInTheDocument()
   })
 })
 
@@ -253,7 +325,7 @@ describe('MenuClient — delete', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
 
-    expect(await screen.findByText('No dishes yet.')).toBeInTheDocument()
+    expect(await screen.findByText('No dishes yet')).toBeInTheDocument()
   })
 
   it('{ archived: true } keeps the row but flips its badge to ARCHIVED', async () => {

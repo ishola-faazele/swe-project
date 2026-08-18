@@ -48,7 +48,7 @@ to use.
 | ORM | **Prisma** | Schema-push workflow (`db push`, no migrations) |
 | Auth | **Supabase Auth** | Magic-link / passwordless only |
 | Styling | **Tailwind CSS v4** | Enterprise dark theme; amber/gold accent; Syne + DM Mono fonts |
-| UI Primitives | **Base UI** (`@base-ui-components/react`) + Shadcn | `style: base-nova`, `neutral` base colour |
+| UI Primitives | **Base UI** (`@base-ui/react`) + Shadcn | `style: base-nova`, `neutral` base colour |
 | Tables | **TanStack Table v8** | Headless; custom `<table>` HTML rendering |
 | Email | **Resend** | Omitted locally — falls back to `console.log` |
 | Icons | **Lucide React** | |
@@ -121,6 +121,10 @@ swe-project/
 │   │   ├── server.ts                 # Server (RSC/Action) Supabase client — cookie-based
 │   │   └── session.ts                # Proxy-context Supabase client
 │   └── proxy.ts                      # Next.js routing middleware (renamed from middleware.ts)
+├── test/                             # Unit-test support — setup.ts, next/cache mock, fixtures
+├── tests/integration/                # Integration suite + guard-database-url.ts safety check
+├── vitest.config.mts                 # Unit config — `node` + `jsdom` projects
+├── vitest.integration.config.mts     # Integration config — isolated rosty_integrity_test DB
 ├── supabase/config.toml              # Local Supabase CLI config
 ├── .env                              # Real secrets — never commit
 ├── .env.example                      # Safe template
@@ -209,14 +213,30 @@ missing or was reverted — that is the fix, not a code change in whatever compo
 about to blame. Verified end-to-end with a scripted browser session: config present → HMR
 connects, deletes/dialogs/dropdowns all work; config absent → HMR fails, nothing responds.
 
-**This was previously misdiagnosed in this file** as `<DialogTrigger render={<Button />}>` being
-incompatible with Base UI's composition model (a "❌ silently broken" pattern, with guidance to
-always use `<Button onClick={...}>` instead). That guidance was wrong — `DialogTrigger` works
-fine once `allowedDevOrigins` is set; it just happened to be the first thing someone clicked
-while *all* interactivity was broken by the origin-blocking issue above, and the wrong conclusion
-stuck. Both patterns are fine now. Existing code that already avoids `DialogTrigger` doesn't need
-to be changed back — it's not broken, just unnecessary caution — but don't keep telling new code
-to avoid it.
+This was also the real cause behind an earlier, wrong diagnosis in this file: a "`DialogTrigger`
+silently swallows clicks, always use `<Button onClick={...}>` instead" rule that used to live
+here. That guidance was incorrect — `DialogTrigger` works fine once `allowedDevOrigins` is set;
+it just happened to be the first thing someone clicked while *all* interactivity was broken by
+this exact origin-blocking issue, and the wrong conclusion stuck. Both patterns are fine now.
+Existing code that already avoids `DialogTrigger` doesn't need to be changed back — it's not
+broken, just unnecessary caution — but don't keep telling new code to avoid it.
+
+### TanStack Table — `data` must be referentially stable
+Every `*Client.tsx` passes its `useState` array straight into `useReactTable({ data })`, which is
+stable across renders by construction. If you ever pass a **derived** array instead — a
+`.filter(...)`/`.map(...)` computed in the render body — wrap it in `useMemo`:
+
+```tsx
+// ✅ Stable: the table rebuilds its row model only when the inputs actually change.
+const visibleData = useMemo(() => data.filter(i => showArchived || i.isActive), [data, showArchived])
+
+// ❌ New array identity every render — the table re-renders continuously and REMOUNTS every row's
+// DOM. Row buttons then silently drop clicks, because the node pressed is replaced mid-interaction.
+const visibleData = data.filter(i => showArchived || i.isActive)
+```
+The failure is nasty because it looks like an event-wiring bug, not a memoization one: the handler
+is correct and `fireEvent.click` triggers it fine, while real clicks and `userEvent.click` do
+nothing. `InventoryClient.tsx`'s `showArchived` filter is the one place this applies today.
 
 ### Auth Flow
 - Supabase Auth is the identity layer (magic-link, sessions, cookies).

@@ -17,7 +17,7 @@ import type { DishWithRecipe } from '@/lib/recipe'
 import { OrderDetailsClient } from './OrderDetailsClient'
 import { updateOrderItems } from './actions'
 
-vi.mock('./actions', () => ({ updateOrderItems: vi.fn() }))
+vi.mock('./actions', () => ({ updateOrderItems: vi.fn(), updateOrderDueDate: vi.fn() }))
 vi.mock('../actions', () => ({ updateOrderStatus: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 
@@ -41,6 +41,7 @@ const rice: InventoryItem = {
   unit: 'kg',
   currentStock: 80,
   minimumThreshold: 15,
+  isActive: true,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 }
@@ -171,7 +172,7 @@ describe('OrderDetailsClient — edit mode', () => {
     const select = screen.getAllByRole('combobox')[1]
     await user.selectOptions(select, jollof.id)
 
-    const totalPriceInput = screen.getByLabelText('Total Price ($)') as HTMLInputElement
+    const totalPriceInput = screen.getByLabelText('Total Price (GH₵)') as HTMLInputElement
     expect(totalPriceInput.value).toBe('1200') // default qty 1 * price 1200
   })
 
@@ -210,5 +211,107 @@ describe('OrderDetailsClient — edit mode', () => {
     expect(
       screen.getByText(/No dishes recorded for this order/)
     ).toBeInTheDocument()
+  })
+})
+
+/**
+ * FE-023. `inventory` is active-only (getInventoryItems()'s default), so an ingredient archived
+ * after this order was logged is absent from the "Extra Ingredients" picker's options — but the
+ * order's own `ingredientLogs` join still has it, and that row must keep resolving a real,
+ * selected, correctly-labelled option rather than an unmatched blank <select> value. This is the
+ * ingredient-focused counterpart to the dish-archived-reinjection coverage above (`optionsForRow`)
+ * — same class of bug, a second, independent call site (`ingredientOptionsForRow`).
+ */
+describe('OrderDetailsClient — archived ingredient reinjection (extra ingredients editor)', () => {
+  const archivedFlour: InventoryItem = {
+    id: 'inv-flour',
+    name: 'Cassava Flour',
+    category: 'INGREDIENT',
+    unit: 'kg',
+    currentStock: 0,
+    minimumThreshold: 5,
+    isActive: false,
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+  }
+
+  it('keeps an archived ingredient selectable and named in a row that already references it', async () => {
+    const user = userEvent.setup()
+    // "inv-flour" is deliberately absent from the `inventory` prop below (active-only), standing
+    // in for an item archived after this order's ingredientLogs were written.
+    const order = baseOrder({
+      dishes: [],
+      ingredientLogs: [
+        {
+          id: 'log-1',
+          orderId: 'order-1',
+          inventoryItemId: archivedFlour.id,
+          quantityUsed: 2,
+          createdAt: new Date('2026-01-01'),
+          inventoryItem: archivedFlour,
+        },
+      ],
+    })
+    render(<OrderDetailsClient order={order} inventory={[rice]} dishes={[jollof, meatPie]} />)
+
+    await user.click(screen.getAllByRole('button', { name: 'Edit Order Items' })[0])
+
+    // [0] is the order-status select; dishSelections starts empty (order.dishes === []), so [1]
+    // is the sole extra-ingredient row's select.
+    const rowSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement
+    // Selected value is preserved (not blank/reset to the first active item).
+    expect(rowSelect.value).toBe(archivedFlour.id)
+    const selectedOption = within(rowSelect).getByRole('option', { name: /Cassava Flour \(archived\)/ })
+    expect(selectedOption).toBeInTheDocument()
+    expect((selectedOption as HTMLOptionElement).value).toBe(archivedFlour.id)
+  })
+
+  it('does not offer an archived ingredient on a brand-new extra-ingredient row', async () => {
+    const user = userEvent.setup()
+    const order = baseOrder({
+      dishes: [],
+      ingredientLogs: [
+        {
+          id: 'log-1',
+          orderId: 'order-1',
+          inventoryItemId: archivedFlour.id,
+          quantityUsed: 2,
+          createdAt: new Date('2026-01-01'),
+          inventoryItem: archivedFlour,
+        },
+      ],
+    })
+    render(<OrderDetailsClient order={order} inventory={[rice]} dishes={[jollof, meatPie]} />)
+
+    await user.click(screen.getAllByRole('button', { name: 'Edit Order Items' })[0])
+    await user.click(screen.getByRole('button', { name: '+ Add Ingredient' }))
+
+    // [0] status select, [1] the existing (archived-referencing) row, [2] the freshly-added row.
+    const newRowSelect = screen.getAllByRole('combobox')[2] as HTMLSelectElement
+    expect(within(newRowSelect).getByRole('option', { name: /Long Grain Rice/ })).toBeInTheDocument()
+    expect(within(newRowSelect).queryByRole('option', { name: /archived/ })).not.toBeInTheDocument()
+  })
+
+  it('a read-only (non-editing) order still displays an archived ingredient by name in "Ingredients Used"', () => {
+    // Historical reads never go through the active-only `inventory` prop at all — the table below
+    // renders straight from order.ingredientLogs[].inventoryItem, so archiving must never blank
+    // out a past order's ingredient list.
+    const order = baseOrder({
+      dishes: [],
+      ingredientLogs: [
+        {
+          id: 'log-1',
+          orderId: 'order-1',
+          inventoryItemId: archivedFlour.id,
+          quantityUsed: 2,
+          createdAt: new Date('2026-01-01'),
+          inventoryItem: archivedFlour,
+        },
+      ],
+    })
+    render(<OrderDetailsClient order={order} inventory={[]} dishes={[jollof, meatPie]} />)
+
+    expect(screen.getByText('Cassava Flour')).toBeInTheDocument()
+    expect(screen.getByText('2 kg')).toBeInTheDocument()
   })
 })
