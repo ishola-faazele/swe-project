@@ -9,9 +9,19 @@ this file is the short, update-as-you-go version).
 | Phase | What | Branch / worktree | Status |
 |---|---|---|---|
 | Phase 0 | Order & Inventory Integrity + Auth Hardening | `fix/order-inventory-integrity-hardening` → `../swe-project-integrity-hardening` | ✅ Merged into `main` (`e6f2854`) |
-| Phase 1 | Quick-Win Polish Pack + enterprise UI overhaul (7 items — see below) | `feature/polish-pack` → `../swe-project-polish-pack` | 🔄 All 7 items implemented, tested, committed. **Not yet merged** — final `test-engineer` verification pass still pending, not yet dispatched. |
+| Phase 1 | Quick-Win Polish Pack + enterprise UI overhaul (7 items — see below) | `feature/polish-pack` → `../swe-project-polish-pack` | ✅ Merged into `main` (`d280d7a`) |
 | Phase 2 | Menu & Recipe System | `feature/menu-recipe-system` → `../swe-project-menu-recipe-system` | ✅ Merged into `main` (`e6f2854`) |
-| Phase 3 | Compounding features (repeat-order, stock-aware fulfillment, weekly snapshot, table search, real SMS) | — | ⬜ Not started — nothing here has begun |
+| Phase 3 | Real Customer Notifications (WhatsApp Business Cloud API + Arkesel SMS) | `feature/whatsapp-arkesel-notifications` → `../swe-project-notifications` | 🔄 Dispatched to `feature-pipeline` (2026-08-18) |
+| Phase 4 | Compounding features (repeat-order, stock-aware fulfillment, weekly snapshot, table search) | — | ⬜ Not started — nothing here has begun |
+
+**Naming note:** the roadmap's original "Phase 3" was the compounding-features bucket now
+renumbered **Phase 4** above. Real WhatsApp/SMS notifications took the Phase 3 slot instead
+because the user independently set up the Meta Business Platform + Arkesel accounts needed for
+it, making it the natural next dispatch — see the Phase 3 section of
+`/home/ishola/.claude/plans/no-i-want-you-robust-moore.md` for the full plan. This is the second
+phase-numbering correction in this doc (the first being Phase 1 item 7 informally — and
+incorrectly — called "Phase 3" mid-project); if a future session sees "Phase 3" mentioned
+anywhere outside this file, verify against this table before trusting it.
 
 **Phase 0 and Phase 2 are both on `main` as of commit `e6f2854`.** They were developed in
 parallel on independent worktrees and had to be reconciled by hand — both branches modified the
@@ -44,10 +54,17 @@ anticipated (see decisions log). **Not yet merged into `main`** — the dedicate
 agent pass across all 7 items has not run yet; that's the one remaining step before this is
 merge-ready.
 
-**Next step:** dispatch `test-engineer` for Phase 1's final verification pass, confirm the full
-suite/lint/build one more time, then merge `feature/polish-pack` into `main` (same by-hand
-conflict-resolution process as Phase 0/2, likely, since both branches touch overlapping files).
-Phase 3 (compounding features) has not been started — nothing to report there yet.
+**Phase 1 merged 2026-08-18** (`d280d7a`, 2 conflicts resolved by hand: `.env.example`,
+`AGENTS.md`). Post-merge state on `main`: 199 tests passing (111 unit + 88 integration), lint
+clean (0 errors — an unrelated ESLint scope bug picking up gitignored local tooling artifacts
+was found and fixed alongside, `6cab9f5`), production build clean on all 13 routes. End-to-end
+Playwright verification confirmed the long-standing "no buttons work" bug (root cause:
+`allowedDevOrigins` missing for the `127.0.0.1` dev origin, see AGENTS.md) is resolved on the
+fully merged codebase.
+
+**Next step:** Phase 3 (real WhatsApp + SMS notifications, this worktree) is in progress — see
+its dedicated plan section and `docs/.pipeline-state.md` in this worktree. Phase 4 (compounding
+features) has not been started — nothing to report there yet.
 
 ---
 
@@ -134,9 +151,12 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
    localization, due-date/overdue surfacing, brand asset + PWA wiring.
 3. **Phase 2 — Core value driver (the actual USP, ideally built on Phase 0's stable foundation):**
    Menu/Recipe system, paired eventually with WhatsApp-native order sharing.
-4. **Phase 3 — Compounding, once Phase 2 lands:** repeat-order, stock-aware fulfillment check,
-   weekly snapshot, table search/filter, real SMS if the WhatsApp-link approach proves
-   insufficient.
+4. **Phase 3 — Real customer notifications (in progress):** replace the silent email-only/SMS-stub
+   notification path with real WhatsApp Business Cloud API + Arkesel SMS, fired on every order
+   status change. Supersedes roadmap item #3 below in effect (customers actually get notified)
+   though not in mechanism (item #3's public `/o/[token]` share-link page is still unbuilt).
+5. **Phase 4 — Compounding, once Phase 3 lands:** repeat-order, stock-aware fulfillment check,
+   weekly snapshot, table search/filter.
 
 ## 7. Decisions log
 
@@ -219,3 +239,21 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
   method but caught by another, which was the tell). Final state on `feature/polish-pack`: 98
   unit + 88 integration tests passing, typecheck clean, lint clean, build succeeds. Not yet
   merged — `test-engineer`'s dedicated final pass has not run yet.
+- **2026-08-18** — Phase 1 (`feature/polish-pack`) merged into `main` as `d280d7a`. 2 real
+  conflicts resolved by hand (`.env.example` add/add — kept Phase 1's more complete template,
+  fixed 2 remaining "Rosty"→"Rostty" spots; `AGENTS.md` — combined the `allowedDevOrigins`
+  correction with Phase 1's new TanStack Table referential-stability note). Post-merge: 199
+  tests passing, lint clean (after fixing an unrelated ESLint scope bug, `6cab9f5`, that picked
+  up gitignored local tooling artifacts as if they were app source), build clean on 13 routes.
+- **2026-08-18** — User set up Meta Business Platform (business phone number + "messaging" use
+  case) and an Arkesel account (Ghana SMS gateway) independently, ahead of any code request. This
+  made real WhatsApp/SMS notifications the natural next dispatch rather than the originally
+  planned "Phase 3" compounding-features list — see the Phase 3 renumbering note above. Two
+  scope decisions locked in via AskUserQuestion before dispatch: (1) **channel strategy** — send
+  both WhatsApp and SMS every time, no primary/fallback conditional (user chose reliability over
+  the cost savings of a fallback-only approach); (2) **trigger points** — keep today's
+  behavior exactly, all 6 order-status transitions notify (no reduction to "key moments only").
+  Dispatched to `feature-pipeline` on a new worktree, `../swe-project-notifications` →
+  `feature/whatsapp-arkesel-notifications`. Full technical plan (verified against Meta's Cloud
+  API + webhook docs and Arkesel's API docs, fetched live) lives in the Phase 3 section of
+  `/home/ishola/.claude/plans/no-i-want-you-robust-moore.md`.
