@@ -47,8 +47,10 @@ export function AdminLayout({ children, header }: AdminLayoutProps) {
         gridTemplateColumns: mounted ? `${sidebarWidth} 1fr` : '280px 1fr',
       }}
     >
-      {/* Desktop sidebar — hidden below md */}
-      <div className="hidden md:block">
+      {/* Desktop sidebar — hidden below md, sticky so the toggle button is
+          always visible in the viewport without scrolling. overflow-y-auto
+          lets the nav scroll independently if there are many items. */}
+      <div className="hidden md:block sticky top-0 h-screen overflow-y-auto">
         <Sidebar collapsed={collapsed} onToggleCollapse={toggle} />
       </div>
 
