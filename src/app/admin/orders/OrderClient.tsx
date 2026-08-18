@@ -18,7 +18,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { createOrder, updateOrderStatus, deleteOrder } from "./actions"
 import { computeDishSubtotal, type DishSelection, type DishWithRecipe } from "@/lib/recipe"
@@ -108,7 +107,7 @@ export function OrderClient({
               alert(err instanceof Error ? err.message : 'Could not update this order.')
             }
           }}
-          className="bg-transparent border rounded text-sm px-1 py-1 disabled:opacity-60"
+          className="select-field h-8 w-auto px-2 py-1"
         >
           {Object.values(OrderStatus).map(s => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -217,10 +216,9 @@ export function OrderClient({
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
+        {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
+        <Button onClick={() => setIsOpen(true)}>Create Order</Button>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger render={<Button />}>
-            Create Order
-          </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Order</DialogTitle>
@@ -229,7 +227,7 @@ export function OrderClient({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="customerId">Customer</Label>
-                  <select id="customerId" name="customerId" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm" required>
+                  <select id="customerId" name="customerId" className="select-field" required>
                     <option value="" disabled selected>Select customer</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>{c.email || c.phone}</option>
@@ -275,7 +273,7 @@ export function OrderClient({
                 {selectedDishes.map((selection, index) => (
                   <div key={index} className="flex gap-4 items-center">
                     <select
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      className="select-field"
                       value={selection.dishId}
                       onChange={(e) => {
                         const newArr = [...selectedDishes]
@@ -319,16 +317,12 @@ export function OrderClient({
         </Dialog>
       </div>
 
-      <div className="rounded-lg overflow-hidden" style={{ border: '1px solid oklch(0.20 0.008 65)' }}>
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'oklch(0.13 0.005 65)', borderBottom: '1px solid oklch(0.20 0.008 65)' }}>
+            <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th
-                  key={header.id}
-                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest"
-                  style={{ color: 'oklch(0.40 0.008 65)', fontFamily: 'var(--font-dm-mono)', letterSpacing: '0.10em' }}
-                >
+                <th key={header.id} className="table-head-cell">
                   {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                 </th>
               )))}
@@ -369,12 +363,16 @@ export function OrderClient({
               })
             ) : (
               <tr>
-                <td
-                  colSpan={columns.length}
-                  className="px-4 py-12 text-center text-sm"
-                  style={{ color: 'oklch(0.40 0.008 65)' }}
-                >
-                  No orders found.
+                <td colSpan={columns.length}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon">
+                      <ClipboardList className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <p className="empty-state-title">No orders found</p>
+                    <p className="empty-state-hint">
+                      Create an order to start tracking it through the kitchen queue.
+                    </p>
+                  </div>
                 </td>
               </tr>
             )}

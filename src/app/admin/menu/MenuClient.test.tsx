@@ -102,9 +102,9 @@ describe('MenuClient — table', () => {
     expect(screen.getByText('No recipe')).toBeInTheDocument()
   })
 
-  it('renders "No dishes yet." when initialData is empty', () => {
+  it('renders the empty state when initialData is empty', () => {
     render(<MenuClient initialData={[]} inventory={[]} />)
-    expect(screen.getByText('No dishes yet.')).toBeInTheDocument()
+    expect(screen.getByText('No dishes yet')).toBeInTheDocument()
   })
 })
 
@@ -253,7 +253,7 @@ describe('MenuClient — delete', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
 
-    expect(await screen.findByText('No dishes yet.')).toBeInTheDocument()
+    expect(await screen.findByText('No dishes yet')).toBeInTheDocument()
   })
 
   it('{ archived: true } keeps the row but flips its badge to ARCHIVED', async () => {

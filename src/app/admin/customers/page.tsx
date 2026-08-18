@@ -7,10 +7,10 @@ export default async function CustomersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight" style={{ color: 'oklch(0.93 0.008 65)' }}>
+        <h1 className="page-title">
           Customers
         </h1>
-        <p className="text-sm mt-0.5" style={{ color: 'oklch(0.45 0.008 65)', fontFamily: 'var(--font-dm-mono)' }}>
+        <p className="meta-text mt-0.5">
           {customers.length} registered client{customers.length !== 1 ? 's' : ''}
         </p>
       </div>

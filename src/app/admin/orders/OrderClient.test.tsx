@@ -4,14 +4,10 @@
  * the picker. `createOrder`/`updateOrderStatus`/`deleteOrder` are mocked — the real Server
  * Actions are covered by actions.test.ts.
  *
- * FINDING (see final report): AGENTS.md documents `<DialogTrigger render={<Button />}>` — the
- * exact pattern this file's "Create Order" trigger uses — as silently broken ("click events
- * swallowed"). Under this test harness (React Testing Library + jsdom, direct client-side render,
- * no SSR/hydration step), clicking it reliably opens the dialog with both `userEvent.click` and
- * `fireEvent.click` — verified with an explicit before/after assertion below. This suite therefore
- * tests the dialog's real behavior rather than pinning it as dead; the discrepancy with AGENTS.md
- * is reported separately since it may be hydration-specific (not reproducible in a non-SSR render)
- * or the documentation may be stale.
+ * NOTE: the "Create Order" trigger now uses the direct `<Button onClick={...}>` pattern that
+ * AGENTS.md prescribes, rather than `<DialogTrigger render={<Button />}>`, which AGENTS.md
+ * documents as silently swallowing clicks in a real browser. RTL locates the button by role and
+ * accessible name either way, so these tests' behavior is unchanged by that fix.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
@@ -184,16 +180,22 @@ describe('OrderClient — create dialog', () => {
 
   it('submitting calls createOrder with only rows that have a dish selected and a positive quantity', async () => {
     const user = userEvent.setup()
+    // createOrder returns ActionResult<Order>, not a bare Order. Mocking the
+    // bare row left `result.ok` undefined, so the component took its error
+    // branch and the optimistic-update path was never actually exercised.
     mockCreateOrder.mockResolvedValue({
-      id: 'order-new',
-      shortId: 9,
-      customerId: customer.id,
-      description: '',
-      status: 'PENDING',
-      totalPrice: 1200,
-      dueDate: null,
-      createdAt: new Date('2026-01-01'),
-      updatedAt: new Date('2026-01-01'),
+      ok: true,
+      data: {
+        id: 'order-new',
+        shortId: 9,
+        customerId: customer.id,
+        description: '',
+        status: 'PENDING',
+        totalPrice: 1200,
+        dueDate: null,
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-01'),
+      },
     })
     render(<OrderClient initialData={[]} customers={[customer]} inventory={[]} dishes={dishes} />)
     await user.click(screen.getByText('Create Order'))

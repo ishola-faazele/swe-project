@@ -21,7 +21,8 @@ import { toast } from "@/components/ui/toast"
 import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
 import { mergeDuplicateIngredients } from "@/lib/recipe"
 import { createDish, updateDish, deleteDish, toggleDishActive } from "./actions"
-import { Plus } from "lucide-react"
+import { Plus, UtensilsCrossed } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 type DishWithIngredients = Dish & {
   ingredients: (DishIngredient & { inventoryItem: InventoryItem })[]
@@ -31,10 +32,8 @@ type DishWithIngredients = Dish & {
 // ingredient-row pattern in OrderDetailsClient.
 type RecipeRow = { inventoryItemId: string; quantityPerDish: number; internalId: number }
 
-const statusColors: Record<string, string> = {
-  ACTIVE:   'oklch(0.60 0.14 150)',
-  ARCHIVED: 'oklch(0.50 0.01 65)',
-}
+// Badge styling lives in globals.css (.dish-active/.dish-archived), replacing
+// the old runtime oklch string-concatenation map.
 
 const columnHelper = createColumnHelper<DishWithIngredients>()
 
@@ -61,7 +60,7 @@ function RecipeBuilder({
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-xs" style={{ color: 'oklch(0.45 0.008 65)' }}>
+        <p className="text-xs text-muted-foreground">
           No ingredients yet. A dish with no recipe still sells — it just won&apos;t deduct any stock.
         </p>
       ) : (
@@ -70,7 +69,7 @@ function RecipeBuilder({
           return (
             <div key={row.internalId} className="flex gap-4 items-center">
               <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                className="select-field"
                 value={row.inventoryItemId}
                 onChange={(e) => {
                   const newRows = [...rows]
@@ -96,9 +95,7 @@ function RecipeBuilder({
                   setRows(newRows)
                 }}
               />
-              <span className="w-16 text-xs" style={{ color: 'oklch(0.45 0.008 65)', fontFamily: 'var(--font-dm-mono)' }}>
-                {selected?.unit ?? ''}
-              </span>
+              <span className="meta-text w-16">{selected?.unit ?? ''}</span>
               <Button
                 type="button"
                 variant="ghost"
@@ -234,7 +231,7 @@ export function MenuClient({
     columnHelper.accessor("shortId", {
       header: "ID",
       cell: (info) => (
-        <span className="font-mono-data font-bold" style={{ color: 'oklch(0.72 0.15 65)' }}>
+        <span className="font-mono-data tabular-nums font-bold text-primary">
           #{info.getValue()}
         </span>
       ),
@@ -242,7 +239,7 @@ export function MenuClient({
     columnHelper.accessor("name", {
       header: "DISH",
       cell: (info) => (
-        <span className="font-medium" style={{ color: 'oklch(0.85 0.008 65)' }}>
+        <span className="font-medium text-foreground">
           {info.getValue()}
         </span>
       ),
@@ -261,12 +258,12 @@ export function MenuClient({
       cell: (info) => {
         const ingredients = info.row.original.ingredients
         if (ingredients.length === 0) {
-          return <span className="text-xs" style={{ color: 'oklch(0.38 0.006 65)' }}>No recipe</span>
+          return <span className="text-xs text-muted-foreground/70">No recipe</span>
         }
         const shown = ingredients.slice(0, RECIPE_SUMMARY_LIMIT)
         const remaining = ingredients.length - shown.length
         return (
-          <span className="text-xs" style={{ color: 'oklch(0.55 0.008 65)' }}>
+          <span className="text-xs text-muted-foreground">
             {shown.map(i => `${i.inventoryItem.name} ${i.quantityPerDish}${i.inventoryItem.unit}`).join(', ')}
             {remaining > 0 ? ` +${remaining} more` : ''}
           </span>
@@ -278,14 +275,7 @@ export function MenuClient({
       cell: (info) => {
         const status = info.getValue() ? 'ACTIVE' : 'ARCHIVED'
         return (
-          <span
-            className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium font-mono-data"
-            style={{
-              background: `${statusColors[status]}20`,
-              color: statusColors[status],
-              border: `1px solid ${statusColors[status]}40`,
-            }}
-          >
+          <span className={info.getValue() ? 'dish-active' : 'dish-archived'}>
             {status}
           </span>
         )
@@ -319,7 +309,7 @@ export function MenuClient({
     <div className="space-y-5">
       {/* Toolbar */}
       <div className="flex items-center justify-between">
-        <p className="text-sm" style={{ color: 'oklch(0.40 0.008 65)', fontFamily: 'var(--font-dm-mono)' }}>
+        <p className="meta-text text-sm">
           {data.filter(d => d.isActive).length} active dish{data.filter(d => d.isActive).length !== 1 ? 'es' : ''}
         </p>
         {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
@@ -383,7 +373,7 @@ export function MenuClient({
               onAddRow={() => addRow(editRecipe, setEditRecipe)}
             />
 
-            <p className="text-xs" style={{ color: 'oklch(0.45 0.008 65)' }}>
+            <p className="text-xs text-muted-foreground">
               Recipe changes only affect future orders — past orders keep the ingredients they were
               placed with.
             </p>
@@ -394,16 +384,12 @@ export function MenuClient({
       </Dialog>
 
       {/* Table */}
-      <div className="rounded-lg overflow-hidden" style={{ border: '1px solid oklch(0.20 0.008 65)' }}>
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'oklch(0.13 0.005 65)', borderBottom: '1px solid oklch(0.20 0.008 65)' }}>
+            <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th
-                  key={header.id}
-                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest"
-                  style={{ color: 'oklch(0.40 0.008 65)', fontFamily: 'var(--font-dm-mono)', letterSpacing: '0.10em' }}
-                >
+                <th key={header.id} className="table-head-cell">
                   {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                 </th>
               )))}
@@ -414,11 +400,11 @@ export function MenuClient({
               table.getRowModel().rows.map((row, idx) => (
                 <tr
                   key={row.id}
-                  style={{
-                    background: idx % 2 === 0 ? 'oklch(0.10 0.004 65)' : 'transparent',
-                    borderBottom: '1px solid oklch(0.16 0.005 65)',
-                    opacity: row.original.isActive ? 1 : 0.6,
-                  }}
+                  className={cn(
+                    'table-row',
+                    idx % 2 === 0 && 'bg-card/40',
+                    !row.original.isActive && 'opacity-60'
+                  )}
                 >
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id} className="px-4 py-3">
@@ -429,12 +415,16 @@ export function MenuClient({
               ))
             ) : (
               <tr>
-                <td
-                  colSpan={columns.length}
-                  className="px-4 py-12 text-center text-sm"
-                  style={{ color: 'oklch(0.40 0.008 65)' }}
-                >
-                  No dishes yet.
+                <td colSpan={columns.length}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon">
+                      <UtensilsCrossed className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <p className="empty-state-title">No dishes yet</p>
+                    <p className="empty-state-hint">
+                      Add a dish and its recipe so orders can deduct stock automatically.
+                    </p>
+                  </div>
                 </td>
               </tr>
             )}

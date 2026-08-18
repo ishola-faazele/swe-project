@@ -126,16 +126,16 @@ export function OrderDetailsClient({
         <Button variant="outline" onClick={() => router.push('/admin/orders')}>
           &larr; Back to Orders
         </Button>
-        <h2 className="text-3xl font-bold tracking-tight">Order #{order.shortId}</h2>
+        <h2 className="page-title">Order #{order.shortId}</h2>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="rounded-xl border bg-card p-6 shadow-sm">
           <h3 className="text-xl font-semibold mb-4">Customer Details</h3>
           <div className="space-y-2">
-            <p><span className="font-medium text-slate-500">Name:</span> {order.customer.name || "N/A"}</p>
-            <p><span className="font-medium text-slate-500">Email:</span> {order.customer.email || "N/A"}</p>
-            <p><span className="font-medium text-slate-500">Phone:</span> {order.customer.phone || "N/A"}</p>
+            <p><span className="font-medium text-muted-foreground">Name:</span> {order.customer.name || "N/A"}</p>
+            <p><span className="font-medium text-muted-foreground">Email:</span> {order.customer.email || "N/A"}</p>
+            <p><span className="font-medium text-muted-foreground">Phone:</span> {order.customer.phone || "N/A"}</p>
           </div>
         </div>
 
@@ -228,13 +228,13 @@ export function OrderDetailsClient({
         {!isEditing ? (
           <div className="space-y-3">
             {order.dishes.length === 0 ? (
-              <p className="text-slate-500">
+              <p className="text-muted-foreground">
                 No dishes recorded for this order — it was placed before the menu existed, or was
                 entered as notes only.
               </p>
             ) : (
               <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500">
+                <thead className="bg-muted text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 rounded-l-md font-medium">Dish</th>
                     <th className="px-4 py-2 font-medium">Unit Price</th>
@@ -258,7 +258,7 @@ export function OrderDetailsClient({
             {dishSelections.map((row, index) => (
               <div key={row.internalId} className="flex gap-4 items-center">
                 <select
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  className="select-field"
                   value={row.dishId}
                   onChange={(e) => {
                     const newArr = [...dishSelections]
@@ -335,10 +335,10 @@ export function OrderDetailsClient({
         {!isEditing ? (
           <div className="space-y-3">
             {order.ingredientLogs.length === 0 ? (
-              <p className="text-slate-500">No ingredients logged for this order.</p>
+              <p className="text-muted-foreground">No ingredients logged for this order.</p>
             ) : (
               <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500">
+                <thead className="bg-muted text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 rounded-l-md font-medium">Item Name</th>
                     <th className="px-4 py-2 font-medium">Category</th>
@@ -366,7 +366,7 @@ export function OrderDetailsClient({
             {ingredients.map((ingredient, index) => (
               <div key={ingredient.internalId} className="flex gap-4 items-center">
                 <select
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  className="select-field"
                   value={ingredient.id}
                   onChange={(e) => {
                     const newArr = [...ingredients]
