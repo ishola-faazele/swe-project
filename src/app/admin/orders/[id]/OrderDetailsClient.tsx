@@ -77,6 +77,21 @@ export function OrderDetailsClient({
     return options
   }
 
+  // Ingredient-focused counterpart to the dish-focused optionsForRow above — deliberately named
+  // apart from it, since the two resolve different entities from different fallback sources.
+  //
+  // The `inventory` prop is active-only (getInventoryItems' default), so an ingredient archived
+  // after this order was logged is absent from the picker, and the row holding it would render an
+  // unmatched <select> value. This order's own ingredientLogs join already carries the full
+  // InventoryItem row, so the missing option is reinjected from there. Archived options are
+  // marked from their own isActive field rather than a mangled name.
+  function ingredientOptionsForRow(row: { id: string }): InventoryItem[] {
+    if (!row.id || inventory.some(inv => inv.id === row.id)) return inventory
+
+    const fromLog = order.ingredientLogs.find(log => log.inventoryItemId === row.id)?.inventoryItem
+    return fromLog ? [fromLog, ...inventory] : inventory
+  }
+
   function resetToDbState() {
     setIngredients(order.ingredientLogs.map((log, i) => ({
       id: log.inventoryItemId,
@@ -374,9 +389,11 @@ export function OrderDetailsClient({
                     setIngredients(newArr)
                   }}
                 >
-                  <option value="" disabled>Select item...</option>
-                  {inventory.map(inv => (
-                    <option key={inv.id} value={inv.id}>{inv.name} (Stock: {inv.currentStock} {inv.unit})</option>
+                  <option value="" disabled>Select item…</option>
+                  {ingredientOptionsForRow(ingredient).map(inv => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.name}{inv.isActive ? '' : ' (archived)'} (Stock: {inv.currentStock} {inv.unit})
+                    </option>
                   ))}
                 </select>
                 <Input

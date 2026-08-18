@@ -17,8 +17,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { createInventoryItem, deleteInventoryItem } from "./actions"
-import { Plus, AlertTriangle, PackageOpen } from "lucide-react"
+import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive } from "./actions"
+import { Plus, AlertTriangle, PackageOpen, Archive } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const columnHelper = createColumnHelper<InventoryItem>()
@@ -64,15 +64,75 @@ const categoryBadgeClass: Record<Category, string> = {
   OTHER: 'bg-muted text-muted-foreground border-border',
 }
 
+/**
+ * Local rather than a globals.css utility on purpose: it would be a byte-for-byte duplicate of
+ * `.dish-archived`, and a second global class with a near-identical name is worse than a local
+ * constant. Deliberately the same zinc treatment MenuClient's ARCHIVED badge uses, so "archived"
+ * reads identically on both screens.
+ */
+const ARCHIVED_BADGE_CLASS =
+  'inline-flex items-center rounded border border-zinc-800 bg-zinc-900/50 px-2 py-0.5 text-xs font-medium font-mono-data text-zinc-500'
+
 export function InventoryClient({ initialData }: { initialData: InventoryItem[] }) {
   const [data, setData] = useState<InventoryItem[]>(initialData)
   const [isOpen, setIsOpen] = useState(false)
+  // Archived items are hidden behind a reveal toggle rather than shown inline dimmed the way
+  // MenuClient shows archived dishes. Deliberate divergence: this list gets scanned for
+  // stock-taking far more often than the menu gets edited, so retired items are noise by default.
+  const [showArchived, setShowArchived] = useState(false)
+
+  // Client-side filter over the full array the page already fetched — no second query.
+  const visibleData = data.filter(i => showArchived || i.isActive)
+  const archivedCount = data.filter(i => !i.isActive).length
+
+  async function handleDelete(item: InventoryItem) {
+    if (!confirm(`Delete "${item.name}"?`)) return
+
+    try {
+      const result = await deleteInventoryItem(item.id)
+      if (!result.ok) {
+        alert(result.error)
+        return
+      }
+
+      if (result.data.archived) {
+        setData(prev => prev.map(i => i.id === item.id ? { ...i, isActive: false } : i))
+        alert(`"${item.name}" is still referenced by a recipe or a past order, so it was archived instead of deleted. Use "Show Archived" to restore it.`)
+      } else {
+        setData(prev => prev.filter(i => i.id !== item.id))
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not delete this inventory item.')
+    }
+  }
+
+  async function handleToggleActive(item: InventoryItem) {
+    const nextIsActive = !item.isActive
+
+    try {
+      const result = await toggleInventoryItemActive(item.id, nextIsActive)
+      if (!result.ok) {
+        alert(result.error)
+        return
+      }
+      setData(prev => prev.map(i => i.id === item.id ? { ...i, isActive: nextIsActive } : i))
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not update this inventory item.')
+    }
+  }
 
   const columns = [
     columnHelper.accessor("name", {
       header: "ITEM NAME",
       cell: (info) => (
-        <span className="font-medium text-foreground">{info.getValue()}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-foreground">{info.getValue()}</span>
+          {/* Inline on the row rather than a dedicated STATUS column: archived rows are hidden
+              by default, so a whole column would sit empty on every normal day. */}
+          {!info.row.original.isActive && (
+            <span className={ARCHIVED_BADGE_CLASS}>ARCHIVED</span>
+          )}
+        </div>
       ),
     }),
     columnHelper.accessor("category", {
@@ -117,36 +177,37 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     columnHelper.display({
       id: "actions",
       cell: (info) => (
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={async () => {
-            if (!confirm(`Delete "${info.row.original.name}"?`)) return
-            try {
-              const result = await deleteInventoryItem(info.row.original.id)
-              if (!result.ok) {
-                alert(result.error)
-                return
-              }
-              setData(data.filter(i => i.id !== info.row.original.id))
-            } catch (err) {
-              alert(err instanceof Error ? err.message : 'Could not delete this inventory item.')
-            }
-          }}
-        >
-          Delete
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleToggleActive(info.row.original)}
+          >
+            {info.row.original.isActive ? 'Archive' : 'Restore'}
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => handleDelete(info.row.original)}
+          >
+            Delete
+          </Button>
+        </div>
       ),
     })
   ]
 
   const table = useReactTable({
-    data,
+    data: visibleData,
     columns,
     getCoreRowModel: getCoreRowModel(),
   })
 
-  const lowStockCount = data.filter(i => i.currentStock <= i.minimumThreshold).length
+  // Active-only, for the same reason admin/page.tsx's low-stock query filters on isActive: a
+  // retired item sits at or near zero stock permanently and must not nag the restock banner.
+  // This count is independent of the dashboard's — the page now feeds archived rows into `data`
+  // for the reveal toggle, so without this filter archiving an item would not clear its warning.
+  const lowStockCount = data.filter(i => i.isActive && i.currentStock <= i.minimumThreshold).length
 
   async function handleAdd(formData: FormData) {
     const name = formData.get("name") as string
@@ -182,10 +243,27 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           )}
         </div>
 
-        {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
-        <Button onClick={() => setIsOpen(true)}>
-          <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Add Item
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Kept mounted while revealed so it can't vanish out from under the admin who just
+              restored the last archived item. */}
+          {(archivedCount > 0 || showArchived) && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={showArchived}
+              onClick={() => setShowArchived(s => !s)}
+            >
+              <Archive className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              {showArchived ? 'Hide Archived' : `Show Archived (${archivedCount})`}
+            </Button>
+          )}
+
+          {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
+          <Button onClick={() => setIsOpen(true)}>
+            <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Add Item
+          </Button>
+        </div>
+
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogContent>
             <DialogHeader>
@@ -240,7 +318,14 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           <tbody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row, idx) => (
-                <tr key={row.id} className={cn('table-row', idx % 2 === 0 && 'bg-card/40')}>
+                <tr
+                  key={row.id}
+                  className={cn(
+                    'table-row',
+                    idx % 2 === 0 && 'bg-card/40',
+                    !row.original.isActive && 'opacity-60'
+                  )}
+                >
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id} className="px-4 py-3">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -251,15 +336,30 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
             ) : (
               <tr>
                 <td colSpan={columns.length}>
-                  <div className="empty-state">
-                    <div className="empty-state-icon">
-                      <PackageOpen className="h-5 w-5" aria-hidden="true" />
+                  {/* Two genuinely different empty states. "Nothing here yet" and "everything you
+                      have is archived" call for opposite next actions, so they can't share copy. */}
+                  {data.length > 0 ? (
+                    <div className="empty-state">
+                      <div className="empty-state-icon">
+                        <Archive className="h-5 w-5" aria-hidden="true" />
+                      </div>
+                      <p className="empty-state-title">Every item is archived</p>
+                      <p className="empty-state-hint">
+                        Nothing is actively tracked right now. Use “Show Archived” to review or
+                        restore a retired item.
+                      </p>
                     </div>
-                    <p className="empty-state-title">No inventory items yet</p>
-                    <p className="empty-state-hint">
-                      Add your ingredients, drinks, and packaging to start tracking stock levels.
-                    </p>
-                  </div>
+                  ) : (
+                    <div className="empty-state">
+                      <div className="empty-state-icon">
+                        <PackageOpen className="h-5 w-5" aria-hidden="true" />
+                      </div>
+                      <p className="empty-state-title">No inventory items yet</p>
+                      <p className="empty-state-hint">
+                        Add your ingredients, drinks, and packaging to start tracking stock levels.
+                      </p>
+                    </div>
+                  )}
                 </td>
               </tr>
             )}

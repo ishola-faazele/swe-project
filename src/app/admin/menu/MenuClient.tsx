@@ -39,15 +39,55 @@ const columnHelper = createColumnHelper<DishWithIngredients>()
 
 const RECIPE_SUMMARY_LIMIT = 3
 
+type IngredientOption = { id: string; name: string; unit: string }
+
+/**
+ * getInventoryItems() now returns active items only, so an archived ingredient is correctly
+ * absent from the "add an ingredient" picker — but a recipe row that ALREADY references one
+ * would then render an unmatched <select> value and a blank unit label. The dish's own
+ * `ingredients` join carries that item's real name and unit independently of the inventory
+ * query, so the missing option is reinjected from there, flagged as archived.
+ *
+ * Same pattern OrderDetailsClient's dish-focused optionsForRow already uses for archived dishes.
+ * `dish` is null on the create form — a brand-new recipe cannot reference an already-archived
+ * item, because the picker never offered one.
+ */
+function optionsForRow(
+  row: RecipeRow,
+  inventory: InventoryItem[],
+  dish: DishWithIngredients | null
+): IngredientOption[] {
+  const options: IngredientOption[] = inventory.map(inv => ({
+    id: inv.id,
+    name: inv.name,
+    unit: inv.unit,
+  }))
+
+  if (row.inventoryItemId && !options.some(o => o.id === row.inventoryItemId)) {
+    const fromRecipe = dish?.ingredients.find(i => i.inventoryItemId === row.inventoryItemId)?.inventoryItem
+    if (fromRecipe) {
+      options.unshift({
+        id: fromRecipe.id,
+        name: `${fromRecipe.name} (archived)`,
+        unit: fromRecipe.unit,
+      })
+    }
+  }
+
+  return options
+}
+
 function RecipeBuilder({
   rows,
   setRows,
   inventory,
+  dish,
   onAddRow,
 }: {
   rows: RecipeRow[]
   setRows: (rows: RecipeRow[]) => void
   inventory: InventoryItem[]
+  dish: DishWithIngredients | null
   onAddRow: () => void
 }) {
   return (
@@ -65,7 +105,8 @@ function RecipeBuilder({
         </p>
       ) : (
         rows.map((row, index) => {
-          const selected = inventory.find(inv => inv.id === row.inventoryItemId)
+          const options = optionsForRow(row, inventory, dish)
+          const selected = options.find(option => option.id === row.inventoryItemId)
           return (
             <div key={row.internalId} className="flex gap-4 items-center">
               <select
@@ -77,9 +118,9 @@ function RecipeBuilder({
                   setRows(newRows)
                 }}
               >
-                <option value="" disabled>Select item...</option>
-                {inventory.map(inv => (
-                  <option key={inv.id} value={inv.id}>{inv.name} ({inv.unit})</option>
+                <option value="" disabled>Select item…</option>
+                {options.map(option => (
+                  <option key={option.id} value={option.id}>{option.name} ({option.unit})</option>
                 ))}
               </select>
               <Input
@@ -134,17 +175,31 @@ export function MenuClient({
   // Rebuilds the joined `ingredients` shape the table renders from, so an optimistic row looks
   // exactly like one that came back from getDishes. Duplicate picks are summed the same way the
   // server sums them, so the table never shows a recipe the database doesn't hold.
-  function buildIngredients(dishId: string, rows: RecipeRow[]) {
+  //
+  // `inventory` is active-only, so an edited dish whose recipe keeps an archived ingredient has
+  // no match there — the old `inventory.find(...)!` non-null assertion would hand the RECIPE
+  // column an undefined `inventoryItem` and crash the render on `.name`. Fall back to the dish's
+  // own join (the same source optionsForRow reinjects from), and drop any line that resolves in
+  // neither: the server already persisted the true recipe, and revalidatePath reconciles it.
+  function buildIngredients(dishId: string, rows: RecipeRow[], fallbackDish: DishWithIngredients | null) {
     return mergeDuplicateIngredients(
       rows.filter(row => row.inventoryItemId && row.quantityPerDish > 0)
-    ).map(line => ({
-      id: `${dishId}-${line.inventoryItemId}`,
-      dishId,
-      inventoryItemId: line.inventoryItemId,
-      quantityPerDish: line.quantityPerDish,
-      createdAt: new Date(),
-      inventoryItem: inventory.find(inv => inv.id === line.inventoryItemId)!,
-    }))
+    ).flatMap(line => {
+      const inventoryItem =
+        inventory.find(inv => inv.id === line.inventoryItemId)
+        ?? fallbackDish?.ingredients.find(i => i.inventoryItemId === line.inventoryItemId)?.inventoryItem
+
+      if (!inventoryItem) return []
+
+      return [{
+        id: `${dishId}-${line.inventoryItemId}`,
+        dishId,
+        inventoryItemId: line.inventoryItemId,
+        quantityPerDish: line.quantityPerDish,
+        createdAt: new Date(),
+        inventoryItem,
+      }]
+    })
   }
 
   function recipePayload(rows: RecipeRow[]) {
@@ -159,7 +214,7 @@ export function MenuClient({
 
     const newDish = await createDish({ name, price, ingredients: recipePayload(newRecipe) })
 
-    setData([...data, { ...newDish, ingredients: buildIngredients(newDish.id, newRecipe) }])
+    setData([...data, { ...newDish, ingredients: buildIngredients(newDish.id, newRecipe, null) }])
     setIsOpen(false)
     setNewRecipe([])
     toast.add({ title: 'Dish created', description: `"${name}" was added to the menu.`, type: 'success' })
@@ -177,7 +232,7 @@ export function MenuClient({
     })
 
     setData(prev => prev.map(d => d.id === updated.id
-      ? { ...d, ...updated, ingredients: buildIngredients(updated.id, editRecipe) }
+      ? { ...d, ...updated, ingredients: buildIngredients(updated.id, editRecipe, editingDish) }
       : d
     ))
     setEditingDish(null)
@@ -340,6 +395,7 @@ export function MenuClient({
               rows={newRecipe}
               setRows={setNewRecipe}
               inventory={inventory}
+              dish={null}
               onAddRow={() => addRow(newRecipe, setNewRecipe)}
             />
 
@@ -370,6 +426,7 @@ export function MenuClient({
               rows={editRecipe}
               setRows={setEditRecipe}
               inventory={inventory}
+              dish={editingDish}
               onAddRow={() => addRow(editRecipe, setEditRecipe)}
             />
 
