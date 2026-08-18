@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Gitignored, local-only tooling/CLI artifacts — never app source, and often
+    // bundled/minified single-line files that blow up lint output with bogus "line 1"
+    // errors at huge column offsets if picked up.
+    ".claude/**",
+    ".agents/**",
+    "supabase/.temp/**",
   ]),
 ]);
 
