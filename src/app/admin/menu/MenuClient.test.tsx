@@ -122,7 +122,7 @@ describe('MenuClient — create dialog', () => {
     expect(screen.getByRole('heading', { name: 'Add Dish' })).toBeInTheDocument()
   })
 
-  it('recipe builder: "Add Ingredient" adds a row, "X" removes it', async () => {
+  it('recipe builder: "Add Ingredient" adds a row, remove button removes it', async () => {
     const user = userEvent.setup()
     render(<MenuClient initialData={[]} inventory={[rice, chicken]} />)
     await user.click(screen.getByRole('button', { name: /add dish/i }))
@@ -135,7 +135,7 @@ describe('MenuClient — create dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
     expect(screen.getAllByPlaceholderText('Qty')).toHaveLength(2)
 
-    await user.click(screen.getAllByRole('button', { name: 'X' })[0])
+    await user.click(screen.getAllByRole('button', { name: 'Remove ingredient' })[0])
     expect(screen.getAllByPlaceholderText('Qty')).toHaveLength(1)
   })
 

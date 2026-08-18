@@ -11,18 +11,31 @@
  * Pure — no Prisma client, no `next/*` (only the `OrderStatus` *type*), same
  * discipline as `src/lib/recipe.ts`. The `className` values are the `.status-*`
  * classes that already exist in `globals.css`; no new CSS is introduced here.
+ *
+ * `icon` is a Lucide React component — render it as <cfg.icon className="h-3 w-3"
+ * aria-hidden="true" /> at each call site. Lucide is tree-shaken at build time
+ * so only the icons actually imported are bundled.
  */
 
 import type { OrderStatus } from "@prisma/client"
+import type { LucideIcon } from "lucide-react"
+import {
+  Clock,
+  Scissors,
+  Flame,
+  CheckCircle2,
+  PackageCheck,
+  XCircle,
+} from "lucide-react"
 
 export const ORDER_STATUS_CONFIG: Record<
   OrderStatus,
-  { label: string; emoji: string; className: string }
+  { label: string; icon: LucideIcon; className: string }
 > = {
-  PENDING: { label: "Pending", emoji: "⏳", className: "status-pending" },
-  PREPPING: { label: "Prepping", emoji: "🔪", className: "status-prepping" },
-  COOKING: { label: "Cooking", emoji: "🍳", className: "status-cooking" },
-  READY: { label: "Ready", emoji: "✅", className: "status-ready" },
-  COMPLETED: { label: "Completed", emoji: "🎉", className: "status-completed" },
-  CANCELLED: { label: "Cancelled", emoji: "❌", className: "status-cancelled" },
+  PENDING:   { label: "Pending",   icon: Clock,         className: "status-pending"   },
+  PREPPING:  { label: "Prepping",  icon: Scissors,      className: "status-prepping"  },
+  COOKING:   { label: "Cooking",   icon: Flame,         className: "status-cooking"   },
+  READY:     { label: "Ready",     icon: CheckCircle2,  className: "status-ready"     },
+  COMPLETED: { label: "Completed", icon: PackageCheck,  className: "status-completed" },
+  CANCELLED: { label: "Cancelled", icon: XCircle,       className: "status-cancelled" },
 }

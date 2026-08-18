@@ -87,9 +87,16 @@ export default async function CustomerDashboardPage() {
                 <div className="flex flex-col items-end gap-2">
                   {/* The same badge the admin sees — previously a lookalike
                       built from light-mode pastels on an otherwise-dark app. */}
-                  <span className={ORDER_STATUS_CONFIG[order.status].className}>
-                    {ORDER_STATUS_CONFIG[order.status].emoji} {ORDER_STATUS_CONFIG[order.status].label}
-                  </span>
+                  {(() => {
+                    const cfg = ORDER_STATUS_CONFIG[order.status]
+                    const StatusIcon = cfg.icon
+                    return (
+                      <span className={cfg.className}>
+                        <StatusIcon className="h-3 w-3" aria-hidden="true" />
+                        {cfg.label}
+                      </span>
+                    )
+                  })()}
                   {order.totalPrice > 0 && (
                     <span className="table-cell-num text-sm font-medium">{formatCurrency(order.totalPrice)}</span>
                   )}

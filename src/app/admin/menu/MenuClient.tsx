@@ -21,7 +21,7 @@ import { toast } from "@/components/ui/toast"
 import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
 import { mergeDuplicateIngredients } from "@/lib/recipe"
 import { createDish, updateDish, deleteDish, toggleDishActive } from "./actions"
-import { Plus, UtensilsCrossed } from "lucide-react"
+import { Plus, UtensilsCrossed, X, Pencil, Archive, RotateCcw, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type DishWithIngredients = Dish & {
@@ -141,9 +141,10 @@ function RecipeBuilder({
                 type="button"
                 variant="ghost"
                 size="sm"
+                aria-label="Remove ingredient"
                 onClick={() => setRows(rows.filter((_, i) => i !== index))}
               >
-                X
+                <X className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
           )
@@ -341,13 +342,15 @@ export function MenuClient({
       cell: (info) => (
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => openEdit(info.row.original)}>
-            Edit
+            <Pencil className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Edit
           </Button>
           <Button variant="ghost" size="sm" onClick={() => handleToggleActive(info.row.original)}>
-            {info.row.original.isActive ? 'Archive' : 'Restore'}
+            {info.row.original.isActive
+              ? <><Archive className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Archive</>
+              : <><RotateCcw className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Restore</>}
           </Button>
           <Button variant="destructive" size="sm" onClick={() => handleDelete(info.row.original)}>
-            Delete
+            <Trash2 className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Delete
           </Button>
         </div>
       ),

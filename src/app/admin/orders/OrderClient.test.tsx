@@ -127,7 +127,7 @@ describe('OrderClient — create dialog', () => {
     await user.click(dialog.getByRole('button', { name: 'Add Dish' }))
     expect(dialog.getAllByPlaceholderText('Qty')).toHaveLength(2)
 
-    await user.click(dialog.getAllByRole('button', { name: 'X' })[0])
+    await user.click(dialog.getAllByRole('button', { name: 'Remove dish' })[0])
     expect(dialog.getAllByPlaceholderText('Qty')).toHaveLength(1)
   })
 

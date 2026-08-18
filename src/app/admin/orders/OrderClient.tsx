@@ -24,7 +24,7 @@ import { computeDishSubtotal, type DishSelection, type DishWithRecipe } from "@/
 import { BUSINESS_LOCALE, formatCurrency, getCurrencySymbol } from "@/lib/currency"
 import { getDueUrgency, isActiveOrderStatus } from "@/lib/dueDate"
 import { cn } from "@/lib/utils"
-import { AlertTriangle, Clock, ClipboardList } from "lucide-react"
+import { AlertTriangle, Clock, ClipboardList, X, Trash2 } from "lucide-react"
 
 type OrderWithRelations = Order & {
   customer: User,
@@ -166,7 +166,7 @@ export function OrderClient({
             }
           }}
         >
-          Delete
+          <Trash2 className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Delete
         </Button>
       ),
     })
@@ -303,9 +303,10 @@ export function OrderClient({
                       type="button"
                       variant="ghost"
                       size="sm"
+                      aria-label="Remove dish"
                       onClick={() => applyDishSelections(selectedDishes.filter((_, i) => i !== index))}
                     >
-                      X
+                      <X className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </div>
                 ))}

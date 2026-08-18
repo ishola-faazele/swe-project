@@ -16,10 +16,13 @@ describe('ORDER_STATUS_CONFIG', () => {
     expect(Object.keys(ORDER_STATUS_CONFIG).sort()).toEqual([...enumValues].sort())
   })
 
-  it.each(Object.values(OrderStatus))('%s has a non-empty label, emoji, and className', (status) => {
+  it.each(Object.values(OrderStatus))('%s has a non-empty label, icon, and className', (status) => {
     const entry = ORDER_STATUS_CONFIG[status]
     expect(entry.label.length).toBeGreaterThan(0)
-    expect(entry.emoji.length).toBeGreaterThan(0)
+    // Lucide icons are React.forwardRef objects (typeof === 'object'), not plain functions.
+    // TypeScript already enforces the LucideIcon contract at compile time; here we just
+    // confirm the field is present and not null/undefined.
+    expect(entry.icon).toBeTruthy()
     expect(entry.className.length).toBeGreaterThan(0)
   })
 
@@ -34,18 +37,16 @@ describe('ORDER_STATUS_CONFIG', () => {
     expect(new Set(classNames).size).toBe(classNames.length)
   })
 
-  it('CANCELLED and COMPLETED read as visually terminal (distinct from the four in-kitchen statuses)', () => {
+  it('CANCELLED and COMPLETED are visually terminal (distinct from the four in-kitchen statuses)', () => {
     // Not a strict requirement of the type, but the whole reason this module exists is so the
     // admin and customer dashboards agree — pin the two terminal states' concrete values so a
     // future edit to one badge doesn't silently drift from the other's still-passing assertion.
     expect(ORDER_STATUS_CONFIG.CANCELLED).toMatchObject({
       label: 'Cancelled',
-      emoji: '❌',
       className: 'status-cancelled',
     })
     expect(ORDER_STATUS_CONFIG.COMPLETED).toMatchObject({
       label: 'Completed',
-      emoji: '🎉',
       className: 'status-completed',
     })
   })
