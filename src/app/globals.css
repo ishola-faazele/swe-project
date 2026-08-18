@@ -46,50 +46,72 @@
   --radius-2xl: calc(var(--radius) * 2);
 }
 
-/* ── Enterprise Dark Industrial Palette ─────────────────────────────── */
-:root,
-.dark {
-  --background:           oklch(0.08 0.004 65);
-  --foreground:           oklch(0.93 0.008 65);
-  --card:                 oklch(0.11 0.005 65);
-  --card-foreground:      oklch(0.93 0.008 65);
-  --popover:              oklch(0.13 0.005 65);
-  --popover-foreground:   oklch(0.93 0.008 65);
-  --primary:              oklch(0.72 0.15 65);
-  --primary-foreground:   oklch(0.08 0.004 65);
-  --secondary:            oklch(0.16 0.005 65);
-  --secondary-foreground: oklch(0.93 0.008 65);
-  --muted:                oklch(0.15 0.004 65);
-  --muted-foreground:     oklch(0.52 0.01 65);
-  --accent:               oklch(0.18 0.008 65);
-  --accent-foreground:    oklch(0.93 0.008 65);
-  --destructive:          oklch(0.62 0.22 25);
-  --border:               oklch(0.22 0.008 65);
-  --input:                oklch(0.18 0.006 65);
-  --ring:                 oklch(0.72 0.15 65);
-  --chart-1:              oklch(0.72 0.15 65);
-  --chart-2:              oklch(0.62 0.22 25);
-  --chart-3:              oklch(0.65 0.12 150);
-  --chart-4:              oklch(0.58 0.10 200);
-  --chart-5:              oklch(0.55 0.12 300);
-  --radius: 0.375rem;
-  --sidebar:                   oklch(0.10 0.005 65);
-  --sidebar-foreground:        oklch(0.93 0.008 65);
-  --sidebar-primary:           oklch(0.72 0.15 65);
-  --sidebar-primary-foreground:oklch(0.08 0.004 65);
-  --sidebar-accent:            oklch(0.15 0.005 65);
-  --sidebar-accent-foreground: oklch(0.93 0.008 65);
-  --sidebar-border:            oklch(0.20 0.008 65);
-  --sidebar-ring:              oklch(0.72 0.15 65);
+/* ── Tropical Sunrise Palette (Light) ───────────────────────────────── */
+/* Warm orange primary on soft cream backgrounds. Syne + DM Mono fonts.  */
+/* oklch hue 45 = warm orange-amber; hue 25 = red-orange for destructive */
+:root {
+  /* Backgrounds */
+  --background:           oklch(0.98 0.010 75);  /* warm off-white / cream */
+  --foreground:           oklch(0.18 0.025 55);  /* deep warm brown-black  */
+
+  /* Cards / surfaces */
+  --card:                 oklch(1.00 0.000 0);   /* pure white cards */
+  --card-foreground:      oklch(0.18 0.025 55);
+  --popover:              oklch(1.00 0.000 0);
+  --popover-foreground:   oklch(0.18 0.025 55);
+
+  /* Primary — vibrant orange */
+  --primary:              oklch(0.63 0.22 45);   /* vivid orange */
+  --primary-foreground:   oklch(1.00 0.000 0);   /* white on orange */
+
+  /* Secondary — warm sand */
+  --secondary:            oklch(0.93 0.018 75);
+  --secondary-foreground: oklch(0.30 0.035 55);
+
+  /* Muted — light warm gray */
+  --muted:                oklch(0.94 0.012 75);
+  --muted-foreground:     oklch(0.50 0.025 65);
+
+  /* Accent — soft peach highlight */
+  --accent:               oklch(0.94 0.030 60);
+  --accent-foreground:    oklch(0.30 0.040 50);
+
+  /* Destructive — coral red */
+  --destructive:          oklch(0.58 0.22 25);
+
+  /* Borders / inputs */
+  --border:               oklch(0.88 0.018 75);
+  --input:                oklch(0.95 0.012 75);
+  --ring:                 oklch(0.63 0.22 45);   /* orange focus ring */
+
+  /* Charts */
+  --chart-1:              oklch(0.63 0.22 45);   /* orange  */
+  --chart-2:              oklch(0.70 0.18 150);  /* green   */
+  --chart-3:              oklch(0.65 0.18 200);  /* teal    */
+  --chart-4:              oklch(0.60 0.18 270);  /* indigo  */
+  --chart-5:              oklch(0.58 0.22 25);   /* red     */
+
+  --radius: 0.5rem;
+
+  /* Sidebar — slightly warmer than the page bg */
+  --sidebar:                   oklch(0.99 0.006 75);
+  --sidebar-foreground:        oklch(0.18 0.025 55);
+  --sidebar-primary:           oklch(0.63 0.22 45);
+  --sidebar-primary-foreground:oklch(1.00 0.000 0);
+  --sidebar-accent:            oklch(0.93 0.028 60);
+  --sidebar-accent-foreground: oklch(0.35 0.040 50);
+  --sidebar-border:            oklch(0.89 0.016 75);
+  --sidebar-ring:              oklch(0.63 0.22 45);
 }
 
 /* ── Font Variables ──────────────────────────────────────────────────── */
 :root {
   --font-syne: 'Syne', sans-serif;
   --font-dm-mono: 'DM Mono', monospace;
-  --amber: oklch(0.72 0.15 65);
-  --amber-dim: oklch(0.55 0.12 65);
-  --amber-glow: oklch(0.72 0.15 65 / 0.15);
+  /* Orange accent shortcuts — used in stat-card and a few inline gradients */
+  --orange:       oklch(0.63 0.22 45);
+  --orange-dim:   oklch(0.75 0.14 55);
+  --orange-glow:  oklch(0.63 0.22 45 / 0.12);
 }
 
 /* ── Base ────────────────────────────────────────────────────────────── */
@@ -100,11 +122,9 @@
   html {
     @apply antialiased;
     font-family: var(--font-syne), sans-serif;
-    /* Tells the browser to render its OWN chrome (scrollbars, native <select>
-       popup lists, date pickers, autofill) in dark mode. Complementary to — not
-       redundant with — the `.select-field` explicit colors and the `viewport`
-       export's colorScheme: browsers vary in how completely they honor each. */
-    color-scheme: dark;
+    /* Light color-scheme: browser chrome (scrollbars, native <select>
+       popup lists, date pickers, autofill) renders in light mode to match. */
+    color-scheme: light;
   }
   body {
     @apply bg-background text-foreground min-h-screen;
@@ -199,40 +219,41 @@
 
 /* ── Utilities ───────────────────────────────────────────────────────── */
 @layer utilities {
-  /* Stat card with amber top-line accent */
+  /* Stat card with orange top-line accent */
   .stat-card {
-    @apply rounded-lg border bg-card p-6 relative overflow-hidden;
-    border-color: oklch(0.22 0.008 65);
+    @apply rounded-xl border bg-card p-6 relative overflow-hidden shadow-sm;
+    border-color: var(--border);
   }
   .stat-card::before {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, oklch(0.72 0.15 65), transparent);
-    opacity: 0.5;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--orange), transparent);
+    opacity: 0.7;
   }
 
-  /* Status badges */
-  .status-pending   { @apply inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium bg-zinc-900 text-zinc-400 border border-zinc-700/80; }
-  .status-prepping  { @apply inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium bg-blue-950/50 text-blue-300 border border-blue-700/40; }
-  .status-cooking   { @apply inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium bg-orange-950/50 text-orange-300 border border-orange-700/40; }
-  .status-ready     { @apply inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium bg-emerald-950/50 text-emerald-300 border border-emerald-700/40; }
-  .status-completed { @apply inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium bg-zinc-900/50 text-zinc-500 border border-zinc-800; }
-  .status-cancelled { @apply inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium bg-red-950/50 text-red-400 border border-red-800/40; }
+  /* Status badges — light-mode palette.
+     Each badge keeps both a background tint AND an explicit text color so the
+     meaning is never carried by color alone (accessibility). */
+  .status-pending   { @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold bg-stone-100 text-stone-600 border border-stone-300; }
+  .status-prepping  { @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold bg-blue-50  text-blue-700  border border-blue-200; }
+  .status-cooking   { @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200; }
+  .status-ready     { @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200; }
+  .status-completed { @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold bg-stone-100 text-stone-400 border border-stone-200; }
+  .status-cancelled { @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold bg-red-50   text-red-600   border border-red-200; }
 
   /* Stock level badges */
-  .stock-critical { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-red-950/60 text-red-400 border border-red-800/50; }
-  .stock-warning  { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-amber-950/60 text-amber-400 border border-amber-800/50; }
-  .stock-ok       { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/50; }
+  .stock-critical { @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold bg-red-50   text-red-700   border border-red-200; }
+  .stock-warning  { @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200; }
+  .stock-ok       { @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200; }
 
   /* Due-date urgency badges — always paired with a text label at the call site,
      never carrying the meaning by color alone. */
-  .due-overdue { @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium bg-red-950/60 text-red-400 border border-red-800/50; }
-  .due-today   { @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium bg-amber-950/60 text-amber-400 border border-amber-800/50; }
+  .due-overdue { @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold bg-red-50   text-red-700   border border-red-200; }
+  .due-today   { @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200; }
 
-  /* Dish status (Menu screen) — same visual family as .status-ready/.status-completed.
-     Replaces MenuClient's runtime `${color}20`/`${color}40` string concatenation. */
-  .dish-active   { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium font-mono-data bg-emerald-950/50 text-emerald-300 border border-emerald-700/40; }
-  .dish-archived { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium font-mono-data bg-zinc-900/50 text-zinc-500 border border-zinc-800; }
+  /* Dish status (Menu screen) */
+  .dish-active   { @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold font-mono-data bg-emerald-50 text-emerald-700 border border-emerald-200; }
+  .dish-archived { @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold font-mono-data bg-stone-100 text-stone-400 border border-stone-200; }
 }
