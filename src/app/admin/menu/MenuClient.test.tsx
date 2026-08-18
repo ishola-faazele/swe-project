@@ -94,7 +94,7 @@ describe('MenuClient — table', () => {
 
     expect(screen.getByText('#1')).toBeInTheDocument()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()
-    expect(screen.getByText('₦1,200.00')).toBeInTheDocument()
+    expect(screen.getByText('GH₵1,200.00')).toBeInTheDocument()
     expect(screen.getByText(/Long Grain Rice 0.25kg/)).toBeInTheDocument()
     expect(screen.getByText('ACTIVE')).toBeInTheDocument()
 
@@ -155,7 +155,7 @@ describe('MenuClient — create dialog', () => {
     await user.click(screen.getByRole('button', { name: /add dish/i }))
 
     await user.type(screen.getByLabelText('Dish Name'), 'Fried Rice')
-    await user.type(screen.getByLabelText('Price (₦)'), '1300')
+    await user.type(screen.getByLabelText('Price (GH₵)'), '1300')
     await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
     await user.selectOptions(screen.getByRole('combobox'), rice.id)
     await user.type(screen.getByPlaceholderText('Qty'), '0.25')
@@ -183,7 +183,7 @@ describe('MenuClient — edit dialog', () => {
 
     expect(screen.getByRole('heading', { name: 'Edit Dish #1' })).toBeInTheDocument()
     expect(screen.getByLabelText('Dish Name')).toHaveValue('Jollof Rice')
-    expect(screen.getByLabelText('Price (₦)')).toHaveValue(1200)
+    expect(screen.getByLabelText('Price (GH₵)')).toHaveValue(1200)
     expect(screen.getByRole('combobox')).toHaveValue(rice.id)
     expect(screen.getByPlaceholderText('Qty')).toHaveValue(0.25)
   })
@@ -197,7 +197,7 @@ describe('MenuClient — edit dialog', () => {
     const nameInput = screen.getByLabelText('Dish Name')
     await user.clear(nameInput)
     await user.type(nameInput, 'Jollof Rice (Large)')
-    const priceInput = screen.getByLabelText('Price (₦)')
+    const priceInput = screen.getByLabelText('Price (GH₵)')
     await user.clear(priceInput)
     await user.type(priceInput, '1500')
 
@@ -208,7 +208,7 @@ describe('MenuClient — edit dialog', () => {
       expect.objectContaining({ name: 'Jollof Rice (Large)', price: 1500 })
     )
     expect(await screen.findByText('Jollof Rice (Large)')).toBeInTheDocument()
-    expect(screen.getByText('₦1,500.00')).toBeInTheDocument()
+    expect(screen.getByText('GH₵1,500.00')).toBeInTheDocument()
   })
 })
 

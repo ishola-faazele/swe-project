@@ -172,7 +172,7 @@ describe('OrderDetailsClient — edit mode', () => {
     const select = screen.getAllByRole('combobox')[1]
     await user.selectOptions(select, jollof.id)
 
-    const totalPriceInput = screen.getByLabelText('Total Price (₦)') as HTMLInputElement
+    const totalPriceInput = screen.getByLabelText('Total Price (GH₵)') as HTMLInputElement
     expect(totalPriceInput.value).toBe('1200') // default qty 1 * price 1200
   })
 

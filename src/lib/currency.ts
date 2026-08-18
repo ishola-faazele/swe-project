@@ -2,10 +2,14 @@
  * Currency formatting — the single source of truth for how money is rendered
  * anywhere in this app (admin tables, order forms, the customer portal).
  *
- * The business is Nigerian (see `prisma/seed.ts`: +234 phone codes, Nigerian
- * customer names, ₦3,500–₦45,000 order magnitudes), so the default is NGN/en-NG.
- * `NEXT_PUBLIC_CURRENCY` can override the code; it is `NEXT_PUBLIC_`-prefixed
- * because both Server and Client Components format prices.
+ * The business operates in Ghana (confirmed directly by the owner), so the
+ * default is GHS/en-GH. The seed fixture data (`prisma/seed.ts`: +234 phone
+ * codes, Nigerian customer names) is just placeholder test data and was never
+ * a reliable signal for the business's actual currency — an earlier version
+ * of this module defaulted to NGN based on that fixture data before the owner
+ * corrected it. `NEXT_PUBLIC_CURRENCY` can still override the code for local
+ * testing; it is `NEXT_PUBLIC_`-prefixed because both Server and Client
+ * Components format prices.
  *
  * The currency is resolved and the formatter built ONCE at module load, not per
  * call — `Intl.NumberFormat` construction is the expensive part, and the value
@@ -13,9 +17,9 @@
  * time, so changing it requires a rebuild/restart).
  */
 
-export const BUSINESS_LOCALE = "en-NG"
+export const BUSINESS_LOCALE = "en-GH"
 
-const DEFAULT_CURRENCY = "NGN"
+const DEFAULT_CURRENCY = "GHS"
 
 const CURRENCY_LOCALES: Record<string, string> = {
   NGN: "en-NG",
