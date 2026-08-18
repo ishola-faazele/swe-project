@@ -169,6 +169,17 @@
            disabled:opacity-60 disabled:cursor-not-allowed;
   }
 
+  /* Mobile nav drawer — specific to MobileNavTrigger, not a general primitive.
+     `overscroll-behavior: contain` stops a scroll gesture inside the drawer
+     from rubber-banding the page behind it; the safe-area insets keep nav items
+     clear of a notch or home indicator when the drawer runs full-height. */
+  .mobile-nav-drawer {
+    overscroll-behavior: contain;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+  }
+
   /* Empty states — one shape for "this table/list has nothing in it yet," so
      every screen renders a deliberate icon + message + hint instead of a bare
      gray sentence or a broken-looking blank row. */
@@ -178,12 +189,16 @@
   .empty-state-hint { @apply text-xs text-muted-foreground max-w-xs text-balance; }
 }
 
+/* Declared with `@utility` rather than as a plain class in `@layer utilities`
+   so it can be referenced from `@apply` in the component classes below —
+   Tailwind v4 only resolves registered utilities there, not arbitrary CSS
+   classes that happen to be defined in a utilities layer. */
+@utility font-mono-data {
+  font-family: var(--font-dm-mono), monospace;
+}
+
 /* ── Utilities ───────────────────────────────────────────────────────── */
 @layer utilities {
-  .font-mono-data {
-    font-family: var(--font-dm-mono), monospace;
-  }
-
   /* Stat card with amber top-line accent */
   .stat-card {
     @apply rounded-lg border bg-card p-6 relative overflow-hidden;
