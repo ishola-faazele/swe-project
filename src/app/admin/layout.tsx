@@ -1,4 +1,5 @@
 import { AdminLayout } from '@/components/layout/AdminLayout'
+import { Header } from '@/components/layout/Header'
 import { createClient } from '@/utils/supabase/server'
 import { getCurrentDbUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
@@ -19,7 +20,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <AdminLayout>
+    <AdminLayout header={<Header />}>
       {children}
     </AdminLayout>
   )
