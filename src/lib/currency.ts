@@ -68,7 +68,7 @@ const formatter = new Intl.NumberFormat(LOCALE, {
 })
 
 /**
- * Formats an amount as a full localized currency string, e.g. `₦1,200.00`.
+ * Formats an amount as a full localized currency string, e.g. `GH₵1,200.00`.
  * Non-finite input (NaN/Infinity — e.g. a half-typed form field coerced with
  * `Number()`) formats as zero rather than rendering the literal text "NaN".
  */
@@ -76,7 +76,7 @@ export function formatCurrency(amount: number): string {
   return formatter.format(Number.isFinite(amount) ? amount : 0)
 }
 
-/** The bare symbol only (e.g. `₦`), for form labels like "Total Price (₦)". */
+/** The bare symbol only (e.g. `GH₵`), for form labels like "Total Price (GH₵)". */
 export function getCurrencySymbol(): string {
   return formatter.formatToParts(0).find((p) => p.type === "currency")?.value ?? CURRENCY_CODE
 }
