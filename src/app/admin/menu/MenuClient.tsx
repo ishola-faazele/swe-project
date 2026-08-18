@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/toast"
+import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
 import { mergeDuplicateIngredients } from "@/lib/recipe"
 import { createDish, updateDish, deleteDish, toggleDishActive } from "./actions"
 import { Plus } from "lucide-react"
@@ -249,8 +250,8 @@ export function MenuClient({
     columnHelper.accessor("price", {
       header: "PRICE",
       cell: (info) => (
-        <span className="font-mono-data text-sm" style={{ color: 'oklch(0.85 0.008 65)' }}>
-          ${info.getValue()}
+        <span className="font-mono-data table-cell-num text-sm text-foreground">
+          {formatCurrency(info.getValue())}
         </span>
       ),
     }),
@@ -340,7 +341,7 @@ export function MenuClient({
                 <Input id="name" name="name" placeholder="e.g. Jollof Rice" required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="price">Price ($)</Label>
+                <Label htmlFor="price">Price ({getCurrencySymbol()})</Label>
                 <Input id="price" name="price" type="number" step="any" min="0" required />
               </div>
             </div>
@@ -370,7 +371,7 @@ export function MenuClient({
                 <Input id="edit-name" name="name" defaultValue={editingDish?.name ?? ''} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-price">Price ($)</Label>
+                <Label htmlFor="edit-price">Price ({getCurrencySymbol()})</Label>
                 <Input id="edit-price" name="price" type="number" step="any" min="0" defaultValue={editingDish?.price ?? 0} required />
               </div>
             </div>

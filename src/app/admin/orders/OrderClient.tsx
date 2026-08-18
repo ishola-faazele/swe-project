@@ -22,6 +22,10 @@ import {
 } from "@/components/ui/dialog"
 import { createOrder, updateOrderStatus, deleteOrder } from "./actions"
 import { computeDishSubtotal, type DishSelection, type DishWithRecipe } from "@/lib/recipe"
+import { BUSINESS_LOCALE, formatCurrency, getCurrencySymbol } from "@/lib/currency"
+import { getDueUrgency, isActiveOrderStatus } from "@/lib/dueDate"
+import { cn } from "@/lib/utils"
+import { AlertTriangle, Clock, ClipboardList } from "lucide-react"
 
 type OrderWithRelations = Order & {
   customer: User,
@@ -82,6 +86,17 @@ export function OrderClient({
           disabled={info.row.original.status === 'CANCELLED'}
           onChange={async (e) => {
             const val = e.target.value as OrderStatus
+            // Cancellation is terminal — there is no un-cancel, a mistake means
+            // re-creating the order from scratch. The <select> is already
+            // disabled once CANCELLED, so this can only fire on the way IN.
+            // Declining reverts the controlled <select> on its own, the same
+            // way the !result.ok path below does.
+            if (val === 'CANCELLED') {
+              const confirmed = confirm(
+                `Cancel order #${info.row.original.shortId}? This cannot be undone — a new order must be created if this was a mistake.`
+              )
+              if (!confirmed) return
+            }
             try {
               const result = await updateOrderStatus(info.row.original.id, val)
               if (!result.ok) {
@@ -99,9 +114,39 @@ export function OrderClient({
         </select>
       ),
     }),
+    columnHelper.accessor("dueDate", {
+      header: "Due",
+      cell: (info) => {
+        const dueDate = info.getValue()
+        if (!dueDate) return <span className="meta-text">—</span>
+        // Only orders still in the kitchen queue can be "late" — a COMPLETED
+        // order with a long-past due date was delivered, not missed.
+        const urgency = isActiveOrderStatus(info.row.original.status)
+          ? getDueUrgency(dueDate)
+          : "none"
+        const label = dueDate.toLocaleDateString(BUSINESS_LOCALE, { month: 'short', day: 'numeric' })
+
+        // Badges always pair an icon with a text label — never color alone.
+        if (urgency === 'overdue') {
+          return (
+            <span className="due-overdue">
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" /> Overdue · {label}
+            </span>
+          )
+        }
+        if (urgency === 'due-today') {
+          return (
+            <span className="due-today">
+              <Clock className="h-3 w-3" aria-hidden="true" /> Due Today
+            </span>
+          )
+        }
+        return <span className="meta-text">{label}</span>
+      },
+    }),
     columnHelper.accessor("totalPrice", {
       header: "Total",
-      cell: (info) => `$${info.getValue()}`,
+      cell: (info) => <span className="table-cell-num">{formatCurrency(info.getValue())}</span>,
     }),
     columnHelper.display({
       id: "actions",
@@ -141,11 +186,18 @@ export function OrderClient({
     const description = formData.get("description") as string
     const totalPrice = Number(formData.get("totalPrice"))
 
+    // A bare "YYYY-MM-DD" parses as UTC midnight per spec. Lagos is UTC+1, so
+    // that instant is still the SAME calendar day locally, and getDueUrgency
+    // compares Lagos calendar days. Deliberately not "fixed" to local-time
+    // parsing — the two behaviors only agree because of that interaction.
+    const dueDateStr = formData.get("dueDate") as string
+    const dueDate = dueDateStr ? new Date(dueDateStr) : null
+
     // Only pass rows that actually have a dish selected and a positive quantity
     const orderedDishes = selectedDishes.filter(d => d.dishId && d.quantity > 0)
 
     try {
-      const result = await createOrder({ customerId, description, totalPrice, dishes: orderedDishes })
+      const result = await createOrder({ customerId, description, totalPrice, dueDate, dishes: orderedDishes })
       if (!result.ok) {
         alert(result.error)
         return
@@ -185,7 +237,7 @@ export function OrderClient({
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="totalPrice">Total Price ($)</Label>
+                  <Label htmlFor="totalPrice">Total Price ({getCurrencySymbol()})</Label>
                   <Input
                     id="totalPrice"
                     name="totalPrice"
@@ -196,6 +248,11 @@ export function OrderClient({
                     onChange={(e) => setTotalPriceInput(e.target.value === '' ? '' : Number(e.target.value))}
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dueDate">Due Date (Optional)</Label>
+                <Input id="dueDate" name="dueDate" type="date" autoComplete="off" />
               </div>
 
               <div className="space-y-2">
@@ -228,7 +285,7 @@ export function OrderClient({
                     >
                       <option value="" disabled>Select dish...</option>
                       {activeDishes.map(dish => (
-                        <option key={dish.id} value={dish.id}>{dish.name} (${dish.price})</option>
+                        <option key={dish.id} value={dish.id}>{dish.name} ({formatCurrency(dish.price)})</option>
                       ))}
                     </select>
                     <Input
@@ -279,14 +336,23 @@ export function OrderClient({
           </thead>
           <tbody>
             {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row, idx) => (
+              table.getRowModel().rows.map((row, idx) => {
+                // Row tint REINFORCES the Due column's badge; it never carries
+                // the urgency on its own. Expressed as classes rather than an
+                // inline style object specifically so the hover: variants below
+                // are possible at all — inline styles cannot express :hover.
+                const urgency = isActiveOrderStatus(row.original.status)
+                  ? getDueUrgency(row.original.dueDate)
+                  : "none"
+                return (
                 <tr
                   key={row.id}
-                  className="cursor-pointer transition-colors"
-                  style={{
-                    background: idx % 2 === 0 ? 'oklch(0.10 0.004 65)' : 'transparent',
-                    borderBottom: '1px solid oklch(0.16 0.005 65)',
-                  }}
+                  className={cn(
+                    "table-row cursor-pointer",
+                    urgency === 'overdue' && 'bg-destructive/8 hover:bg-destructive/12',
+                    urgency === 'due-today' && 'bg-primary/6 hover:bg-primary/10',
+                    urgency !== 'overdue' && urgency !== 'due-today' && (idx % 2 === 0 ? 'bg-card/40' : ''),
+                  )}
                   onClick={(e) => {
                     if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'BUTTON') {
                       router.push(`/admin/orders/${row.original.id}`)
@@ -299,7 +365,8 @@ export function OrderClient({
                     </td>
                   ))}
                 </tr>
-              ))
+                )
+              })
             ) : (
               <tr>
                 <td

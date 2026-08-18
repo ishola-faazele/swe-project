@@ -78,6 +78,15 @@ export const updateOrderStatusSchema = z.object({
 })
 
 /**
+ * Due date is nullish by design: clearing the date input is a legitimate edit
+ * that sets the column back to NULL, not a validation failure.
+ */
+export const updateOrderDueDateSchema = z.object({
+  id: idSchema,
+  dueDate: z.date().nullish(),
+})
+
+/**
  * updateOrderItems replaced the old ingredients-only updateOrderIngredients action once orders
  * moved to dish-based line items. `extraIngredients` covers one-off manual deductions (e.g. a
  * customization not captured by any dish's recipe) alongside the dish-derived ones.

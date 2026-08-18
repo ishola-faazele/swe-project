@@ -5,8 +5,39 @@ import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/auth'
 import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { decrementStockOrThrow } from '@/lib/inventory'
-import { updateOrderItemsSchema } from '@/lib/validation'
+import { updateOrderDueDateSchema, updateOrderItemsSchema } from '@/lib/validation'
 import { expandDishesToIngredients } from '@/lib/recipe'
+import type { Order } from '@prisma/client'
+
+/**
+ * Sets or clears an order's due date after creation. Touches no stock and no
+ * line items, so it needs no transaction — it is a single-column update.
+ *
+ * `toErrorResult` already maps a Prisma P2025 (row vanished, e.g. the order was
+ * deleted in another tab) onto a clean NOT_FOUND result, so no separate
+ * existence check is needed here — same convention as its sibling actions.
+ */
+export async function updateOrderDueDate(
+  id: string,
+  dueDate: Date | null
+): Promise<ActionResult<Order>> {
+  await requireAdmin()
+
+  let order: Order
+  try {
+    const input = updateOrderDueDateSchema.parse({ id, dueDate })
+    order = await prisma.order.update({
+      where: { id: input.id },
+      data: { dueDate: input.dueDate ?? null },
+    })
+  } catch (err) {
+    return toErrorResult(err, "Could not update this order's due date.")
+  }
+
+  revalidatePath(`/admin/orders/${id}`)
+  revalidatePath('/admin/orders')
+  return okResult(order)
+}
 
 /**
  * The single writer of OrderIngredientLog and OrderDish for the edit flow. Dishes and manually

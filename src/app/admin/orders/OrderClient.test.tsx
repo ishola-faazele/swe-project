@@ -114,7 +114,7 @@ describe('OrderClient — create dialog', () => {
     const dishSelect = dialogContent().getAllByRole('combobox')[1] // [0] is the customer select
     const optionLabels = within(dishSelect).getAllByRole('option').map((o) => o.textContent)
     expect(optionLabels).toEqual(
-      expect.arrayContaining(['Jollof Rice ($1200)', 'Meat Pie ($350)'])
+      expect.arrayContaining(['Jollof Rice (₦1,200.00)', 'Meat Pie (₦350.00)'])
     )
     expect(optionLabels.join(' ')).not.toContain('Retired Special')
   })
@@ -140,7 +140,7 @@ describe('OrderClient — create dialog', () => {
     render(<OrderClient initialData={[]} customers={[customer]} inventory={[]} dishes={dishes} />)
     await user.click(screen.getByText('Create Order'))
     const dialog = dialogContent()
-    const totalPriceInput = dialog.getByLabelText('Total Price ($)') as HTMLInputElement
+    const totalPriceInput = dialog.getByLabelText('Total Price (₦)') as HTMLInputElement
 
     expect(totalPriceInput.value).toBe('')
 
@@ -169,7 +169,7 @@ describe('OrderClient — create dialog', () => {
 
     await user.click(dialog.getByRole('button', { name: 'Add Dish' }))
     await user.selectOptions(dialog.getAllByRole('combobox')[1], jollof.id)
-    const totalPriceInput = dialog.getByLabelText('Total Price ($)') as HTMLInputElement
+    const totalPriceInput = dialog.getByLabelText('Total Price (₦)') as HTMLInputElement
     expect(totalPriceInput.value).toBe('1200')
 
     await user.clear(totalPriceInput)

@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
+import { formatCurrency } from '@/lib/currency'
 
 const statusColors: Record<string, string> = {
   PENDING: 'bg-yellow-100 text-yellow-800',
@@ -99,7 +100,7 @@ export default async function CustomerDashboardPage() {
                     {statusEmojis[order.status] || ''} {order.status}
                   </span>
                   {order.totalPrice > 0 && (
-                    <span className="text-sm font-medium">${order.totalPrice.toFixed(2)}</span>
+                    <span className="table-cell-num text-sm font-medium">{formatCurrency(order.totalPrice)}</span>
                   )}
                 </div>
               </div>
