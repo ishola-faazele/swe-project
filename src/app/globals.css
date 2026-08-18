@@ -100,6 +100,11 @@
   html {
     @apply antialiased;
     font-family: var(--font-syne), sans-serif;
+    /* Tells the browser to render its OWN chrome (scrollbars, native <select>
+       popup lists, date pickers, autofill) in dark mode. Complementary to — not
+       redundant with — the `.select-field` explicit colors and the `viewport`
+       export's colorScheme: browsers vary in how completely they honor each. */
+    color-scheme: dark;
   }
   body {
     @apply bg-background text-foreground min-h-screen;
@@ -110,6 +115,67 @@
     font-weight: 700;
     letter-spacing: -0.02em;
   }
+  /* Removes the ~300ms double-tap-zoom delay on touch. The tap highlight is
+     cleared deliberately: focus-visible rings are this app's feedback mechanism,
+     and every interactive primitive (Button, Input, .select-field) has one. */
+  a, button, [role="button"], summary {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* One global reduced-motion override instead of auditing every transition and
+   animation for a `motion-reduce:` variant by hand — impossible to forget on a
+   class-by-class basis, and it also catches third-party animation classes
+   (tw-animate-css) that we don't author. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Components — the shared type scale, table primitives, and field styles ──
+   Every screen picks from these roles instead of improvising a new
+   text-size + tracking + color combination per heading. Each value maps to a
+   token already defined in `:root`/`.dark` above; no new raw colors here. */
+@layer components {
+  /* Type scale — one class per role */
+  .page-title    { @apply text-2xl md:text-3xl font-extrabold tracking-tight text-foreground text-balance; }
+  .eyebrow       { @apply text-xs font-semibold uppercase tracking-widest text-muted-foreground font-mono-data; }
+  .section-title { @apply text-lg font-bold tracking-tight text-foreground; }
+  .stat-value    { @apply text-3xl lg:text-4xl font-bold font-mono-data tabular-nums leading-none; }
+  .meta-text     { @apply text-xs text-muted-foreground font-mono-data; }
+
+  /* Table primitives — replace the per-file inline <th>/<tr> style objects.
+     `tabular-nums` is what keeps numeric columns from jittering as values change:
+     DM Mono is already monospace, but the numeric variant is stated explicitly
+     rather than assumed from the font choice. */
+  .table-head-cell { @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest text-muted-foreground font-mono-data; }
+  .table-row       { @apply border-b border-border/60 transition-colors hover:bg-muted/40; }
+  .table-cell-num  { @apply font-mono-data tabular-nums; }
+
+  /* Native <select>/<input type=date> — a real fill and an explicit text color,
+     replacing three inconsistent ad hoc treatments (bg-transparent, raw
+     slate-100/800, and border-input bg-transparent). See the `color-scheme`
+     note above: the closed control is ours to style, the popup list is the
+     browser's, and both need to be told this app is dark. */
+  .select-field {
+    @apply h-9 w-full rounded-md border border-input bg-input px-3 py-1.5 text-sm text-foreground
+           shadow-sm outline-none transition-colors
+           focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50
+           disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  /* Empty states — one shape for "this table/list has nothing in it yet," so
+     every screen renders a deliberate icon + message + hint instead of a bare
+     gray sentence or a broken-looking blank row. */
+  .empty-state      { @apply flex flex-col items-center justify-center gap-3 px-6 py-16 text-center; }
+  .empty-state-icon { @apply flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground; }
+  .empty-state-title{ @apply text-sm font-semibold text-foreground; }
+  .empty-state-hint { @apply text-xs text-muted-foreground max-w-xs text-balance; }
 }
 
 /* ── Utilities ───────────────────────────────────────────────────────── */
@@ -144,4 +210,14 @@
   .stock-critical { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-red-950/60 text-red-400 border border-red-800/50; }
   .stock-warning  { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-amber-950/60 text-amber-400 border border-amber-800/50; }
   .stock-ok       { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/50; }
+
+  /* Due-date urgency badges — always paired with a text label at the call site,
+     never carrying the meaning by color alone. */
+  .due-overdue { @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium bg-red-950/60 text-red-400 border border-red-800/50; }
+  .due-today   { @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium bg-amber-950/60 text-amber-400 border border-amber-800/50; }
+
+  /* Dish status (Menu screen) — same visual family as .status-ready/.status-completed.
+     Replaces MenuClient's runtime `${color}20`/`${color}40` string concatenation. */
+  .dish-active   { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium font-mono-data bg-emerald-950/50 text-emerald-300 border border-emerald-700/40; }
+  .dish-archived { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium font-mono-data bg-zinc-900/50 text-zinc-500 border border-zinc-800; }
 }

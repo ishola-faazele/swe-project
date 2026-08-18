@@ -48,7 +48,7 @@ to use.
 | ORM | **Prisma** | Schema-push workflow (`db push`, no migrations) |
 | Auth | **Supabase Auth** | Magic-link / passwordless only |
 | Styling | **Tailwind CSS v4** | Enterprise dark theme; amber/gold accent; Syne + DM Mono fonts |
-| UI Primitives | **Base UI** (`@base-ui-components/react`) + Shadcn | `style: base-nova`, `neutral` base colour |
+| UI Primitives | **Base UI** (`@base-ui/react`) + Shadcn | `style: base-nova`, `neutral` base colour |
 | Tables | **TanStack Table v8** | Headless; custom `<table>` HTML rendering |
 | Email | **Resend** | Omitted locally — falls back to `console.log` |
 | Icons | **Lucide React** | |
@@ -121,6 +121,10 @@ swe-project/
 │   │   ├── server.ts                 # Server (RSC/Action) Supabase client — cookie-based
 │   │   └── session.ts                # Proxy-context Supabase client
 │   └── proxy.ts                      # Next.js routing middleware (renamed from middleware.ts)
+├── test/                             # Unit-test support — setup.ts, next/cache mock, fixtures
+├── tests/integration/                # Integration suite + guard-database-url.ts safety check
+├── vitest.config.mts                 # Unit config — `node` + `jsdom` projects
+├── vitest.integration.config.mts     # Integration config — isolated rosty_integrity_test DB
 ├── supabase/config.toml              # Local Supabase CLI config
 ├── .env                              # Real secrets — never commit
 ├── .env.example                      # Safe template
