@@ -36,6 +36,7 @@ const rice: InventoryItem = {
   unit: 'kg',
   currentStock: 80,
   minimumThreshold: 15,
+  isActive: true,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 }
@@ -47,6 +48,7 @@ const chicken: InventoryItem = {
   unit: 'kg',
   currentStock: 40,
   minimumThreshold: 10,
+  isActive: true,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 }

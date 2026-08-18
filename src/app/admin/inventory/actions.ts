@@ -4,12 +4,25 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { Category, type InventoryItem } from '@prisma/client'
 import { requireAdmin } from '@/lib/auth'
-import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
+import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { createInventoryItemSchema, idSchema, updateInventoryItemSchema } from '@/lib/validation'
 
-export async function getInventoryItems() {
+/**
+ * The single enforcement point for "what counts as a selectable inventory item".
+ *
+ * Defaults to active-only, which is what every picker/reference call site wants (the recipe
+ * builder, the order-detail extra-ingredients editor, OrderClient's fetched-but-unused prop) —
+ * an archived item must never be offered for a NEW recipe row or order line. Only the inventory
+ * management screen itself opts into `includeArchived: true`, so its reveal toggle has archived
+ * rows to show and restore. Historical reads (a past order's OrderIngredientLog rows) never come
+ * through here at all — they join `inventoryItem` directly — so archiving can't rewrite history.
+ */
+export async function getInventoryItems(
+  options: { includeArchived?: boolean } = {}
+): Promise<InventoryItem[]> {
   await requireAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
   return await prisma.inventoryItem.findMany({
+    where: options.includeArchived ? undefined : { isActive: true },
     orderBy: {
       name: 'asc'
     }
@@ -62,24 +75,37 @@ export async function updateInventoryItem(id: string, data: { name?: string, cur
   return okResult(item)
 }
 
-export async function deleteInventoryItem(id: string): Promise<ActionResult<void>> {
+export async function deleteInventoryItem(id: string): Promise<ActionResult<{ archived: boolean }>> {
   await requireAdmin()
 
   try {
     const parsedId = idSchema.parse(id)
 
-    // Pre-check gives a specific, useful count instead of relying only on the P2003 catch.
-    // OrderIngredientLog.inventoryItem has no onDelete clause (Prisma defaults to Restrict), so
-    // without this the delete surfaces as a raw 500. The small TOCTOU window between this count
-    // and the delete is accepted for a single-admin tool; toErrorResult's P2003 branch backstops it.
-    const usageCount = await prisma.orderIngredientLog.count({ where: { inventoryItemId: parsedId } })
-    if (usageCount > 0) {
-      throw new ActionError(
-        `Cannot delete this item — it is referenced by ${usageCount} order record${usageCount === 1 ? '' : 's'}. Historical orders keep a permanent link to the ingredients they used.`,
-        'FK_CONSTRAINT'
-      )
+    // TWO independent relations point at InventoryItem, and neither declares an onDelete clause,
+    // so both default to RESTRICT: OrderIngredientLog (what a past order actually consumed) and
+    // DishIngredient (what a dish's recipe calls for). A recipe can reference an ingredient that
+    // has never once been ordered, so counting only OrderIngredientLog — as this pre-check used
+    // to — let that case slip through to a raw P2003 at the database. Both must be counted.
+    const [orderUsageCount, recipeUsageCount] = await Promise.all([
+      prisma.orderIngredientLog.count({ where: { inventoryItemId: parsedId } }),
+      prisma.dishIngredient.count({ where: { inventoryItemId: parsedId } }),
+    ])
+
+    if (orderUsageCount > 0 || recipeUsageCount > 0) {
+      // Referenced somewhere — archive instead of erroring, exactly like deleteDish. The row
+      // genuinely cannot be hard-deleted, and history has to keep resolving its name and unit.
+      await prisma.inventoryItem.update({
+        where: { id: parsedId },
+        data: { isActive: false }
+      })
+
+      revalidatePath('/admin/inventory')
+      return okResult({ archived: true })
     }
 
+    // Unreferenced by both tables — safe to hard-delete. The small TOCTOU window between the
+    // counts and this delete is accepted for a single-admin tool; toErrorResult's P2003 branch
+    // backstops it.
     await prisma.inventoryItem.delete({
       where: { id: parsedId }
     })
@@ -88,5 +114,29 @@ export async function deleteInventoryItem(id: string): Promise<ActionResult<void
   }
 
   revalidatePath('/admin/inventory')
-  return okResult(undefined)
+  return okResult({ archived: false })
+}
+
+/**
+ * Explicit, manual archive/restore — the counterpart to deleteInventoryItem's automatic
+ * archive-on-conflict fallback, mirroring toggleDishActive's relationship to deleteDish.
+ * Restoring is unconditional: bringing an item back into the pickers references nothing.
+ */
+export async function toggleInventoryItemActive(id: string, isActive: boolean): Promise<ActionResult<InventoryItem>> {
+  await requireAdmin()
+
+  let item: InventoryItem
+  try {
+    const parsedId = idSchema.parse(id)
+
+    item = await prisma.inventoryItem.update({
+      where: { id: parsedId },
+      data: { isActive }
+    })
+  } catch (err) {
+    return toErrorResult(err, 'Could not update this inventory item. Please try again.')
+  }
+
+  revalidatePath('/admin/inventory')
+  return okResult(item)
 }

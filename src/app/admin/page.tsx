@@ -29,7 +29,13 @@ export default async function AdminDashboardPage() {
     prisma.order.count(),
     prisma.user.count({ where: { role: 'CUSTOMER' } }),
     prisma.order.count({ where: { status: { in: ACTIVE_ORDER_STATUSES } } }),
-    prisma.inventoryItem.findMany({ select: { currentStock: true, minimumThreshold: true } }),
+    // Direct query, deliberately not routed through getInventoryItems() — so it needs its own
+    // isActive filter. An ingredient the business has retired sits at or near zero stock forever
+    // and would otherwise nag the Low Stock Alerts count with a restock that will never happen.
+    prisma.inventoryItem.findMany({
+      where: { isActive: true },
+      select: { currentStock: true, minimumThreshold: true },
+    }),
     prisma.order.findMany({
       take: 8,
       orderBy: { createdAt: 'desc' },
