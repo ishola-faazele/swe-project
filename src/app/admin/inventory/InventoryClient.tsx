@@ -32,7 +32,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive, updateInventoryItem } from "./actions"
-import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw, ShoppingCart, Copy } from "lucide-react"
+import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw, ShoppingCart, Copy, Printer } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { HighlightText } from "@/components/ui/highlight"
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -279,7 +279,15 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const getShoppingListText = () => {
     if (lowStockItems.length === 0) return "No items are currently below their minimum threshold."
     
-    const header = `📋 Shopping List\nRestocking to ${shoppingMultiplier}x safety level\n\n`
+    const targetLabel = shoppingMultiplier === 1 
+      ? 'Just enough (Minimum)' 
+      : shoppingMultiplier === 1.5 
+      ? 'A bit extra' 
+      : shoppingMultiplier === 2 
+      ? 'Double stock' 
+      : 'Heavy restock'
+
+    const header = `📋 Shopping List\nRestock Target: ${targetLabel}\n\n`
     const items = lowStockItems.map(item => {
       const target = item.minimumThreshold * shoppingMultiplier
       // Use ceil to avoid fractional restocking for items that usually come in whole units, 
@@ -295,6 +303,23 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const handleCopyShoppingList = () => {
     navigator.clipboard.writeText(getShoppingListText())
     toast.add({ title: 'Copied!', description: 'Shopping list copied to clipboard.', type: 'success' })
+  }
+
+  const handlePrintShoppingList = () => {
+    const printWindow = window.open('', '', 'height=600,width=800')
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Shopping List</title>')
+      printWindow.document.write('<style>body { font-family: sans-serif; padding: 20px; } pre { font-family: monospace; font-size: 14px; white-space: pre-wrap; }</style>')
+      printWindow.document.write('</head><body >')
+      printWindow.document.write('<pre>' + getShoppingListText() + '</pre>')
+      printWindow.document.write('</body></html>')
+      printWindow.document.close()
+      printWindow.focus()
+      // Give it a tiny bit of time to render before invoking print
+      setTimeout(() => {
+        printWindow.print()
+      }, 100)
+    }
   }
 
   async function handleAdd(formData: FormData) {
@@ -400,10 +425,10 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
                   value={shoppingMultiplier} 
                   onChange={(e) => setShoppingMultiplier(Number(e.target.value))}
                 >
-                  <option value={1}>1x (To Min)</option>
-                  <option value={1.5}>1.5x Min</option>
-                  <option value={2}>2x Min</option>
-                  <option value={3}>3x Min</option>
+                  <option value={1}>Just enough (Minimum)</option>
+                  <option value={1.5}>A bit extra</option>
+                  <option value={2}>Double stock</option>
+                  <option value={3}>Stock up heavily</option>
                 </select>
               </div>
               <div className="rounded-md bg-muted/50 p-4 max-h-[300px] overflow-y-auto border border-border">
@@ -411,9 +436,14 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
                   {getShoppingListText()}
                 </pre>
               </div>
-              <Button className="w-full" onClick={handleCopyShoppingList} disabled={lowStockItems.length === 0}>
-                <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" /> Copy to Clipboard
-              </Button>
+              <div className="flex gap-2">
+                <Button className="w-full" onClick={handleCopyShoppingList} disabled={lowStockItems.length === 0}>
+                  <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" /> Copy
+                </Button>
+                <Button variant="outline" className="w-full" onClick={handlePrintShoppingList} disabled={lowStockItems.length === 0}>
+                  <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Print (PDF)
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

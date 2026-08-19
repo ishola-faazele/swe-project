@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { ACTIVE_ORDER_STATUSES, getDueUrgency } from '@/lib/dueDate'
 import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus'
-import { BUSINESS_LOCALE } from '@/lib/currency'
+import { BUSINESS_LOCALE, formatCurrency } from '@/lib/currency'
 
 export default async function AdminDashboardPage() {
   // Fetch real data from DB
@@ -118,8 +118,6 @@ export default async function AdminDashboardPage() {
   const revenueTrendText = dayBeforeRevenue === 0 
     ? (yesterdayRevenue > 0 ? '+100%' : '0%') 
     : `${revenueDiff > 0 ? '+' : ''}${Math.round((revenueDiff / dayBeforeRevenue) * 100)}%`
-
-  const formatCurrency = (val: number) => new Intl.NumberFormat(BUSINESS_LOCALE, { style: 'currency', currency: process.env.NEXT_PUBLIC_CURRENCY || 'USD' }).format(val)
 
   const stats = [
     {
