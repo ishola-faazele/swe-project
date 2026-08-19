@@ -1,12 +1,12 @@
 {
   "name": "Chop with Rostty",
   "short_name": "Rostty",
-  "description": "Kitchen order & inventory management for Chop with Rostty",
+  "description": "Kitchen order & inventory command center for Chop with Rostty",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#fdf9f3",
-  "theme_color": "#fdf9f3",
+  "background_color": "#0d0b0a",
+  "theme_color": "#0d0b0a",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

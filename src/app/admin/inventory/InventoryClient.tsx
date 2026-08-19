@@ -7,6 +7,9 @@ import {
   flexRender,
   getCoreRowModel,
   useReactTable,
+  getSortedRowModel,
+  getFilteredRowModel,
+  SortingState,
 } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,9 +20,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive } from "./actions"
-import { Plus, AlertTriangle, PackageOpen, Archive } from "lucide-react"
+import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { toast } from "@/components/ui/toast"
 
 const columnHelper = createColumnHelper<InventoryItem>()
 
@@ -80,6 +94,9 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   // MenuClient shows archived dishes. Deliberate divergence: this list gets scanned for
   // stock-taking far more often than the menu gets edited, so retired items are noise by default.
   const [showArchived, setShowArchived] = useState(false)
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [globalFilter, setGlobalFilter] = useState('')
+  const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null)
 
   // Client-side filter over the full array the page already fetched — no second query.
   //
@@ -95,24 +112,25 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   )
   const archivedCount = data.filter(i => !i.isActive).length
 
-  async function handleDelete(item: InventoryItem) {
-    if (!confirm(`Delete "${item.name}"?`)) return
-
+  // handleDelete is now handled by the AlertDialog
+  async function performDelete(item: InventoryItem) {
     try {
       const result = await deleteInventoryItem(item.id)
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
 
       if (result.data.archived) {
         setData(prev => prev.map(i => i.id === item.id ? { ...i, isActive: false } : i))
-        alert(`"${item.name}" is still referenced by a recipe or a past order, so it was archived instead of deleted. Use "Show Archived" to restore it.`)
+        toast.add({ title: 'Item archived', description: `"${item.name}" is still referenced by a recipe or a past order, so it was archived instead of deleted. Use "Show Archived" to restore it.`, type: 'info' })
       } else {
         setData(prev => prev.filter(i => i.id !== item.id))
+        toast.add({ title: 'Item deleted', description: `"${item.name}" was deleted.`, type: 'success' })
       }
+      setDeletingItem(null)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not delete this inventory item.')
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not delete this inventory item.', type: 'error' })
     }
   }
 
@@ -122,12 +140,12 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     try {
       const result = await toggleInventoryItemActive(item.id, nextIsActive)
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
       setData(prev => prev.map(i => i.id === item.id ? { ...i, isActive: nextIsActive } : i))
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not update this inventory item.')
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not update this inventory item.', type: 'error' })
     }
   }
 
@@ -198,7 +216,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           <Button
             variant="destructive"
             size="sm"
-            onClick={() => handleDelete(info.row.original)}
+            onClick={() => setDeletingItem(info.row.original)}
           >
             Delete
           </Button>
@@ -210,7 +228,12 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const table = useReactTable({
     data: visibleData,
     columns,
+    state: { sorting, globalFilter },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
   })
 
   // Active-only, for the same reason admin/page.tsx's low-stock query filters on isActive: a
@@ -230,13 +253,14 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     try {
       const result = await createInventoryItem({ name, currentStock, unit, minimumThreshold, category })
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
       setData([...data, result.data])
       setIsOpen(false)
+      toast.add({ title: 'Item created', description: `"${name}" was added to the inventory.`, type: 'success' })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not create this inventory item.')
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not create this inventory item.', type: 'error' })
     }
   }
 
@@ -244,7 +268,13 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     <div className="space-y-5">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Input
+            placeholder="Search inventory..."
+            value={globalFilter ?? ''}
+            onChange={(e) => setGlobalFilter(String(e.target.value))}
+            className="w-full sm:w-64 bg-card"
+          />
           {lowStockCount > 0 && (
             <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 font-mono-data text-xs font-medium text-destructive">
               <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
@@ -319,8 +349,17 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           <thead>
             <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th key={header.id} className="table-head-cell">
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                <th 
+                  key={header.id} 
+                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground")}
+                  onClick={header.column.getToggleSortingHandler()}
+                >
+                  <div className="flex items-center gap-2">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getCanSort() && (
+                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                    )}
+                  </div>
                 </th>
               )))}
             </tr>
@@ -376,6 +415,27 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           </tbody>
         </table>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingItem} onOpenChange={(open) => !open && setDeletingItem(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete the inventory item "{deletingItem?.name}".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deletingItem && performDelete(deletingItem)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

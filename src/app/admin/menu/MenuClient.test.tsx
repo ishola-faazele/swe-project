@@ -85,7 +85,6 @@ const archivedDish = makeDish({
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
 describe('MenuClient — table', () => {
@@ -307,12 +306,12 @@ describe('MenuClient — archive/restore', () => {
 })
 
 describe('MenuClient — delete', () => {
-  it('is gated behind confirm(): declining leaves deleteDish uncalled', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('is gated behind confirmation: declining leaves deleteDish uncalled', async () => {
     const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
 
     expect(mockDeleteDish).not.toHaveBeenCalled()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()
@@ -323,7 +322,9 @@ describe('MenuClient — delete', () => {
     const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+    const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
+    await user.click(confirmButtons[confirmButtons.length - 1])
 
     expect(await screen.findByText('No dishes yet')).toBeInTheDocument()
   })
@@ -333,7 +334,9 @@ describe('MenuClient — delete', () => {
     const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+    const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
+    await user.click(confirmButtons[confirmButtons.length - 1])
 
     expect(await screen.findByText('ARCHIVED')).toBeInTheDocument()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()

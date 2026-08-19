@@ -67,9 +67,16 @@ export const createOrderSchema = z.object({
   // Free-text notes, not a required description — dishes now carry the structured "what was
   // ordered" data. An empty string is a valid value for the non-nullable description column.
   description: z.string().trim(),
+  notes: z.string().trim().optional().nullable(),
   totalPrice: z.number('Enter a total price for this order.').nonnegative('Total price cannot be negative.'),
   dueDate: z.date().nullish(),
   dishes: dishSelectionArraySchema,
+})
+
+export const updateOrderInfoSchema = z.object({
+  id: idSchema,
+  description: z.string().trim(),
+  notes: z.string().trim().optional().nullable(),
 })
 
 export const updateOrderStatusSchema = z.object({
@@ -123,11 +130,10 @@ export const updateInventoryItemSchema = z.object({
 
 export const createCustomerSchema = z
   .object({
-    name: optionalContactField,
+    name: z.string().trim().min(1, 'A contact name is required.'),
     email: optionalContactField,
     phone: optionalContactField,
   })
-  .refine(hasAtLeastOneContactMethod, { message: AT_LEAST_ONE_CONTACT_MESSAGE })
 
 /**
  * updateCustomer overwrites all three fields on every call (preserved from the existing
@@ -138,8 +144,7 @@ export const createCustomerSchema = z
 export const updateCustomerSchema = z
   .object({
     id: idSchema,
-    name: optionalContactField,
+    name: z.string().trim().min(1, 'A contact name is required.'),
     email: optionalContactField,
     phone: optionalContactField,
   })
-  .refine(hasAtLeastOneContactMethod, { message: AT_LEAST_ONE_CONTACT_MESSAGE })

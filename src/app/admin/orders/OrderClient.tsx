@@ -8,6 +8,9 @@ import {
   flexRender,
   getCoreRowModel,
   useReactTable,
+  getSortedRowModel,
+  getFilteredRowModel,
+  SortingState,
 } from "@tanstack/react-table"
 
 import { Button } from "@/components/ui/button"
@@ -19,12 +22,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { toast } from "@/components/ui/toast"
 import { createOrder, updateOrderStatus, deleteOrder } from "./actions"
 import { computeDishSubtotal, type DishSelection, type DishWithRecipe } from "@/lib/recipe"
 import { BUSINESS_LOCALE, formatCurrency, getCurrencySymbol } from "@/lib/currency"
 import { getDueUrgency, isActiveOrderStatus } from "@/lib/dueDate"
 import { cn } from "@/lib/utils"
-import { AlertTriangle, Clock, ClipboardList, X, Trash2 } from "lucide-react"
+import { AlertTriangle, Clock, ClipboardList, X, Trash2, ArrowUpDown } from "lucide-react"
 
 type OrderWithRelations = Order & {
   customer: User,
@@ -37,23 +51,25 @@ const columnHelper = createColumnHelper<OrderWithRelations>()
 export function OrderClient({
   initialData,
   customers,
+  inventory,
   dishes
 }: {
   initialData: OrderWithRelations[],
   customers: User[],
-  // Still fetched and passed by OrdersPage — kept on the props so the page's fetch shape stays
-  // aligned with the order-detail flow, which does read it.
   inventory: InventoryItem[],
   dishes: DishWithRecipe[]
 }) {
   const [data, setData] = useState<OrderWithRelations[]>(initialData)
   const [isOpen, setIsOpen] = useState(false)
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [globalFilter, setGlobalFilter] = useState('')
   const [selectedDishes, setSelectedDishes] = useState<DishSelection[]>([])
   const [totalPriceInput, setTotalPriceInput] = useState<number | ''>('')
+  const [deletingOrder, setDeletingOrder] = useState<OrderWithRelations | null>(null)
+  const [cancellingOrder, setCancellingOrder] = useState<OrderWithRelations | null>(null)
 
   const activeDishes = dishes.filter(d => d.isActive)
 
-  // Every dish-row mutation goes through here so the total re-derives in the same event handler —
   // no useEffect, matching the rest of this codebase. Typing in the total field overrides the
   // derived value until the next dish-row change.
   function applyDishSelections(next: DishSelection[]) {
@@ -91,20 +107,19 @@ export function OrderClient({
             // Declining reverts the controlled <select> on its own, the same
             // way the !result.ok path below does.
             if (val === 'CANCELLED') {
-              const confirmed = confirm(
-                `Cancel order #${info.row.original.shortId}? This cannot be undone — a new order must be created if this was a mistake.`
-              )
-              if (!confirmed) return
+              setCancellingOrder(info.row.original)
+              return
             }
             try {
               const result = await updateOrderStatus(info.row.original.id, val)
               if (!result.ok) {
-                alert(result.error)
+                toast.add({ title: 'Error', description: result.error, type: 'error' })
                 return // controlled <select> reverts on its own — data state is simply left unchanged
               }
               setData(data.map(d => d.id === info.row.original.id ? { ...d, status: val } : d))
+              toast.add({ title: 'Status updated', description: `Order #${info.row.original.shortId} marked as ${val}.`, type: 'success' })
             } catch (err) {
-              alert(err instanceof Error ? err.message : 'Could not update this order.')
+              toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not update this order.', type: 'error' })
             }
           }}
           className="select-field h-8 w-auto px-2 py-1"
@@ -153,18 +168,7 @@ export function OrderClient({
         <Button 
           variant="destructive" 
           size="sm"
-          onClick={async () => {
-            try {
-              const result = await deleteOrder(info.row.original.id)
-              if (!result.ok) {
-                alert(result.error)
-                return
-              }
-              setData(data.filter(i => i.id !== info.row.original.id))
-            } catch (err) {
-              alert(err instanceof Error ? err.message : 'Could not delete this order.')
-            }
-          }}
+          onClick={() => setDeletingOrder(info.row.original)}
         >
           <Trash2 className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Delete
         </Button>
@@ -175,7 +179,12 @@ export function OrderClient({
   const table = useReactTable({
     data,
     columns,
+    state: { sorting, globalFilter },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
   })
   
   const router = useRouter()
@@ -198,7 +207,7 @@ export function OrderClient({
     try {
       const result = await createOrder({ customerId, description, totalPrice, dueDate, dishes: orderedDishes })
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
 
@@ -208,16 +217,25 @@ export function OrderClient({
       setIsOpen(false)
       setSelectedDishes([])
       setTotalPriceInput('')
+      toast.add({ title: 'Order created', description: `Order #${result.data.shortId} added to the queue.`, type: 'success' })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not create this order.')
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not create this order.', type: 'error' })
     }
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
-        <Button onClick={() => setIsOpen(true)}>Create Order</Button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+        <h2 className="page-title">Orders</h2>
+        <div className="flex flex-1 sm:flex-none items-center gap-4">
+          <Input
+            placeholder="Search orders..."
+            value={globalFilter ?? ''}
+            onChange={(e) => setGlobalFilter(String(e.target.value))}
+            className="max-w-xs bg-card"
+          />
+          <Button onClick={() => setIsOpen(true)}>Create Order</Button>
+        </div>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -227,8 +245,8 @@ export function OrderClient({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="customerId">Customer</Label>
-                  <select id="customerId" name="customerId" className="select-field" required>
-                    <option value="" disabled selected>Select customer</option>
+                  <select id="customerId" name="customerId" className="select-field" required defaultValue="">
+                    <option value="" disabled>Select customer</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.name || c.email || c.phone || `#${c.shortId}`}
@@ -256,8 +274,18 @@ export function OrderClient({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Notes (optional)</Label>
-                <Input id="description" name="description" placeholder="Notes (e.g. no pepper, extra meat pies, delivery instructions)" />
+                <Label htmlFor="description">Description (optional)</Label>
+                <Input id="description" name="description" placeholder="Short description (e.g. Birthday party, 40 pies)" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="notes">Additional Notes (optional)</Label>
+                <textarea 
+                  id="notes" 
+                  name="notes" 
+                  placeholder="Dietary requirements, delivery instructions...&#10;Press Enter for bullet points."
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                />
               </div>
 
               <div className="space-y-4 border-t pt-4">
@@ -325,8 +353,17 @@ export function OrderClient({
           <thead>
             <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th key={header.id} className="table-head-cell">
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                <th 
+                  key={header.id} 
+                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground")}
+                  onClick={header.column.getToggleSortingHandler()}
+                >
+                  <div className="flex items-center gap-2">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getCanSort() && (
+                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                    )}
+                  </div>
                 </th>
               )))}
             </tr>
@@ -382,6 +419,78 @@ export function OrderClient({
           </tbody>
         </table>
       </div>
+
+      <AlertDialog open={!!deletingOrder} onOpenChange={(open) => !open && setDeletingOrder(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete order #{deletingOrder?.shortId}.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Order</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!deletingOrder) return
+                try {
+                  const result = await deleteOrder(deletingOrder.id)
+                  if (!result.ok) {
+                    toast.add({ title: 'Error', description: result.error, type: 'error' })
+                    return
+                  }
+                  setData(data.filter(i => i.id !== deletingOrder.id))
+                  toast.add({ title: 'Order deleted', description: `Order #${deletingOrder.shortId} was permanently deleted.`, type: 'success' })
+                } catch (err) {
+                  toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not delete this order.', type: 'error' })
+                } finally {
+                  setDeletingOrder(null)
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!cancellingOrder} onOpenChange={(open) => !open && setCancellingOrder(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cancel order #{cancellingOrder?.shortId}? This cannot be undone — a new order must be created if this was a mistake.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Active</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!cancellingOrder) return
+                try {
+                  const result = await updateOrderStatus(cancellingOrder.id, 'CANCELLED')
+                  if (!result.ok) {
+                    toast.add({ title: 'Error', description: result.error, type: 'error' })
+                    return
+                  }
+                  setData(data.map(d => d.id === cancellingOrder.id ? { ...d, status: 'CANCELLED' as OrderStatus } : d))
+                  toast.add({ title: 'Order cancelled', description: `Order #${cancellingOrder.shortId} was cancelled.`, type: 'success' })
+                } catch (err) {
+                  toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not cancel this order.', type: 'error' })
+                } finally {
+                  setCancellingOrder(null)
+                }
+              }}
+            >
+              Cancel Order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   )
 }

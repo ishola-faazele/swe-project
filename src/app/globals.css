@@ -184,9 +184,13 @@
      browser's, and both need to be told this app is dark. */
   .select-field {
     @apply h-9 w-full rounded-md border border-input bg-input px-3 py-1.5 text-sm text-foreground
-           shadow-sm outline-none transition-colors
+           shadow-sm outline-none transition-colors cursor-pointer
            focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50
            disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  button, [role="button"], label {
+    @apply cursor-pointer;
   }
 
   /* Mobile nav drawer — specific to MobileNavTrigger, not a general primitive.

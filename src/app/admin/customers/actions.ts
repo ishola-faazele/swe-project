@@ -24,7 +24,7 @@ export async function getCustomers() {
   })
 }
 
-export async function createCustomer(data: { name?: string, email?: string, phone?: string }): Promise<ActionResult<User>> {
+export async function createCustomer(data: { name: string, email?: string, phone?: string }): Promise<ActionResult<User>> {
   await requireAdmin()
 
   let item: User
@@ -33,10 +33,11 @@ export async function createCustomer(data: { name?: string, email?: string, phon
 
     item = await prisma.user.create({
       data: {
-        name: input.name || null,
+        name: input.name,
         email: input.email || null,
         phone: input.phone || null,
-        role: 'CUSTOMER'
+        role: 'CUSTOMER',
+        isActive: true
       }
     })
   } catch (err) {
@@ -47,7 +48,7 @@ export async function createCustomer(data: { name?: string, email?: string, phon
   return okResult(item)
 }
 
-export async function deleteCustomer(id: string): Promise<ActionResult<void>> {
+export async function deleteCustomer(id: string): Promise<ActionResult<{ archived: boolean }>> {
   await requireAdmin()
 
   try {
@@ -59,10 +60,12 @@ export async function deleteCustomer(id: string): Promise<ActionResult<void>> {
     // accepted for a single-admin tool; toErrorResult's P2003 branch backstops it.
     const orderCount = await prisma.order.count({ where: { customerId: parsedId } })
     if (orderCount > 0) {
-      throw new ActionError(
-        `Cannot delete this customer — they have ${orderCount} order${orderCount === 1 ? '' : 's'} on file. Delete or reassign those orders first.`,
-        'FK_CONSTRAINT'
-      )
+      await prisma.user.update({
+        where: { id: parsedId },
+        data: { isActive: false }
+      })
+      revalidatePath('/admin/customers')
+      return okResult({ archived: true })
     }
 
     await prisma.user.delete({
@@ -73,10 +76,10 @@ export async function deleteCustomer(id: string): Promise<ActionResult<void>> {
   }
 
   revalidatePath('/admin/customers')
-  return okResult(undefined)
+  return okResult({ archived: false })
 }
 
-export async function updateCustomer(id: string, data: { name?: string, email?: string, phone?: string }): Promise<ActionResult<User>> {
+export async function updateCustomer(id: string, data: { name: string, email?: string, phone?: string }): Promise<ActionResult<User>> {
   await requireAdmin()
 
   let item: User
@@ -89,7 +92,7 @@ export async function updateCustomer(id: string, data: { name?: string, email?: 
     item = await prisma.user.update({
       where: { id: input.id },
       data: {
-        name: input.name || null,
+        name: input.name,
         email: input.email || null,
         phone: input.phone || null,
       }

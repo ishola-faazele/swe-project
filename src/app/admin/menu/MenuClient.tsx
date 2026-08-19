@@ -7,6 +7,9 @@ import {
   flexRender,
   getCoreRowModel,
   useReactTable,
+  getSortedRowModel,
+  getFilteredRowModel,
+  SortingState,
 } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,8 +24,18 @@ import { toast } from "@/components/ui/toast"
 import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
 import { mergeDuplicateIngredients } from "@/lib/recipe"
 import { createDish, updateDish, deleteDish, toggleDishActive } from "./actions"
-import { Plus, UtensilsCrossed, X, Pencil, Archive, RotateCcw, Trash2 } from "lucide-react"
+import { Plus, UtensilsCrossed, X, Pencil, Archive, RotateCcw, Trash2, ArrowUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 type DishWithIngredients = Dish & {
   ingredients: (DishIngredient & { inventoryItem: InventoryItem })[]
@@ -163,7 +176,10 @@ export function MenuClient({
 }) {
   const [data, setData] = useState<DishWithIngredients[]>(initialData)
   const [isOpen, setIsOpen] = useState(false)
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [globalFilter, setGlobalFilter] = useState('')
   const [editingDish, setEditingDish] = useState<DishWithIngredients | null>(null)
+  const [deletingDish, setDeletingDish] = useState<DishWithIngredients | null>(null)
   const [newRecipe, setNewRecipe] = useState<RecipeRow[]>([])
   const [editRecipe, setEditRecipe] = useState<RecipeRow[]>([])
   const [counter, setCounter] = useState(0)
@@ -263,23 +279,24 @@ export function MenuClient({
     })
   }
 
-  async function handleDelete(dish: DishWithIngredients) {
-    if (!confirm(`Delete "${dish.name}"? A dish used by past orders is archived instead, so order history stays intact.`)) {
-      return
-    }
+  async function performDelete(dish: DishWithIngredients) {
+    try {
+      const result = await deleteDish(dish.id)
 
-    const result = await deleteDish(dish.id)
-
-    if (result.archived) {
-      setData(prev => prev.map(d => d.id === dish.id ? { ...d, isActive: false } : d))
-      toast.add({
-        title: 'Dish archived',
-        description: `"${dish.name}" is referenced by past orders, so it was archived instead of deleted.`,
-        type: 'info',
-      })
-    } else {
-      setData(prev => prev.filter(d => d.id !== dish.id))
-      toast.add({ title: 'Dish deleted', description: `"${dish.name}" was removed from the menu.`, type: 'success' })
+      if (result.archived) {
+        setData(prev => prev.map(d => d.id === dish.id ? { ...d, isActive: false } : d))
+        toast.add({
+          title: 'Dish archived',
+          description: `"${dish.name}" is referenced by past orders, so it was archived instead of deleted.`,
+          type: 'info',
+        })
+      } else {
+        setData(prev => prev.filter(d => d.id !== dish.id))
+        toast.add({ title: 'Dish deleted', description: `"${dish.name}" was removed from the menu.`, type: 'success' })
+      }
+      setDeletingDish(null)
+    } catch (err) {
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not delete this dish.', type: 'error' })
     }
   }
 
@@ -349,7 +366,7 @@ export function MenuClient({
               ? <><Archive className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Archive</>
               : <><RotateCcw className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Restore</>}
           </Button>
-          <Button variant="destructive" size="sm" onClick={() => handleDelete(info.row.original)}>
+          <Button variant="destructive" size="sm" onClick={() => setDeletingDish(info.row.original)}>
             <Trash2 className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Delete
           </Button>
         </div>
@@ -360,20 +377,33 @@ export function MenuClient({
   const table = useReactTable({
     data,
     columns,
+    state: { sorting, globalFilter },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
   })
 
   return (
     <div className="space-y-5">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
         <p className="meta-text text-sm">
           {data.filter(d => d.isActive).length} active dish{data.filter(d => d.isActive).length !== 1 ? 'es' : ''}
         </p>
-        {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
-        <Button onClick={() => setIsOpen(true)}>
-          <Plus className="h-4 w-4 mr-1.5" /> Add Dish
-        </Button>
+        <div className="flex flex-1 sm:flex-none items-center gap-4">
+          <Input
+            placeholder="Search menu..."
+            value={globalFilter ?? ''}
+            onChange={(e) => setGlobalFilter(String(e.target.value))}
+            className="w-full sm:w-64 bg-card"
+          />
+          {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
+          <Button onClick={() => setIsOpen(true)}>
+            <Plus className="h-4 w-4 mr-1.5" /> Add Dish
+          </Button>
+        </div>
       </div>
 
       {/* Create dialog */}
@@ -449,8 +479,17 @@ export function MenuClient({
           <thead>
             <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th key={header.id} className="table-head-cell">
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                <th 
+                  key={header.id} 
+                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground")}
+                  onClick={header.column.getToggleSortingHandler()}
+                >
+                  <div className="flex items-center gap-2">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getCanSort() && (
+                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                    )}
+                  </div>
                 </th>
               )))}
             </tr>
@@ -491,6 +530,27 @@ export function MenuClient({
           </tbody>
         </table>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingDish} onOpenChange={(open) => !open && setDeletingDish(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete "{deletingDish?.name}"? A dish used by past orders is archived instead, so order history stays intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deletingDish && performDelete(deletingDish)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

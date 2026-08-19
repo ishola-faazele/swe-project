@@ -31,6 +31,7 @@ export async function getOrders() {
 export async function createOrder(data: {
   customerId: string
   description: string
+  notes?: string | null
   totalPrice: number
   dueDate?: Date | null
   dishes: { dishId: string; quantity: number }[]
@@ -55,6 +56,7 @@ export async function createOrder(data: {
         data: {
           customerId: input.customerId,
           description: input.description,
+          notes: input.notes ?? null,
           totalPrice: input.totalPrice,
           dueDate: input.dueDate ?? null,
           status: 'PENDING'

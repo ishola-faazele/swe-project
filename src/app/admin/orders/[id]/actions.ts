@@ -141,3 +141,33 @@ export async function updateOrderItems(orderId: string, data: {
   revalidatePath('/admin/inventory')
   return okResult(undefined)
 }
+
+/**
+ * Updates the text details (description and notes) of an order.
+ */
+export async function updateOrderInfo(
+  id: string,
+  description: string,
+  notes: string | null
+): Promise<ActionResult<Order>> {
+  await requireAdmin()
+
+  let order: Order
+  try {
+    const { updateOrderInfoSchema } = await import('@/lib/validation')
+    const input = updateOrderInfoSchema.parse({ id, description, notes })
+    order = await prisma.order.update({
+      where: { id: input.id },
+      data: { 
+        description: input.description,
+        notes: input.notes ?? null,
+      },
+    })
+  } catch (err) {
+    return toErrorResult(err, "Could not update this order's details.")
+  }
+
+  revalidatePath(`/admin/orders/${id}`)
+  revalidatePath('/admin/orders')
+  return okResult(order)
+}
