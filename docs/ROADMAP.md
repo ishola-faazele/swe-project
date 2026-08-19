@@ -11,7 +11,7 @@ this file is the short, update-as-you-go version).
 | Phase 0 | Order & Inventory Integrity + Auth Hardening | `fix/order-inventory-integrity-hardening` → `../swe-project-integrity-hardening` | ✅ Merged into `main` (`e6f2854`) |
 | Phase 1 | Quick-Win Polish Pack + enterprise UI overhaul, two rounds (see below) | `feature/polish-pack` → `../swe-project-polish-pack` | ✅ Merged into `main` — round 1 `d280d7a`, round 2 `28b98a3` |
 | Phase 2 | Menu & Recipe System | `feature/menu-recipe-system` → `../swe-project-menu-recipe-system` | ✅ Merged into `main` (`e6f2854`) |
-| Phase 3 | Real Customer Notifications (WhatsApp Business Cloud API + Arkesel SMS) | `feature/whatsapp-arkesel-notifications` → `../swe-project-notifications` | 🔄 Implemented, tested, hardened (252 unit / 90 integration tests). **Not yet merged** — held pending webhook verification and template approval. |
+| Phase 3 | Real Customer Notifications (WhatsApp Business Cloud API + Arkesel SMS) + phone-OTP login, unified account notifications, and an admin Settings page | `feature/whatsapp-arkesel-notifications` → `../swe-project-notifications` | ✅ Merged into `main` — 412 unit / 128 integration tests |
 | Phase 4 | High Impact, Low Effort (Daily Revenue Snapshot, Quick Shopping List, Top Revenue Dishes, Analytics, Cost Per Plate, Order Calendar) | `feature/phase-456` | ✅ Completed |
 | Phase 5 | High Impact, Medium Effort (WhatsApp Notifications, Stock Count Mode, Smart Low-Stock Alerts, Customer Repeat Orders) | `feature/phase-456` | ✅ Completed |
 | Phase 6 | Medium Impact, Higher Effort (Offline First, WhatsApp Order Intake, Kitchen Staff Role) | `feature/phase-456` | ✅ Offline First Completed. Others skipped/deferred. |
@@ -23,6 +23,37 @@ next dispatch — see `/home/ishola/.claude/plans/no-i-want-you-robust-moore.md`
 for the full plan. If a future session sees "Phase 3" mentioned anywhere outside this file,
 verify against this table before trusting it — this is the second phase-numbering correction
 here (the first being Phase 1 item 7 informally, and incorrectly, called "Phase 3" mid-project).
+
+**Phase 3 (merged 2026-08-19):** built on `../swe-project-notifications`, in parallel with
+Phase 4-6 on `feature/phase-456` — both branched from the same pre-Phase-456 `main` and had to be
+reconciled by hand on merge (see the Phase 3/Phase 4-6 reconciliation note below). Delivers real
+WhatsApp (Meta Cloud API) and SMS (Arkesel) notifications, phone-number OTP login alongside
+email magic-link, a unified `syncPrismaUser` identity-sync path (fixing a real duplicate-account
+bug in the two divergent inline sync blocks it replaced), per-owner and per-customer notification
+settings (channel toggles + independently-editable alert-destination contacts, separate from
+login identity), and write-once customer contact info (only the customer can add a missing
+email/phone, admin-set values can never be changed afterward — closes a real
+edit-any-customer's-contact-with-no-verification gap). WhatsApp template messages
+(`order_status_update`, `low_stock_alert`) remain pending Meta's approval — everything else is
+live.
+
+**Phase 3 / Phase 4-6 merge reconciliation (2026-08-19):** both branches diverged from the same
+pre-Phase-456 commit and were developed independently and concurrently, so merging Phase 3 into
+`main` (which already had Phase 4-6 merged) produced real conflicts on 10 files, resolved by
+hand: `prisma/schema.prisma` (combined `User.isActive`/archive with Phase 3's `authEmail`/
+`preferredLoginMethod`/notification fields), `src/lib/validation.ts` and
+`admin/customers/actions.ts`/`CustomerClient.tsx` (Phase 4-6 made `User.name` required and added
+archive/restore + sorting/filtering/pagination; Phase 3 made `email`/`phone` write-once for
+security — both preserved, with Phase 3's write-once fix taking precedence over Phase 4-6's
+now-superseded free-edit behavior, since that fix closed a real vulnerability), `auth/callback/
+route.ts` and `page.tsx` (kept Phase 3's unified `syncPrismaUser`, applied Phase 4-6's
+`user_metadata` name-derivation on top of it — `syncPrismaUser`/`resolveCustomerForPhoneLogin`
+both needed a `name` default added since it wasn't previously a required column when they were
+written), `OrderClient.tsx`/`.test.tsx` and `Sidebar.tsx` (non-overlapping additive changes,
+straightforward combine). Verified after merging: 412+ unit tests, 128+ integration tests, lint
+clean, production build succeeds. Also untracked `public/sw.js` (Serwist's compiled service-worker
+output — a build artifact that regenerates on every `next build`, not something that belongs in
+version control) while resolving this merge, since it was surfacing as spurious diff noise.
 
 **Phase 1, round 2 (merged 2026-08-19, `28b98a3`):** a second coding agent (not this session)
 built a further round of Phase 1 work directly on the already-merged `feature/polish-pack`
@@ -73,10 +104,17 @@ anticipated (see decisions log). **Not yet merged into `main`** — the dedicate
 agent pass across all 7 items has not run yet; that's the one remaining step before this is
 merge-ready.
 
-**Next step:** dispatch `test-engineer` for Phase 1's final verification pass, confirm the full
-suite/lint/build one more time, then merge `feature/polish-pack` into `main` (same by-hand
-conflict-resolution process as Phase 0/2, likely, since both branches touch overlapping files).
-Phase 3 (compounding features) has not been started — nothing to report there yet.
+**Phase 1 merged 2026-08-18** (`d280d7a`, 2 conflicts resolved by hand: `.env.example`,
+`AGENTS.md`). Post-merge state on `main`: 199 tests passing (111 unit + 88 integration), lint
+clean (0 errors — an unrelated ESLint scope bug picking up gitignored local tooling artifacts
+was found and fixed alongside, `6cab9f5`), production build clean on all 13 routes. End-to-end
+Playwright verification confirmed the long-standing "no buttons work" bug (root cause:
+`allowedDevOrigins` missing for the `127.0.0.1` dev origin, see AGENTS.md) is resolved on the
+fully merged codebase.
+
+**Next step:** Phase 3 (real WhatsApp + SMS notifications, this worktree) is in progress — see
+its dedicated plan section and `docs/.pipeline-state.md` in this worktree. Phase 4 (compounding
+features) has not been started — nothing to report there yet.
 
 ---
 
@@ -163,9 +201,14 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
    localization, due-date/overdue surfacing, brand asset + PWA wiring.
 3. **Phase 2 — Core value driver (the actual USP, ideally built on Phase 0's stable foundation):**
    Menu/Recipe system, paired eventually with WhatsApp-native order sharing.
-4. **Phase 4 — High Impact, Low Effort:** Daily Revenue Snapshot, Quick Reorder Shopping List, "Which Dish Brings the Most Revenue?" Report, Curated Analytics Dashboard, Cost Per Plate Calculator, and Order Calendar View.
-5. **Phase 5 — High Impact, Medium Effort:** Stock Count Mode + Variance Tracker, Smart Low-Stock Alerts with Context, and Customer Repeat Orders. Also involves tying in the Phase 3 WhatsApp notifications.
-6. **Phase 6 — Medium Impact, Higher Effort:** WhatsApp Order Intake, Kitchen Staff Role, and Offline First architecture.
+4. **Phase 3 — Real customer notifications (merged):** replaced the silent email-only/SMS-stub
+   notification path with real WhatsApp Business Cloud API + Arkesel SMS, fired on every order
+   status change, plus phone-OTP login and per-owner/per-customer notification settings. Supersedes
+   roadmap item #3 below in effect (customers actually get notified) though not in mechanism
+   (item #3's public `/o/[token]` share-link page is still unbuilt).
+5. **Phase 4 — High Impact, Low Effort:** Daily Revenue Snapshot, Quick Reorder Shopping List, "Which Dish Brings the Most Revenue?" Report, Curated Analytics Dashboard, Cost Per Plate Calculator, and Order Calendar View.
+6. **Phase 5 — High Impact, Medium Effort:** Stock Count Mode + Variance Tracker, Smart Low-Stock Alerts with Context, and Customer Repeat Orders. Also involves tying in the Phase 3 WhatsApp notifications.
+7. **Phase 6 — Medium Impact, Higher Effort:** WhatsApp Order Intake, Kitchen Staff Role, and Offline First architecture.
 
 ## 7. Decisions log
 
@@ -251,3 +294,21 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
   method but caught by another, which was the tell). Final state on `feature/polish-pack`: 98
   unit + 88 integration tests passing, typecheck clean, lint clean, build succeeds. Not yet
   merged — `test-engineer`'s dedicated final pass has not run yet.
+- **2026-08-18** — Phase 1 (`feature/polish-pack`) merged into `main` as `d280d7a`. 2 real
+  conflicts resolved by hand (`.env.example` add/add — kept Phase 1's more complete template,
+  fixed 2 remaining "Rosty"→"Rostty" spots; `AGENTS.md` — combined the `allowedDevOrigins`
+  correction with Phase 1's new TanStack Table referential-stability note). Post-merge: 199
+  tests passing, lint clean (after fixing an unrelated ESLint scope bug, `6cab9f5`, that picked
+  up gitignored local tooling artifacts as if they were app source), build clean on 13 routes.
+- **2026-08-18** — User set up Meta Business Platform (business phone number + "messaging" use
+  case) and an Arkesel account (Ghana SMS gateway) independently, ahead of any code request. This
+  made real WhatsApp/SMS notifications the natural next dispatch rather than the originally
+  planned "Phase 3" compounding-features list — see the Phase 3 renumbering note above. Two
+  scope decisions locked in via AskUserQuestion before dispatch: (1) **channel strategy** — send
+  both WhatsApp and SMS every time, no primary/fallback conditional (user chose reliability over
+  the cost savings of a fallback-only approach); (2) **trigger points** — keep today's
+  behavior exactly, all 6 order-status transitions notify (no reduction to "key moments only").
+  Dispatched to `feature-pipeline` on a new worktree, `../swe-project-notifications` →
+  `feature/whatsapp-arkesel-notifications`. Full technical plan (verified against Meta's Cloud
+  API + webhook docs and Arkesel's API docs, fetched live) lives in the Phase 3 section of
+  `/home/ishola/.claude/plans/no-i-want-you-robust-moore.md`.

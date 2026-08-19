@@ -17,6 +17,11 @@
 /.next/
 /out/
 
+# Serwist-generated service worker (src/app/sw.ts -> public/sw.js) — rebuilt on every
+# `next build`, with a new precache-manifest hash each time even when no source changed.
+# A build artifact, not source; regenerate at build/deploy time instead of versioning it.
+/public/sw.js
+
 # production
 /build
 

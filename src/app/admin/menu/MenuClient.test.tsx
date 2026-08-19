@@ -57,6 +57,7 @@ function makeDish(overrides: Partial<DishWithIngredients> & { id: string; shortI
   return {
     name: 'Jollof Rice',
     price: 1200,
+    servingSize: 1,
     isActive: true,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
@@ -145,6 +146,7 @@ describe('MenuClient — create dialog', () => {
       shortId: 3,
       name: 'Fried Rice',
       price: 1300,
+      servingSize: 1,
       isActive: true,
       createdAt: new Date('2026-01-01'),
       updatedAt: new Date('2026-01-01'),

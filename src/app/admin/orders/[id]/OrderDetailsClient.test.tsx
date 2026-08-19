@@ -12,7 +12,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Order, User, InventoryItem, OrderIngredientLog, OrderDish } from '@prisma/client'
+import type { Order, InventoryItem, OrderIngredientLog, OrderDish } from '@prisma/client'
+import type { ClientSafeUser } from '@/lib/user'
 import type { DishWithRecipe } from '@/lib/recipe'
 import { OrderDetailsClient } from './OrderDetailsClient'
 import { updateOrderItems } from './actions'
@@ -23,12 +24,20 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: 
 
 const mockUpdateOrderItems = vi.mocked(updateOrderItems)
 
-const customer: User = {
+const customer: ClientSafeUser = {
   id: 'cust-1',
   shortId: 1,
   name: 'Ada',
   email: 'ada@example.com',
   phone: null,
+  isActive: true,
+  preferredLoginMethod: 'EMAIL',
+  notifyByEmail: true,
+  alertEmail: null,
+  notifyBySms: true,
+  alertPhone: null,
+  notifyByWhatsapp: true,
+  alertWhatsapp: null,
   role: 'CUSTOMER',
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
@@ -51,6 +60,7 @@ const jollof: DishWithRecipe = {
   shortId: 1,
   name: 'Jollof Rice',
   price: 1200,
+  servingSize: 1,
   isActive: true,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
@@ -62,6 +72,7 @@ const meatPie: DishWithRecipe = {
   shortId: 2,
   name: 'Meat Pie',
   price: 350,
+  servingSize: 1,
   isActive: true,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
@@ -75,6 +86,7 @@ function baseOrder(overrides: Partial<Order & { dishes: OrderDish[]; ingredientL
     customerId: customer.id,
     customer,
     description: 'test order',
+    notes: null,
     status: 'PENDING' as const,
     totalPrice: 1200,
     dueDate: null,

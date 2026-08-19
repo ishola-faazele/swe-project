@@ -1,14 +1,19 @@
+/**
+ * Transactional email sender (Resend).
+ *
+ * "Enabled" comes from the database (admin-managed at /admin/settings); "configured" (the API
+ * key/from-address) comes from .env, same as it always has — see src/lib/settings.ts's header for
+ * why credentials never moved into the database. These functions never throw.
+ */
 import { Resend } from 'resend'
+import { getNotificationSettings } from '@/lib/settings'
 
-let _resend: Resend | null = null
-function getResend() {
-  if (!_resend) {
-    _resend = new Resend(process.env.RESEND_API_KEY!)
-  }
-  return _resend
+const DEFAULT_FROM_EMAIL = 'Chop with Rostty <onboarding@resend.dev>'
+
+function getResendClient(): Resend | null {
+  const apiKey = process.env.RESEND_API_KEY
+  return apiKey ? new Resend(apiKey) : null
 }
-
-const FROM_EMAIL = process.env.FROM_EMAIL || 'Chop with Rostty <onboarding@resend.dev>'
 
 export type OrderStatusEmailData = {
   customerEmail: string
@@ -20,12 +25,17 @@ export type OrderStatusEmailData = {
 }
 
 export async function sendOrderStatusEmail(data: OrderStatusEmailData) {
-  // If no API key is configured, log and skip
-  if (!process.env.RESEND_API_KEY) {
-    console.log('[Email] Skipping email send — RESEND_API_KEY not configured')
-    console.log('[Email] Would have sent:', data)
+  const settings = await getNotificationSettings()
+  if (!settings.emailEnabled) {
+    console.log('[Email] Skipping email send — email channel is disabled in Settings')
+    return { success: false, reason: 'email_disabled' }
+  }
+  const resend = getResendClient()
+  if (!resend) {
+    console.log('[Email] Skipping email send — RESEND_API_KEY not set in .env')
     return { success: false, reason: 'no_api_key' }
   }
+  const fromEmail = process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL
 
   const statusMessages: Record<string, string> = {
     PENDING: 'Your order has been received and is pending.',
@@ -39,8 +49,8 @@ export async function sendOrderStatusEmail(data: OrderStatusEmailData) {
   const statusMessage = statusMessages[data.newStatus] || `Your order status has been updated to: ${data.newStatus}`
 
   try {
-    const result = await getResend().emails.send({
-      from: FROM_EMAIL,
+    const result = await resend.emails.send({
+      from: fromEmail,
       to: data.customerEmail,
       subject: `Order Update: ${data.newStatus} — ${data.orderDescription}`,
       html: `
@@ -76,14 +86,20 @@ export async function sendOrderStatusEmail(data: OrderStatusEmailData) {
 }
 
 export async function sendLowStockAlert(itemName: string, currentStock: number, unit: string, adminEmail: string) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log('[Email] Skipping low stock alert — RESEND_API_KEY not configured')
+  const settings = await getNotificationSettings()
+  if (!settings.emailEnabled) {
+    console.log('[Email] Skipping low stock alert — email channel is disabled in Settings')
+    return { success: false, reason: 'email_disabled' }
+  }
+  const resend = getResendClient()
+  if (!resend) {
+    console.log('[Email] Skipping low stock alert — RESEND_API_KEY not set in .env')
     return { success: false, reason: 'no_api_key' }
   }
 
   try {
-    const result = await getResend().emails.send({
-      from: FROM_EMAIL,
+    const result = await resend.emails.send({
+      from: process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL,
       to: adminEmail,
       subject: `⚠️ Low Stock Alert: ${itemName}`,
       html: `
@@ -103,6 +119,126 @@ export async function sendLowStockAlert(itemName: string, currentStock: number, 
     return { success: true, data: result }
   } catch (error) {
     console.error('[Email] Failed to send low stock alert:', error)
+    return { success: false, error }
+  }
+}
+
+/**
+ * Welcomes a newly-created customer with a working, click-to-log-in link.
+ *
+ * `magicLink` is taken as a plain string and embedded as-is. This function deliberately knows
+ * nothing about how that URL is built or what route it points at — constructing it is the
+ * caller's job (createCustomer), which keeps the redemption mechanics in one place and means a
+ * change there needs no edit here. There is no hard-coded fallback URL: an email whose only
+ * call to action is a broken link is worse than the caller simply not sending one.
+ *
+ * Note that Supabase does NOT send this itself — admin.generateLink only mints a link, unlike
+ * signInWithOtp/inviteUserByEmail which auto-send. This function is what actually delivers it.
+ */
+export async function sendAccountCreatedEmail(data: {
+  to: string
+  name?: string | null
+  magicLink: string
+}) {
+  const settings = await getNotificationSettings()
+  if (!settings.emailEnabled) {
+    console.log('[Email] Skipping account-created email — email channel is disabled in Settings')
+    return { success: false, reason: 'email_disabled' }
+  }
+  const resend = getResendClient()
+  if (!resend) {
+    console.log('[Email] Skipping account-created email — RESEND_API_KEY not set in .env')
+    return { success: false, reason: 'no_api_key' }
+  }
+
+  try {
+    const result = await resend.emails.send({
+      from: process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL,
+      to: data.to,
+      subject: 'Your Chop with Rostty account is ready',
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px 12px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">🍽️ Chop with Rostty</h1>
+          </div>
+          <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+            <p style="font-size: 16px; color: #374151;">Hi ${data.name || 'there'},</p>
+            <p style="font-size: 16px; color: #374151;">
+              Your account is ready. Tap the button below to sign in and track your orders — no
+              password needed.
+            </p>
+
+            <div style="margin: 28px 0; text-align: center;">
+              <a href="${data.magicLink}"
+                 style="display: inline-block; background: #111827; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                Sign in to my account
+              </a>
+            </div>
+
+            <p style="font-size: 14px; color: #6b7280;">
+              If the button doesn't work, copy and paste this link into your browser:<br />
+              <span style="word-break: break-all; color: #4b5563;">${data.magicLink}</span>
+            </p>
+
+            <p style="font-size: 14px; color: #9ca3af; margin-top: 24px;">
+              If you weren't expecting this email, you can safely ignore it.
+            </p>
+          </div>
+        </div>
+      `,
+    })
+
+    console.log('[Email] Account-created email sent successfully')
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('[Email] Failed to send account-created email:', error)
+    return { success: false, error }
+  }
+}
+
+/**
+ * Delivers an OTP code by email — the email counterpart to sms.ts's sendSms, used when a
+ * logged-in customer adds a missing email to their profile (src/app/dashboard/actions.ts).
+ *
+ * Never logs `code` on any path, including success: this is a live, unexpired credential for as
+ * long as it's unconsumed, the same reasoning sms.ts's no-op branches already apply to an OTP
+ * message body.
+ */
+export async function sendVerificationEmail(to: string, code: string) {
+  const settings = await getNotificationSettings()
+  if (!settings.emailEnabled) {
+    console.log('[Email] Skipping verification email — email channel is disabled in Settings')
+    return { success: false, reason: 'email_disabled' }
+  }
+  const resend = getResendClient()
+  if (!resend) {
+    console.log('[Email] Skipping verification email — RESEND_API_KEY not set in .env')
+    return { success: false, reason: 'no_api_key' }
+  }
+
+  try {
+    const result = await resend.emails.send({
+      from: process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL,
+      to,
+      subject: 'Your Chop with Rostty verification code',
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px 12px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">🍽️ Chop with Rostty</h1>
+          </div>
+          <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+            <p style="font-size: 16px; color: #374151;">Your verification code is:</p>
+            <p style="font-size: 32px; font-weight: 700; letter-spacing: 4px; color: #111827; margin: 16px 0;">${code}</p>
+            <p style="font-size: 14px; color: #9ca3af;">It expires in 10 minutes. If you didn't request this, you can safely ignore it.</p>
+          </div>
+        </div>
+      `,
+    })
+
+    console.log('[Email] Verification email sent successfully')
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('[Email] Failed to send verification email:', error)
     return { success: false, error }
   }
 }

@@ -12,7 +12,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { User } from '@prisma/client'
+import type { ClientSafeUser } from '@/lib/user'
 import type { DishWithRecipe } from '@/lib/recipe'
 import { OrderClient } from './OrderClient'
 import { createOrder } from './actions'
@@ -28,12 +28,20 @@ vi.mock('next/navigation', () => ({
 
 const mockCreateOrder = vi.mocked(createOrder)
 
-const customer: User = {
+const customer: ClientSafeUser = {
   id: 'cust-1',
   shortId: 1,
   name: 'Ada',
   email: 'ada@example.com',
   phone: null,
+  isActive: true,
+  preferredLoginMethod: 'EMAIL',
+  notifyByEmail: true,
+  alertEmail: null,
+  notifyBySms: true,
+  alertPhone: null,
+  notifyByWhatsapp: true,
+  alertWhatsapp: null,
   role: 'CUSTOMER',
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
@@ -44,6 +52,7 @@ const jollof: DishWithRecipe = {
   shortId: 1,
   name: 'Jollof Rice',
   price: 1200,
+  servingSize: 1,
   isActive: true,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
@@ -55,6 +64,7 @@ const meatPie: DishWithRecipe = {
   shortId: 2,
   name: 'Meat Pie',
   price: 350,
+  servingSize: 1,
   isActive: true,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
@@ -66,6 +76,7 @@ const archivedSpecial: DishWithRecipe = {
   shortId: 3,
   name: 'Retired Special',
   price: 999,
+  servingSize: 1,
   isActive: false,
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
@@ -184,6 +195,7 @@ describe('OrderClient — create dialog', () => {
         shortId: 9,
         customerId: customer.id,
         description: '',
+        notes: null,
         status: 'PENDING',
         totalPrice: 1200,
         dueDate: null,

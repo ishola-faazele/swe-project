@@ -1,0 +1,218 @@
+/**
+ * Component tests for SettingsClient.
+ *
+ * Things that are easy to silently break and hard to catch any other way:
+ *   1. The Notifications tab must expose a toggle + a destination-contact input per channel, and
+ *      NOTHING that looks like a provider credential (API key/token/sender ID) OR a provider name
+ *      (Resend/Arkesel/Meta) — those are implementation details, not something the owner needs to
+ *      see or manage here.
+ *   2. Each contact field's "Same as…" shortcut button must copy the right source value and never
+ *      fire on its own — only Save persists anything.
+ *   3. The Auth tab must be genuinely read-only — no switch, no input, anywhere in it — since
+ *      login identity is fixed by the server environment, not something this UI can change.
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+
+const updateNotificationSettingsMock = vi.fn()
+vi.mock('./actions', () => ({
+  updateNotificationSettings: (...args: unknown[]) => updateNotificationSettingsMock(...args),
+}))
+
+import { SettingsClient } from './SettingsClient'
+import type { AuthDisplay } from './actions'
+import type { NotificationSettings } from '@prisma/client'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+function notifications(overrides: Partial<NotificationSettings> = {}): NotificationSettings {
+  return {
+    id: 'settings-1',
+    emailEnabled: true,
+    alertEmail: null,
+    smsEnabled: true,
+    alertPhone: null,
+    whatsappEnabled: true,
+    alertWhatsapp: null,
+    updatedAt: new Date(),
+    ...overrides,
+  }
+}
+
+function auth(overrides: Partial<AuthDisplay> = {}): AuthDisplay {
+  return {
+    adminEmail: 'owner@example.com',
+    adminPhone: '233241234567',
+    ...overrides,
+  }
+}
+
+describe('Notifications tab', () => {
+  it('renders one toggle + one contact input per channel, reflecting initial state', () => {
+    render(
+      <SettingsClient
+        initialNotifications={notifications({
+          emailEnabled: true,
+          alertEmail: 'owner@example.com',
+          smsEnabled: false,
+          alertPhone: '233241234567',
+          whatsappEnabled: true,
+          alertWhatsapp: null,
+        })}
+        auth={auth()}
+      />
+    )
+
+    expect(screen.getByRole('switch', { name: 'Email notifications' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('switch', { name: 'SMS notifications' }).getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByRole('switch', { name: 'WhatsApp notifications' }).getAttribute('aria-checked')).toBe('true')
+
+    expect(screen.getByLabelText('Alert email')).toHaveValue('owner@example.com')
+    expect(screen.getByLabelText('Alert phone')).toHaveValue('233241234567')
+    expect(screen.getByLabelText('Alert WhatsApp number')).toHaveValue('')
+  })
+
+  it('has no credential inputs anywhere — the whole point of this page', () => {
+    render(<SettingsClient initialNotifications={notifications()} auth={auth()} />)
+
+    expect(screen.queryByLabelText(/api key/i)).toBeNull()
+    expect(screen.queryByLabelText(/access token/i)).toBeNull()
+    expect(screen.queryByLabelText(/sender id/i)).toBeNull()
+    expect(screen.queryByLabelText(/template/i)).toBeNull()
+  })
+
+  it('never names the underlying provider — Resend/Arkesel/Meta are implementation details', () => {
+    render(<SettingsClient initialNotifications={notifications()} auth={auth()} />)
+
+    expect(document.body.textContent).not.toMatch(/resend/i)
+    expect(document.body.textContent).not.toMatch(/arkesel/i)
+    expect(document.body.textContent).not.toMatch(/meta cloud/i)
+  })
+
+  it('saves the toggles and contacts together via one explicit Save action', async () => {
+    updateNotificationSettingsMock.mockResolvedValue({ ok: true, data: notifications({ alertEmail: 'new@example.com' }) })
+    const user = userEvent.setup()
+    render(<SettingsClient initialNotifications={notifications()} auth={auth()} />)
+
+    await user.type(screen.getByLabelText('Alert email'), 'new@example.com')
+    expect(updateNotificationSettingsMock).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => expect(updateNotificationSettingsMock).toHaveBeenCalledTimes(1))
+    expect(updateNotificationSettingsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ alertEmail: 'new@example.com' })
+    )
+    expect(screen.getByText('Notification settings saved.')).toBeInTheDocument()
+  })
+
+  it('surfaces a server-side validation error instead of silently discarding it', async () => {
+    updateNotificationSettingsMock.mockResolvedValue({ ok: false, error: 'Enter a valid email address.' })
+    const user = userEvent.setup()
+    render(<SettingsClient initialNotifications={notifications()} auth={auth()} />)
+
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument())
+  })
+
+  describe('"Same as…" shortcut buttons', () => {
+    it('"Same as owner email" fills the alert email from the env-sourced owner email, without saving', async () => {
+      const user = userEvent.setup()
+      render(
+        <SettingsClient
+          initialNotifications={notifications()}
+          auth={auth({ adminEmail: 'owner@example.com' })}
+        />
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Same as owner email' }))
+
+      expect(screen.getByLabelText('Alert email')).toHaveValue('owner@example.com')
+      expect(updateNotificationSettingsMock).not.toHaveBeenCalled()
+    })
+
+    it('"Same as owner email" is disabled when no owner email is set', () => {
+      render(<SettingsClient initialNotifications={notifications()} auth={auth({ adminEmail: null })} />)
+
+      expect(screen.getByRole('button', { name: 'Same as owner email' })).toBeDisabled()
+    })
+
+    it('"Same as owner phone" fills the alert phone from the env-sourced owner phone', async () => {
+      const user = userEvent.setup()
+      render(
+        <SettingsClient
+          initialNotifications={notifications()}
+          auth={auth({ adminPhone: '233209998888' })}
+        />
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Same as owner phone' }))
+
+      expect(screen.getByLabelText('Alert phone')).toHaveValue('233209998888')
+    })
+
+    it('"Same as alert phone" copies the CURRENT alert-phone field value into alert WhatsApp, not the owner phone', async () => {
+      const user = userEvent.setup()
+      render(
+        <SettingsClient
+          initialNotifications={notifications({ alertPhone: null })}
+          auth={auth({ adminPhone: '233209998888' })}
+        />
+      )
+
+      await user.type(screen.getByLabelText('Alert phone'), '233241234567')
+      await user.click(screen.getByRole('button', { name: 'Same as alert phone' }))
+
+      expect(screen.getByLabelText('Alert WhatsApp number')).toHaveValue('233241234567')
+    })
+
+    it('"Same as alert phone" is disabled while the alert phone field is empty', () => {
+      render(<SettingsClient initialNotifications={notifications({ alertPhone: null })} auth={auth()} />)
+
+      expect(screen.getByRole('button', { name: 'Same as alert phone' })).toBeDisabled()
+    })
+  })
+})
+
+/**
+ * Tabs only mount the selected panel, so the Auth tab's content doesn't exist in the DOM until
+ * it's actually activated.
+ */
+async function renderOnAuthTab(props: Parameters<typeof SettingsClient>[0]) {
+  render(<SettingsClient {...props} />)
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('tab', { name: 'Auth' }))
+}
+
+describe('Auth tab — read-only, no functionality', () => {
+  it('displays the env-sourced owner email and phone, with no input to edit them', async () => {
+    await renderOnAuthTab({
+      initialNotifications: notifications(),
+      auth: auth({ adminEmail: 'owner@example.com', adminPhone: '233241234567' }),
+    })
+
+    expect(screen.getByText('owner@example.com')).toBeInTheDocument()
+    expect(screen.getByText('233241234567')).toBeInTheDocument()
+  })
+
+  it('shows "Not set" for a missing admin phone rather than an empty field', async () => {
+    await renderOnAuthTab({
+      initialNotifications: notifications(),
+      auth: auth({ adminPhone: null }),
+    })
+
+    expect(screen.getByText('Not set')).toBeInTheDocument()
+  })
+
+  it('contains no switch and no text input anywhere on the tab — no customer-login status either', async () => {
+    await renderOnAuthTab({ initialNotifications: notifications(), auth: auth() })
+
+    expect(screen.queryAllByRole('switch')).toHaveLength(0)
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0)
+    expect(screen.queryByText(/customer login/i)).toBeNull()
+  })
+})

@@ -17,6 +17,7 @@ vi.mock('@/lib/notifications', () => ({
 }))
 
 import { createClient } from '@/utils/supabase/server'
+import { notifyOrderStatusChange } from '@/lib/notifications'
 import { prisma } from '@/lib/prisma'
 import { createOrder, deleteOrder, updateOrderStatus } from '@/app/admin/orders/actions'
 import { updateOrderItems } from '@/app/admin/orders/[id]/actions'
@@ -33,6 +34,7 @@ import { createDishWithRecipe } from '../../test/helpers/fixtures'
 import type { User } from '@prisma/client'
 
 const createClientMock = vi.mocked(createClient)
+const notifyOrderStatusChangeMock = vi.mocked(notifyOrderStatusChange)
 
 describe('order-lifecycle invariants (TEST-013)', () => {
   let reg: TestRegistry
@@ -93,6 +95,13 @@ describe('order-lifecycle invariants (TEST-013)', () => {
     expect(firstCancel.ok).toBe(true)
     const afterFirstCancel = await prisma.inventoryItem.findUniqueOrThrow({ where: { id: item.id } })
     expect(afterFirstCancel.currentStock).toBe(preOrderStock)
+
+    // Call-site contract: the status-change fan-out receives the order's human-facing shortId,
+    // matched against the real created order rather than a loose expect.any(Number), so a
+    // mixed-up id (e.g. passing the wrong order's shortId) would still fail this.
+    expect(notifyOrderStatusChangeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orderShortId: created.data.shortId, newStatus: 'CANCELLED' })
+    )
 
     // Repeated cancel of an already-CANCELLED order must not restore stock a second time.
     const secondCancel = await updateOrderStatus(created.data.id, 'CANCELLED')

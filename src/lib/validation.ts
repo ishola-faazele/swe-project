@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { Category, OrderStatus } from '@prisma/client'
+import { Category, LoginMethod, OrderStatus } from '@prisma/client'
+import { toGhanaE164 } from '@/lib/phone'
 
 /**
  * An order cannot list more than this many distinct ingredient lines. Not a real product
@@ -122,23 +123,109 @@ export const updateInventoryItemSchema = z.object({
   category: z.enum(Category, 'Select a valid category.').optional(),
 })
 
+/**
+ * A customer must not prefer a login channel they have no contact info for — an EMAIL preference
+ * with no email on file would produce an account-creation notification with nowhere to send it,
+ * and a phone-login attempt that can never resolve.
+ *
+ * Left optional so callers that don't supply the field at all still pass; createCustomer computes
+ * an explicit value in that case rather than leaning on the column default.
+ */
+const preferredLoginMethodMatchesContactField = (v: {
+  email?: string
+  phone?: string
+  preferredLoginMethod?: LoginMethod
+}) =>
+  !v.preferredLoginMethod ||
+  (v.preferredLoginMethod === 'EMAIL' ? Boolean(v.email) : Boolean(v.phone))
+
+const PREFERRED_LOGIN_METHOD_MESSAGE =
+  'Preferred login method must match a contact field that is actually filled in.'
+
+const preferredLoginMethodField = z.enum(LoginMethod, 'Select a valid preferred login method.').optional()
+
 export const createCustomerSchema = z
   .object({
     name: z.string().trim().min(1, 'A contact name is required.'),
     email: optionalContactField,
     phone: optionalContactField,
+    preferredLoginMethod: preferredLoginMethodField,
   })
+  .refine(preferredLoginMethodMatchesContactField, { message: PREFERRED_LOGIN_METHOD_MESSAGE })
 
 /**
- * updateCustomer overwrites all three fields on every call (preserved from the existing
- * implementation), so the incoming payload *is* the resulting row state — the same
- * at-least-one-contact-method refinement therefore also prevents an edit that blanks a
- * customer's every contact method.
+ * updateCustomer deliberately does NOT accept email or phone — once the admin sets a contact
+ * method at creation, it's write-once. Only the customer themselves, logged in, can fill a
+ * missing slot (see src/app/dashboard/actions.ts), and never change one that's already set. Only
+ * `name` and `preferredLoginMethod` are genuinely editable here.
+ *
+ * `preferredLoginMethod` still can't be validated against "a contact field that's actually
+ * filled in" at the schema level, since the payload no longer carries email/phone at all — that
+ * check happens in updateCustomer itself, against the row's EXISTING stored values.
  */
-export const updateCustomerSchema = z
-  .object({
-    id: idSchema,
-    name: z.string().trim().min(1, 'A contact name is required.'),
-    email: optionalContactField,
-    phone: optionalContactField,
-  })
+export const updateCustomerSchema = z.object({
+  id: idSchema,
+  name: z.string().trim().min(1, 'A contact name is required.'),
+  preferredLoginMethod: preferredLoginMethodField,
+})
+
+/**
+ * Settings-page schema — per-channel toggle PLUS the owner's alert-destination contact for that
+ * channel. Provider credentials still live in .env and are never admin-editable; see
+ * src/lib/settings.ts's header for why. An alert contact is optional (a channel can be toggled on
+ * before its destination is filled in — the sender simply has nothing to send to yet, the same
+ * "configured vs enabled" independence every sender already applies) but must be well-formed when
+ * present. Blank/whitespace-only clears the field back to unset, same convention as
+ * optionalContactField above.
+ */
+const optionalAlertEmail = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .optional()
+  .transform((v) => v || undefined)
+  .pipe(z.email('Enter a valid email address.').optional())
+
+const optionalAlertPhone = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v ? toGhanaE164(v) : undefined))
+  .refine((v) => v !== null, { message: 'Enter a valid Ghanaian phone number.' })
+
+export const updateNotificationSettingsSchema = z.object({
+  emailEnabled: z.boolean(),
+  alertEmail: optionalAlertEmail,
+  smsEnabled: z.boolean(),
+  alertPhone: optionalAlertPhone,
+  whatsappEnabled: z.boolean(),
+  alertWhatsapp: optionalAlertPhone,
+})
+
+/**
+ * Used by the customer-dashboard "add a missing email" flow (src/app/dashboard/actions.ts).
+ * Trimmed and lowercased before the format check so "  Ama@Example.com  " and "ama@example.com"
+ * are recognized as the same address — matters here specifically because this value ends up
+ * stored as a unique column.
+ */
+export const addEmailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email('Enter a valid email address.'))
+
+/**
+ * The customer-dashboard notification-preferences form (src/app/dashboard/actions.ts) — same
+ * shape as updateNotificationSettingsSchema above: a toggle PLUS an alert-destination contact per
+ * channel, reusing the same optional/normalizing building blocks. A blank alert field clears it
+ * back to unset, letting the customer's login email/phone serve as the fallback destination (see
+ * User.alertEmail's schema comment).
+ */
+export const updateNotificationPreferencesSchema = z.object({
+  notifyByEmail: z.boolean(),
+  alertEmail: optionalAlertEmail,
+  notifyBySms: z.boolean(),
+  alertPhone: optionalAlertPhone,
+  notifyByWhatsapp: z.boolean(),
+  alertWhatsapp: optionalAlertPhone,
+})

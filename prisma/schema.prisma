@@ -14,7 +14,38 @@ model User {
   name      String
   email     String?  @unique
   phone     String?  @unique
+  // Archived (false) rather than deleted whenever the customer has orders on file — mirrors the
+  // InventoryItem/Dish isActive pattern below.
   isActive  Boolean  @default(true)
+  // The email Supabase Auth actually uses as this row's identity key. Equals `email` for
+  // email-first customers; a generated synthetic placeholder (see syntheticEmailForPhone in
+  // src/lib/auth.ts) for phone-only ones. Deliberately NULLABLE: Postgres permits multiple NULLs
+  // under a UNIQUE constraint, and the backfill design in syncPrismaUser/
+  // resolveCustomerForPhoneLogin needs a null state to backfill INTO for rows an admin created
+  // ahead of the customer's first login.
+  //
+  // NEVER rendered, exported, or included in any notification — it is an internal Supabase-identity
+  // implementation detail, not contact info. Client-facing queries omit it explicitly
+  // (see `omit: { authEmail: true }` in admin/customers/actions.ts and admin/orders/actions.ts).
+  authEmail String?  @unique
+  // Which channel this customer is told to log in with at account-creation time. Never
+  // auto-mutated by a later contact-info edit — manual admin edit only (locked product decision).
+  preferredLoginMethod LoginMethod @default(EMAIL)
+  // Per-customer notification-channel opt-in — independent of, and checked ALONGSIDE,
+  // NotificationSettings' global admin toggle. A channel only actually sends when BOTH are true.
+  notifyByEmail    Boolean @default(true)
+  notifyBySms      Boolean @default(true)
+  notifyByWhatsapp Boolean @default(true)
+  // Where this customer's OWN order-update alerts actually go — deliberately separate from
+  // email/phone above (the write-once LOGIN identity) and NOT unique: an alert destination isn't
+  // an identity, so nothing stops two customers sharing one (e.g. a family WhatsApp number), and
+  // it's freely editable at any time, unlike login email/phone. Null means "not customized yet" —
+  // the call site in admin/orders/actions.ts falls back to this customer's login email/phone when
+  // the matching alert field is unset, so notifications work out of the box before anyone visits
+  // the dashboard's Notifications section.
+  alertEmail    String?
+  alertPhone    String?
+  alertWhatsapp String?
   role      Role     @default(CUSTOMER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -25,6 +56,57 @@ model User {
 enum Role {
   ADMIN
   CUSTOMER
+}
+
+enum LoginMethod {
+  EMAIL
+  PHONE
+}
+
+/**
+ * A single issued phone-login OTP. The code itself is NEVER stored — only an HMAC-SHA256 digest
+ * of it (see src/lib/otp.ts), so a database dump can't be replayed into a login.
+ */
+model OtpCode {
+  id         String    @id @default(uuid())
+  // E.164 phone (toGhanaE164 output) OR a trimmed, lowercased email address — one generic column
+  // rather than two, so phone-login OTP and the customer-dashboard add-a-missing-contact flow
+  // share one model and one query shape instead of two nearly-identical ones.
+  identifier String
+  codeHash   String    // HMAC-SHA256(code, OTP_HASH_SECRET) — never plaintext
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  // Every lookup filters by identifier and orders by createdAt — the cooldown check and the
+  // verify-candidate lookup, for both phone login and email/phone contact verification.
+  @@index([identifier, createdAt])
+}
+
+/**
+ * Application-level singleton — see getNotificationSettings() in src/lib/settings.ts. Deliberately
+ * uses this schema's standard `String @id @default(uuid())` convention rather than a fixed-literal
+ * integer PK: a second primary-key pattern for two tables would be a bigger inconsistency than the
+ * tiny, self-healing race on the very first read.
+ *
+ * Owner/admin notification config — a per-channel on/off toggle PLUS the destination contact that
+ * channel alerts (e.g. low-stock) go to. Provider credentials (Resend/Arkesel/WhatsApp API keys,
+ * sender IDs, template names) still live in .env and are never admin-editable — only "where do MY
+ * alerts go" and "is this channel on" are DB-backed. Replaces the old ADMIN_ALERT_EMAIL/
+ * ADMIN_ALERT_PHONE env vars: the admin now enters her own alert contacts at /admin/settings, and
+ * they can differ from her login identity (ADMIN_EMAIL/ADMIN_PHONE) or from each other — e.g. a
+ * WhatsApp number that isn't the same as her SMS/login number.
+ */
+model NotificationSettings {
+  id              String   @id @default(uuid())
+  emailEnabled    Boolean  @default(true)
+  alertEmail      String?
+  smsEnabled      Boolean  @default(true)
+  alertPhone      String?
+  whatsappEnabled Boolean  @default(true)
+  alertWhatsapp   String?
+  updatedAt       DateTime @updatedAt
 }
 
 model InventoryItem {
