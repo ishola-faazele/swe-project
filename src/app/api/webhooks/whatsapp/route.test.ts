@@ -155,6 +155,42 @@ describe('GET — Meta verification handshake', () => {
 
     expect(response.status).toBe(403)
   })
+
+  // The cases above cover a WRONG hub.verify_token; these cover params that are entirely ABSENT
+  // from the query string (searchParams.get returns null, not ''), which is a distinct code path
+  // through the `mode === 'subscribe' && token === verifyToken && challenge` check.
+  describe('missing query params (not merely wrong values)', () => {
+    it('returns 403 when hub.verify_token is entirely absent from the query string', async () => {
+      vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+
+      const response = await GET(getRequest({
+        'hub.mode': 'subscribe',
+        'hub.challenge': '1158201444',
+      }))
+
+      expect(response.status).toBe(403)
+      expect(await response.text()).not.toBe('1158201444')
+    })
+
+    it('returns 403 when hub.mode is entirely absent from the query string', async () => {
+      vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+
+      const response = await GET(getRequest({
+        'hub.verify_token': TEST_VERIFY_TOKEN,
+        'hub.challenge': '1158201444',
+      }))
+
+      expect(response.status).toBe(403)
+    })
+
+    it('returns 403 for a GET with no query params at all', async () => {
+      vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+
+      const response = await GET(getRequest({}))
+
+      expect(response.status).toBe(403)
+    })
+  })
 })
 
 describe('POST — signature-verified event logging', () => {

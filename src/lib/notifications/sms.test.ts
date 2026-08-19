@@ -138,6 +138,43 @@ describe('sendSms', () => {
       expect(requestUrlOfCall().searchParams.get('sms')).toBe(message)
     })
 
+    // '&', '=', and '+' are the three characters most likely to silently corrupt a hand-built
+    // query string: an unescaped '&' or '=' splits/reinterprets query parameters, and a raw '+'
+    // decodes back as a literal space rather than a plus sign. Order descriptions are free text
+    // (see prisma/schema.prisma's Order.description) and can plausibly contain any of these —
+    // e.g. "2 for 1 + extra rice", "Buy 1 Get 1 = free", "Tables A&B". url.searchParams handles
+    // all of this correctly (it's the whole reason it's used instead of string concatenation),
+    // but that guarantee had no direct regression test for these three characters specifically.
+    it('round-trips a message containing &, = and + without corrupting the query string', async () => {
+      const message = '2 for 1 + extra rice, Buy 1 Get 1 = free (Tables A&B, 50% off)'
+
+      await sendSms({ to: GHANA_PHONE, message })
+
+      const url = requestUrlOfCall()
+      // Decoded via URL parsing, the message must survive byte-for-byte...
+      expect(url.searchParams.get('sms')).toBe(message)
+      // ...and sibling params must still parse as exactly themselves — an unescaped '&'/'=' in
+      // `sms` would otherwise bleed into `to`/`from`/`action` or fabricate extra query keys.
+      expect(url.searchParams.get('action')).toBe('send-sms')
+      expect(url.searchParams.get('to')).toBe(NORMALIZED_GHANA_PHONE)
+      expect(url.searchParams.get('from')).toBe(TEST_SENDER_ID)
+      expect([...url.searchParams.keys()].sort()).toEqual(['action', 'api_key', 'from', 'sms', 'to'])
+      // In application/x-www-form-urlencoded, a bare space legitimately encodes AS a raw '+' —
+      // so the literal '+' character from the message must instead show up escaped as '%2B' in
+      // the raw query string; if it appeared as a bare '+' it would be indistinguishable from an
+      // encoded space and a spec-compliant decoder (Arkesel's server) would silently turn it into
+      // one, corrupting the message.
+      expect(url.search).toContain('%2B')
+    })
+
+    it('URL-encodes the ⚠️ emoji used in sendLowStockSms\'s existing copy without corrupting it', async () => {
+      const message = '⚠️ Low Stock: Rice is at 3 kg. Please restock soon.'
+
+      await sendSms({ to: GHANA_PHONE, message })
+
+      expect(requestUrlOfCall().searchParams.get('sms')).toBe(message)
+    })
+
     it('sends the normalized phone number, not the raw local-format input', async () => {
       await sendSms({ to: '024 123 4567', message: 'hello' })
 

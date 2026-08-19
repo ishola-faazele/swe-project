@@ -157,6 +157,28 @@ describe('notifyOrderStatusChange', () => {
       expect(whatsappMock).toHaveBeenCalledTimes(1)
     })
 
+    // A phone that fails Ghana E.164 normalization is a per-channel concern handled one level
+    // down (each sender calls toGhanaE164 itself, see phone.test.ts/sms.test.ts/whatsapp.test.ts)
+    // — index.ts's own guard is presence-only, so one channel's normalization failure must not
+    // suppress the other. Distinct from the 'sms_not_configured' case above: this specifically
+    // exercises the reason a real, oddly-formatted customer number would produce.
+    it('still attempts WhatsApp when SMS no-ops with invalid_phone, and vice versa', async () => {
+      smsMock.mockResolvedValueOnce({ success: false, reason: 'invalid_phone' })
+
+      await notifyOrderStatusChange(ORDER)
+
+      expect(smsMock).toHaveBeenCalledTimes(1)
+      expect(whatsappMock).toHaveBeenCalledTimes(1)
+
+      vi.clearAllMocks()
+      whatsappMock.mockResolvedValueOnce({ success: false, reason: 'invalid_phone' })
+
+      await notifyOrderStatusChange(ORDER)
+
+      expect(smsMock).toHaveBeenCalledTimes(1)
+      expect(whatsappMock).toHaveBeenCalledTimes(1)
+    })
+
     it('still attempts both phone channels when email fails', async () => {
       emailMock.mockResolvedValueOnce({ success: false, reason: 'no_api_key' })
 
