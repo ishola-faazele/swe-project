@@ -154,7 +154,7 @@ export default async function Home(props: { searchParams: Promise<{ code?: strin
       {/* Bottom bar */}
       <div className="relative z-10 border-t border-border px-8 py-4">
         <p className="meta-text text-center">
-          © 2025 CHOP WITH ROSTTY — ALL RIGHTS RESERVED
+          © 2026 CHOP WITH ROSTTY — ALL RIGHTS RESERVED
         </p>
       </div>
     </div>

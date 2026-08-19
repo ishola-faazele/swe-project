@@ -5,6 +5,7 @@ import { LogOut, Circle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { MobileNavTrigger } from './MobileNavTrigger'
+import { ThemeToggle } from '@/components/ui/theme-toggle'
 
 // Stays an async Server Component — MobileNavTrigger is a Client Component
 // child, which does not pull this file across the boundary.
@@ -34,6 +35,7 @@ export async function Header() {
             <div className="hidden max-w-[220px] truncate rounded border border-border bg-muted px-3 py-1 font-mono-data text-xs text-primary sm:block">
               {user.email || user.phone}
             </div>
+            <ThemeToggle />
             <form action="/auth/signout" method="post">
               <Button type="submit" variant="ghost" size="sm" className="font-mono-data text-muted-foreground">
                 <LogOut className="h-3.5 w-3.5" aria-hidden="true" />

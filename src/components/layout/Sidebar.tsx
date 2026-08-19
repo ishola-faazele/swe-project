@@ -50,9 +50,10 @@ export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse }: Sid
       )}
     >
       {/* ── Logo ──────────────────────────────────────────────────────── */}
-      <div
+      <Link
+        href="/admin"
         className={cn(
-          'flex h-[60px] shrink-0 items-center border-b border-sidebar-border transition-all duration-200',
+          'flex h-[60px] shrink-0 items-center border-b border-sidebar-border transition-all duration-200 hover:bg-sidebar-accent/50',
           collapsed ? 'justify-center px-0' : 'gap-3 px-5'
         )}
       >
@@ -74,7 +75,7 @@ export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse }: Sid
             ROSTTY
           </p>
         </div>
-      </div>
+      </Link>
 
       {/* ── Nav ───────────────────────────────────────────────────────── */}
       <nav

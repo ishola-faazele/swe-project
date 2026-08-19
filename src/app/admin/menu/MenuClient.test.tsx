@@ -164,6 +164,7 @@ describe('MenuClient — create dialog', () => {
     expect(mockCreateDish).toHaveBeenCalledWith({
       name: 'Fried Rice',
       price: 1300,
+      servingSize: 1,
       ingredients: [{ inventoryItemId: rice.id, quantityPerDish: 0.25 }],
     })
     // Dialog closes and the new row appears optimistically.

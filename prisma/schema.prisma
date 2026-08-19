@@ -91,6 +91,7 @@ model Dish {
   shortId     Int      @unique @default(autoincrement())
   name        String
   price       Float
+  servingSize Int      @default(1) // recipe ingredient quantities cover this many units (1 = per-unit, 10 = per-10-bowls)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -9,6 +9,7 @@ import {
   useReactTable,
   getSortedRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   SortingState,
 } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
@@ -31,8 +32,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive, updateInventoryItem } from "./actions"
-import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, Pencil } from "lucide-react"
+import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { HighlightText } from "@/components/ui/highlight"
+import { TablePagination } from "@/components/ui/table-pagination"
 import { toast } from "@/components/ui/toast"
 
 const columnHelper = createColumnHelper<InventoryItem>()
@@ -155,7 +158,9 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
       header: "ITEM NAME",
       cell: (info) => (
         <div className="flex items-center gap-2">
-          <span className="font-medium text-foreground">{info.getValue()}</span>
+          <span className="font-medium text-foreground">
+            {info.getValue() ? <HighlightText text={info.getValue()} query={globalFilter} /> : null}
+          </span>
           {/* Inline on the row rather than a dedicated STATUS column: archived rows are hidden
               by default, so a whole column would sit empty on every normal day. */}
           {!info.row.original.isActive && (
@@ -176,7 +181,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
               categoryBadgeClass[cat]
             )}
           >
-            {cat}
+            <HighlightText text={cat} query={globalFilter} />
           </span>
         )
       },
@@ -211,25 +216,38 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
       cell: (info) => (
         <div className="flex gap-2">
           <Button
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="Edit item"
             onClick={() => setEditingItem(info.row.original)}
           >
-            Edit
+            <Pencil className="h-4 w-4" />
+            <span className="sr-only">Edit</span>
           </Button>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            className="h-8 w-8"
+            title={info.row.original.isActive ? "Archive item" : "Restore item"}
             onClick={() => handleToggleActive(info.row.original)}
           >
-            {info.row.original.isActive ? 'Archive' : 'Restore'}
+            {info.row.original.isActive ? (
+              <Archive className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            )}
+            <span className="sr-only">{info.row.original.isActive ? 'Archive' : 'Restore'}</span>
           </Button>
           <Button
-            variant="destructive"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="Delete item"
             onClick={() => setDeletingItem(info.row.original)}
           >
-            Delete
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Delete</span>
           </Button>
         </div>
       ),
@@ -245,6 +263,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   })
 
   // Active-only, for the same reason admin/page.tsx's low-stock query filters on isActive: a
@@ -425,13 +444,24 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
                 <th 
                   key={header.id} 
-                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", (header.column.columnDef.meta as any)?.className)}
+                  className={cn(
+                    "table-head-cell", 
+                    header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
+                    header.column.getIsSorted() && "text-primary hover:text-primary/80",
+                    (header.column.columnDef.meta as any)?.className
+                  )}
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   <div className="flex items-center gap-2">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     {header.column.getCanSort() && (
-                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                      header.column.getIsSorted() === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : header.column.getIsSorted() === 'desc' ? (
+                        <ArrowDown className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                      )
                     )}
                   </div>
                 </th>
@@ -489,6 +519,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           </tbody>
         </table>
       </div>
+      <TablePagination table={table} />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deletingItem} onOpenChange={(open) => !open && setDeletingItem(null)}>

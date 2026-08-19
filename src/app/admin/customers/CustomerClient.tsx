@@ -9,6 +9,7 @@ import {
   useReactTable,
   getSortedRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   SortingState,
 } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
@@ -32,9 +33,11 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/toast"
 import { createCustomer, deleteCustomer, updateCustomer, toggleCustomerActive } from "./actions"
-import { Plus, ShoppingBag, Users, ArrowUpDown, Archive, RotateCcw } from "lucide-react"
+import { Plus, ShoppingBag, Users, ArrowUpDown, ArrowUp, ArrowDown, Archive, RotateCcw, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMemo } from "react"
+import { HighlightText } from "@/components/ui/highlight"
+import { TablePagination } from "@/components/ui/table-pagination"
 
 type CustomerWithCount = User & { _count: { orders: number } }
 
@@ -68,7 +71,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
       header: "NAME",
       cell: (info) => (
         <span className={cn('font-medium', info.row.original.isActive ? 'text-foreground' : 'text-muted-foreground/70')}>
-          {info.getValue() || 'No name'}
+          {info.getValue() ? <HighlightText text={info.getValue()} query={globalFilter} /> : 'No name'}
           {!info.row.original.isActive && (
             <span className="ml-2 text-[10px] tracking-wide uppercase font-bold text-muted-foreground/50 border border-muted-foreground/20 px-1.5 py-0.5 rounded-sm">
               Archived
@@ -82,7 +85,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
       meta: { className: "hidden md:table-cell" },
       cell: (info) => (
         <span className="font-mono-data text-xs text-muted-foreground">
-          {info.getValue() || '—'}
+          {info.getValue() ? <HighlightText text={info.getValue()} query={globalFilter} /> : '—'}
         </span>
       ),
     }),
@@ -90,7 +93,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
       header: "PHONE",
       cell: (info) => (
         <span className="font-mono-data text-xs text-muted-foreground">
-          {info.getValue() || '—'}
+          {info.getValue() ? <HighlightText text={info.getValue()} query={globalFilter} /> : '—'}
         </span>
       ),
     }),
@@ -111,15 +114,19 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
       cell: (info) => (
         <div className="flex gap-2">
           <Button
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="Edit customer"
             onClick={() => setEditingCustomer(info.row.original)}
           >
-            Edit
+            <Pencil className="h-4 w-4" />
+            <span className="sr-only">Edit</span>
           </Button>
           <Button
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
             onClick={async () => {
               const customer = info.row.original
               const nextIsActive = !customer.isActive
@@ -144,17 +151,21 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             title={info.row.original.isActive ? "Archive customer" : "Restore customer"}
           >
             {info.row.original.isActive ? (
-              <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+              <Archive className="h-4 w-4" aria-hidden="true" />
             ) : (
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
             )}
+            <span className="sr-only">{info.row.original.isActive ? "Archive" : "Restore"}</span>
           </Button>
           <Button
-            variant="destructive"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="Delete customer"
             onClick={() => setDeletingCustomer(info.row.original)}
           >
-            Delete
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Delete</span>
           </Button>
         </div>
       ),
@@ -170,6 +181,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   })
 
   async function handleAdd(formData: FormData) {
@@ -245,7 +257,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             <form action={handleAdd} className="space-y-4">
               <div>
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" placeholder="Optional" />
+                <Input id="name" name="name" required placeholder="e.g. Adaeze Okonkwo" />
               </div>
               <div>
                 <Label htmlFor="email">Email</Label>
@@ -255,9 +267,6 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
                 <Label htmlFor="phone">Phone Number</Label>
                 <Input id="phone" name="phone" placeholder="Optional" />
               </div>
-              <p className="text-xs text-muted-foreground">
-                At least one contact method is required.
-              </p>
               <Button type="submit" className="w-full">Save Customer</Button>
             </form>
           </DialogContent>
@@ -273,7 +282,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           <form action={handleEdit} className="space-y-4">
             <div>
               <Label htmlFor="edit-name">Name</Label>
-              <Input id="edit-name" name="name" defaultValue={editingCustomer?.name || ""} />
+              <Input id="edit-name" name="name" required defaultValue={editingCustomer?.name || ""} />
             </div>
             <div>
               <Label htmlFor="edit-email">Email</Label>
@@ -296,13 +305,24 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
                 <th 
                   key={header.id} 
-                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", (header.column.columnDef.meta as any)?.className)}
+                  className={cn(
+                    "table-head-cell", 
+                    header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
+                    header.column.getIsSorted() && "text-primary hover:text-primary/80",
+                    (header.column.columnDef.meta as any)?.className
+                  )}
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   <div className="flex items-center gap-2">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     {header.column.getCanSort() && (
-                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                      header.column.getIsSorted() === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : header.column.getIsSorted() === 'desc' ? (
+                        <ArrowDown className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                      )
                     )}
                   </div>
                 </th>
@@ -338,6 +358,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           </tbody>
         </table>
       </div>
+      <TablePagination table={table} />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deletingCustomer} onOpenChange={(open) => !open && setDeletingCustomer(null)}>
