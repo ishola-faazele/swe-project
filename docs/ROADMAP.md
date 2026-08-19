@@ -9,9 +9,36 @@ this file is the short, update-as-you-go version).
 | Phase | What | Branch / worktree | Status |
 |---|---|---|---|
 | Phase 0 | Order & Inventory Integrity + Auth Hardening | `fix/order-inventory-integrity-hardening` → `../swe-project-integrity-hardening` | ✅ Merged into `main` (`e6f2854`) |
-| Phase 1 | Quick-Win Polish Pack + enterprise UI overhaul (7 items — see below) | `feature/polish-pack` → `../swe-project-polish-pack` | 🔄 All 7 items implemented, tested, committed. **Not yet merged** — final `test-engineer` verification pass still pending, not yet dispatched. |
+| Phase 1 | Quick-Win Polish Pack + enterprise UI overhaul, two rounds (see below) | `feature/polish-pack` → `../swe-project-polish-pack` | ✅ Merged into `main` — round 1 `d280d7a`, round 2 `28b98a3` |
 | Phase 2 | Menu & Recipe System | `feature/menu-recipe-system` → `../swe-project-menu-recipe-system` | ✅ Merged into `main` (`e6f2854`) |
-| Phase 3 | Compounding features (repeat-order, stock-aware fulfillment, weekly snapshot, table search, real SMS) | — | ⬜ Not started — nothing here has begun |
+| Phase 3 | Real Customer Notifications (WhatsApp Business Cloud API + Arkesel SMS) | `feature/whatsapp-arkesel-notifications` → `../swe-project-notifications` | 🔄 Implemented, tested, hardened (252 unit / 90 integration tests). **Not yet merged** — held pending webhook verification and template approval. |
+| Phase 4 | Compounding features (repeat-order, stock-aware fulfillment, weekly snapshot, table search) | — | ⬜ Not started — nothing here has begun |
+
+**Naming note:** the roadmap's original "Phase 3" was this compounding-features bucket, now
+renumbered **Phase 4**. Real WhatsApp/SMS notifications took the Phase 3 slot instead because the
+user set up the Meta Business Platform + Arkesel accounts needed for it, making it the natural
+next dispatch — see `/home/ishola/.claude/plans/no-i-want-you-robust-moore.md`'s Phase 3 section
+for the full plan. If a future session sees "Phase 3" mentioned anywhere outside this file,
+verify against this table before trusting it — this is the second phase-numbering correction
+here (the first being Phase 1 item 7 informally, and incorrectly, called "Phase 3" mid-project).
+
+**Phase 1, round 2 (merged 2026-08-19, `28b98a3`):** a second coding agent (not this session)
+built a further round of Phase 1 work directly on the already-merged `feature/polish-pack`
+worktree — customer active/inactive archive toggle (`User.isActive`, unifying `deleteCustomer`
+with the existing `Dish`/`InventoryItem` archive-instead-of-erroring pattern), `Order.notes`,
+`Dish.servingSize`, a collapsible sidebar, sticky header/sidebar, full Lucide icon replacement,
+order sorting/filtering/pagination, and a "Tropical Sunrise" light theme replacing the dark
+"enterprise command-center" look. Before merging, this session found and fixed real problems in
+that work: the schema migration had never been pushed to the isolated integration-test database
+(all 88 integration tests failed until it was); a `prisma.user.create()` call site was missing
+the newly-required `name` field (build-breaking); a component imported a type from the wrong
+package (`Table` from `@tanstack/react-query` instead of `@tanstack/react-table`); several
+`meta as any` casts were replaced with a proper `ColumnMeta` module augmentation
+(`src/types/tanstack-table.d.ts`); two legitimate React patterns (next-themes' mounted-guard,
+syncing `localStorage` into state) were tripping the React Compiler's `set-state-in-effect` rule
+and got justified suppressions instead of being rewritten; and one integration test asserted the
+OLD `deleteCustomer` contract (hard-fail on referenced deletes) — confirmed with the user that
+the new archive behavior is intentional, updated the test rather than reverting the code.
 
 **Phase 0 and Phase 2 are both on `main` as of commit `e6f2854`.** They were developed in
 parallel on independent worktrees and had to be reconciled by hand — both branches modified the
