@@ -8,6 +8,15 @@
  * check: GET /sms/api?action=check-balance&api_key=… → HTTP 200, application/json,
  * {"balance":523,"user":"…","country":"Ghana"}.
  *
+ * send-sms's real response is ALSO now confirmed live (2026-08-19, one real SMS, explicit user
+ * authorization) — with `&response=json` set: HTTP 200, application/json,
+ * {"code":"ok","message":"Successfully Sent","balance":522,"main_balance":0.13,"user":"…"}.
+ * Matches the success-mapping logic below exactly; no code change needed. Confirms the
+ * `response=json` fix actually works (clean JSON, not the plain-text-default risk it hedged
+ * against) and that the success shape uses `code:"ok"`, not v1's other documented candidate
+ * shapes — the response/failure-code mapping stays defensive regardless, since a failed send was
+ * never deliberately triggered to observe its shape.
+ *
  * Like email.ts and whatsapp.ts, this module never throws: env-gated no-op when unconfigured,
  * try/catch around the network call. Both call sites invoke it fire-and-forget, so a rejection
  * here would surface as an unhandled rejection rather than anything a caller could act on.
@@ -66,8 +75,9 @@ export async function sendSms(data: SmsData) {
       return { success: false, reason: 'api_error', status: response.status, data: body }
     }
 
-    // The documented send-sms success body is {code:"ok", message:"Successfully Send", balance,
-    // user}, with numeric-STRING failure codes (e.g. "102" = Authentication Failed).
+    // Confirmed live (see file header): success body is {code:"ok", message:"Successfully Sent",
+    // balance, main_balance, user}. Failure codes are still unverified — numeric-STRING failure
+    // codes (e.g. "102" = Authentication Failed) are documented but never observed live.
     if (body?.code !== undefined && body.code !== 'ok') {
       console.error('[SMS] Arkesel send failed (code):', body.code, body?.message)
       return { success: false, reason: 'api_error', code: body.code, data: body }
