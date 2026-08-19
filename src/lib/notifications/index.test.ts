@@ -14,19 +14,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('./email', () => ({
   sendOrderStatusEmail: vi.fn().mockResolvedValue({ success: true, channel: 'email' }),
   sendLowStockAlert: vi.fn().mockResolvedValue({ success: true, channel: 'email' }),
+  sendAccountCreatedEmail: vi.fn().mockResolvedValue({ success: true, channel: 'email' }),
 }))
 vi.mock('./sms', () => ({
   sendOrderStatusSms: vi.fn().mockResolvedValue({ success: true, channel: 'sms' }),
   sendLowStockSms: vi.fn().mockResolvedValue({ success: true, channel: 'sms' }),
+  sendSms: vi.fn().mockResolvedValue({ success: true, channel: 'sms' }),
 }))
 vi.mock('./whatsapp', () => ({
   sendOrderStatusWhatsApp: vi.fn().mockResolvedValue({ success: true, channel: 'whatsapp' }),
   sendLowStockWhatsApp: vi.fn().mockResolvedValue({ success: true, channel: 'whatsapp' }),
 }))
 
-import { notifyLowStock, notifyOrderStatusChange } from './index'
-import { sendLowStockAlert, sendOrderStatusEmail } from './email'
-import { sendLowStockSms, sendOrderStatusSms } from './sms'
+import { notifyAccountCreated, notifyLowStock, notifyOrderStatusChange } from './index'
+import { sendAccountCreatedEmail, sendLowStockAlert, sendOrderStatusEmail } from './email'
+import { sendLowStockSms, sendOrderStatusSms, sendSms } from './sms'
 import { sendLowStockWhatsApp, sendOrderStatusWhatsApp } from './whatsapp'
 
 const emailMock = vi.mocked(sendOrderStatusEmail)
@@ -35,6 +37,8 @@ const whatsappMock = vi.mocked(sendOrderStatusWhatsApp)
 const lowStockEmailMock = vi.mocked(sendLowStockAlert)
 const lowStockSmsMock = vi.mocked(sendLowStockSms)
 const lowStockWhatsappMock = vi.mocked(sendLowStockWhatsApp)
+const accountCreatedEmailMock = vi.mocked(sendAccountCreatedEmail)
+const genericSmsMock = vi.mocked(sendSms)
 
 const ORDER = {
   customerEmail: 'ama@example.com',
@@ -265,5 +269,114 @@ describe('notifyLowStock', () => {
     await notifyLowStock(LOW_STOCK)
 
     expect(lowStockWhatsappMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * notifyAccountCreated — EMAIL + SMS only, never WhatsApp.
+ *
+ * The two branches are mutually exclusive and neither is a fallback for the other: each is gated
+ * purely on preferredLoginMethod plus its own contact field. Note this describe block asserts
+ * against ./email and ./sms only — ./whatsapp is deliberately never involved.
+ */
+describe('notifyAccountCreated', () => {
+  const MAGIC_LINK = 'https://rostty.example.com/auth/confirm?token_hash=abc123&type=signup'
+
+  it('EMAIL-preferred with an email and a link sends the email once and never an SMS', async () => {
+    await notifyAccountCreated({
+      customerName: 'Ama',
+      customerEmail: 'ama@example.com',
+      customerPhone: null,
+      preferredLoginMethod: 'EMAIL',
+      magicLink: MAGIC_LINK,
+    })
+
+    expect(accountCreatedEmailMock).toHaveBeenCalledTimes(1)
+    expect(accountCreatedEmailMock).toHaveBeenCalledWith({
+      to: 'ama@example.com',
+      name: 'Ama',
+      magicLink: MAGIC_LINK,
+    })
+    expect(genericSmsMock).not.toHaveBeenCalled()
+  })
+
+  it('PHONE-preferred with a phone sends one SMS and never an email', async () => {
+    await notifyAccountCreated({
+      customerName: 'Kofi',
+      customerEmail: null,
+      customerPhone: '0241234567',
+      preferredLoginMethod: 'PHONE',
+      magicLink: null,
+    })
+
+    expect(genericSmsMock).toHaveBeenCalledTimes(1)
+    expect(accountCreatedEmailMock).not.toHaveBeenCalled()
+    expect(emailMock).not.toHaveBeenCalled()
+  })
+
+  it('points the SMS copy at the real site URL rather than a vague instruction', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'https://rostty.example.com')
+
+    await notifyAccountCreated({
+      customerName: 'Kofi',
+      customerPhone: '0241234567',
+      preferredLoginMethod: 'PHONE',
+    })
+
+    const { message } = genericSmsMock.mock.calls[0][0]
+    expect(message).toContain('https://rostty.example.com/login')
+    // Never a pre-issued code — one sent at creation time would likely expire before use.
+    expect(message).not.toMatch(/\b\d{6}\b/)
+    vi.unstubAllEnvs()
+  })
+
+  // createCustomerSchema legitimately allows a name-only customer.
+  it('no-ops cleanly for a name-only customer, firing neither channel and never throwing', async () => {
+    const results = await notifyAccountCreated({
+      customerName: 'Nameless',
+      customerEmail: null,
+      customerPhone: null,
+      preferredLoginMethod: 'EMAIL',
+      magicLink: null,
+    })
+
+    expect(results).toEqual({})
+    expect(accountCreatedEmailMock).not.toHaveBeenCalled()
+    expect(genericSmsMock).not.toHaveBeenCalled()
+  })
+
+  it('no-ops when EMAIL-preferred but the magic link could not be generated', async () => {
+    const results = await notifyAccountCreated({
+      customerEmail: 'ama@example.com',
+      preferredLoginMethod: 'EMAIL',
+      magicLink: null,
+    })
+
+    expect(results).toEqual({})
+    expect(accountCreatedEmailMock).not.toHaveBeenCalled()
+  })
+
+  it('does not fall back to email when a PHONE-preferred customer also has one on file', async () => {
+    await notifyAccountCreated({
+      customerEmail: 'both@example.com',
+      customerPhone: '0241234567',
+      preferredLoginMethod: 'PHONE',
+      magicLink: MAGIC_LINK,
+    })
+
+    expect(genericSmsMock).toHaveBeenCalledTimes(1)
+    expect(accountCreatedEmailMock).not.toHaveBeenCalled()
+  })
+
+  // Fire-and-forget: a disabled channel is a resolved no-op result, not a rejection.
+  it('resolves cleanly when the SMS channel reports itself disabled', async () => {
+    genericSmsMock.mockResolvedValueOnce({ success: false, reason: 'sms_disabled' })
+
+    const results = await notifyAccountCreated({
+      customerPhone: '0241234567',
+      preferredLoginMethod: 'PHONE',
+    })
+
+    expect(results.sms).toEqual({ success: false, reason: 'sms_disabled' })
   })
 })

@@ -133,6 +133,7 @@ export function SettingsClient({
                   <p className="meta-text mt-0.5">Order updates and account-creation links</p>
                 </div>
                 <Switch
+                  aria-label="Email notifications"
                   checked={notifications.emailEnabled}
                   onCheckedChange={(checked) =>
                     setNotifications((prev) => ({ ...prev, emailEnabled: checked }))
@@ -170,6 +171,7 @@ export function SettingsClient({
                   <p className="meta-text mt-0.5">Order updates, alerts, and phone login codes</p>
                 </div>
                 <Switch
+                  aria-label="SMS notifications"
                   checked={notifications.smsEnabled}
                   onCheckedChange={(checked) =>
                     setNotifications((prev) => ({ ...prev, smsEnabled: checked }))
@@ -207,6 +209,7 @@ export function SettingsClient({
                   <p className="meta-text mt-0.5">Order updates and low-stock alerts</p>
                 </div>
                 <Switch
+                  aria-label="WhatsApp notifications"
                   checked={notifications.whatsappEnabled}
                   onCheckedChange={(checked) =>
                     setNotifications((prev) => ({ ...prev, whatsappEnabled: checked }))
@@ -307,6 +310,7 @@ export function SettingsClient({
                   <p className="meta-text mt-0.5">Magic link sent to the customer&apos;s email</p>
                 </div>
                 <Switch
+                  aria-label="Email login"
                   checked={login.emailLoginEnabled}
                   disabled={isPending}
                   onCheckedChange={(checked) => handleLoginSave({ emailLoginEnabled: checked })}
@@ -321,6 +325,7 @@ export function SettingsClient({
                   <p className="meta-text mt-0.5">6-digit code sent by SMS</p>
                 </div>
                 <Switch
+                  aria-label="Phone login"
                   checked={login.phoneLoginEnabled}
                   disabled={isPending || phoneLoginBlocked}
                   onCheckedChange={(checked) => handleLoginSave({ phoneLoginEnabled: checked })}
