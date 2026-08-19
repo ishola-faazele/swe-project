@@ -58,7 +58,9 @@ export async function sendOrderStatusWhatsApp(
   }
 
   const templateName = process.env.WHATSAPP_TEMPLATE_NAME || 'order_status_update'
-  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en_US'
+  // 'en', not 'en_US' — this business's real templates are registered under plain "English" in
+  // WhatsApp Manager, confirmed live (2026-08-19) after a 132001 "does not exist in en_US" error.
+  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en'
   const statusLabel = statusLabels[newStatus] ?? newStatus
   // A single space, not an empty string: some Cloud API template implementations reject an
   // empty-string parameter value outright (a 132000-class error). A defensive hedge — if it is
@@ -127,7 +129,7 @@ export async function sendLowStockWhatsApp(phone: string, itemName: string, curr
   // so order_status_update's fixed "your order #{{2}} ... is now: {{3}}" wording cannot be
   // reused to carry a stock alert without rendering nonsense to whoever receives it.
   const templateName = process.env.WHATSAPP_LOW_STOCK_TEMPLATE_NAME || 'low_stock_alert'
-  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en_US'
+  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en'
 
   try {
     const response = await fetch(graphUrl(phoneNumberId), {
