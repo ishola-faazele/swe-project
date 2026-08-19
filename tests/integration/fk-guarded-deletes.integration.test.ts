@@ -1,14 +1,13 @@
 /**
- * Integration: FK-referenced-delete paths — TEST-011, revised by TEST-007.
+ * Integration: FK-referenced-delete paths — TEST-011, revised by TEST-007, revised again for the
+ * Phase 1 customer active/inactive toggle.
  *
- * deleteCustomer still resolves { ok: false, code: 'FK_CONSTRAINT' } with a specific count-based
- * message when the target record has existing references, instead of throwing an unhandled P2003.
- *
- * deleteInventoryItem NO LONGER DOES. As of BE-005 a referenced inventory item archives
- * (isActive: false) instead of erroring, mirroring deleteDish — so its expectation here is
- * deliberately inverted to { ok: true, data: { archived: true } }. The two entities differ on
- * purpose: a customer with orders is a hard stop, while a retired ingredient must stay in the
- * database so past orders keep resolving its name and unit.
+ * deleteCustomer now archives (isActive: false) instead of hard-failing when the target has
+ * existing orders — unifying it with deleteInventoryItem/deleteDish's existing archive-instead-
+ * of-erroring behavior, rather than the earlier deliberate "customer is a hard stop" split. All
+ * three entities that can be FK-referenced now converge on the same contract: archive when
+ * referenced, hard-delete when not, never throw a raw P2003. `toggleCustomerActive` remains the
+ * explicit, separate action for manually archiving/restoring a customer with no orders at all.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -51,7 +50,7 @@ describe('FK-referenced-delete paths (TEST-011, revised by TEST-007)', () => {
     await cleanupRegistry(reg)
   })
 
-  test('deleteCustomer resolves { ok: false, code: FK_CONSTRAINT } with the exact order count', async () => {
+  test('deleteCustomer ARCHIVES a customer referenced by orders instead of erroring', async () => {
     const admin = await createTestAdmin(reg)
     const customer = await createTestCustomer(reg)
     await createTestOrder(reg, customer.id)
@@ -60,10 +59,25 @@ describe('FK-referenced-delete paths (TEST-011, revised by TEST-007)', () => {
 
     const result = await deleteCustomer(customer.id)
 
-    expect(result).toMatchObject({ ok: false, code: 'FK_CONSTRAINT' })
-    if (!result.ok) expect(result.error).toContain('2 orders on file')
+    expect(result).toMatchObject({ ok: true, data: { archived: true } })
 
-    expect(await prisma.user.findUnique({ where: { id: customer.id } })).not.toBeNull()
+    // The row still exists — but now because it was deliberately archived, not because the
+    // delete was rejected. isActive is what actually proves the new behavior, same shape as the
+    // deleteInventoryItem archive assertions below.
+    const persisted = await prisma.user.findUnique({ where: { id: customer.id } })
+    expect(persisted).not.toBeNull()
+    expect(persisted?.isActive).toBe(false)
+  })
+
+  test('deleteCustomer still HARD-DELETES a customer nothing references', async () => {
+    const admin = await createTestAdmin(reg)
+    const customer = await createTestCustomer(reg)
+    mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
+
+    const result = await deleteCustomer(customer.id)
+
+    expect(result).toMatchObject({ ok: true, data: { archived: false } })
+    expect(await prisma.user.findUnique({ where: { id: customer.id } })).toBeNull()
   })
 
   test('deleteInventoryItem ARCHIVES an item referenced by an order instead of erroring', async () => {

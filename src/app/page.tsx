@@ -31,6 +31,7 @@ export default async function Home(props: { searchParams: Promise<{ code?: strin
         data: {
           id: user.id,
           email: user.email,
+          name: user.user_metadata?.full_name || user.user_metadata?.name || 'New User',
           role: isAdmin ? 'ADMIN' : 'CUSTOMER',
         }
       })

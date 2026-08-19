@@ -23,9 +23,12 @@ export function AdminLayout({ children, header }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [mounted, setMounted] = useState(false)
 
-  // Hydrate from localStorage after mount to avoid SSR mismatch
+  // Hydrate from localStorage after mount to avoid SSR mismatch. This is syncing React state
+  // FROM an external system (localStorage) on mount — the documented, correct use of an effect
+  // — not deriving state from props/state already available during render.
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed')
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved === 'true') setCollapsed(true)
     setMounted(true)
   }, [])

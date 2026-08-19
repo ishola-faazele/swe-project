@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import Image from 'next/image'
 import Link from 'next/link'
-import { LogOut, Circle } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { MobileNavTrigger } from './MobileNavTrigger'

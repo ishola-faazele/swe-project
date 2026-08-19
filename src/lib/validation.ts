@@ -12,22 +12,13 @@ const MAX_INGREDIENT_LINES = 50
 /**
  * FormData.get() returns "" (never null/undefined) for a present-but-blank field, so
  * .optional() alone is not enough to model "not provided" — an empty string would pass as a
- * supplied value. Trim first, then normalize "" (and whitespace-only) to undefined so the
- * at-least-one-contact-method refinement below can't be satisfied by "   ".
+ * supplied value. Trim first, then normalize "" (and whitespace-only) to undefined.
  */
 const optionalContactField = z
   .string()
   .trim()
   .optional()
   .transform((v) => v || undefined)
-
-const hasAtLeastOneContactMethod = (v: {
-  name?: string
-  email?: string
-  phone?: string
-}) => Boolean(v.name || v.email || v.phone)
-
-const AT_LEAST_ONE_CONTACT_MESSAGE = 'At least one contact method (name, email, or phone) is required.'
 
 export const ingredientInputSchema = z.object({
   inventoryItemId: z.uuid('Select a valid inventory item.'),

@@ -1,4 +1,4 @@
-import { Table } from "@tanstack/react-query" // Note: TanStack table types are from @tanstack/react-table but we'll use any or generic for simple component
+import { Table } from "@tanstack/react-table"
 import {
   ChevronLeft,
   ChevronRight,
@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button"
 
 interface TablePaginationProps<TData> {
-  table: any
+  table: Table<TData>
 }
 
 export function TablePagination<TData>({

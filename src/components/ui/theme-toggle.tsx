@@ -11,6 +11,11 @@ export function ThemeToggle() {
   const [mounted, setMounted] = React.useState(false)
 
   React.useEffect(() => {
+    // Standard next-themes hydration guard: theme is unknowable during SSR, so this defers
+    // rendering the sun/moon icon until after mount rather than guessing and risking a
+    // hydration mismatch. Not the "derive state from props" anti-pattern the rule targets —
+    // `mounted` has no server-renderable value at all until the client takes over.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true)
   }, [])
 

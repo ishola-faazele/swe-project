@@ -448,7 +448,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
                     "table-head-cell", 
                     header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
                     header.column.getIsSorted() && "text-primary hover:text-primary/80",
-                    (header.column.columnDef.meta as any)?.className
+                    header.column.columnDef.meta?.className
                   )}
                   onClick={header.column.getToggleSortingHandler()}
                 >
@@ -480,7 +480,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
                   )}
                 >
                   {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className={cn("px-4 py-3", (cell.column.columnDef.meta as any)?.className)}>
+                    <td key={cell.id} className={cn("px-4 py-3", cell.column.columnDef.meta?.className)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -527,7 +527,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will delete the inventory item "{deletingItem?.name}".
+              This will delete the inventory item &quot;{deletingItem?.name}&quot;.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

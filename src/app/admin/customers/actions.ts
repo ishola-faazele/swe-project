@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { type User } from '@prisma/client'
 import { requireAdmin } from '@/lib/auth'
-import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
+import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { createCustomerSchema, idSchema, updateCustomerSchema } from '@/lib/validation'
 
 export async function getCustomers() {

@@ -12,7 +12,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Order, User, InventoryItem, OrderIngredientLog, OrderDish } from '@prisma/client'
+import type { User } from '@prisma/client'
 import type { DishWithRecipe } from '@/lib/recipe'
 import { OrderClient } from './OrderClient'
 import { createOrder } from './actions'
@@ -27,12 +27,6 @@ vi.mock('next/navigation', () => ({
 }))
 
 const mockCreateOrder = vi.mocked(createOrder)
-
-type OrderWithRelations = Order & {
-  customer: User
-  ingredientLogs: (OrderIngredientLog & { inventoryItem: InventoryItem })[]
-  dishes: OrderDish[]
-}
 
 const customer: User = {
   id: 'cust-1',

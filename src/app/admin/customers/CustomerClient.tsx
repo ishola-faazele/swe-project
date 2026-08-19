@@ -309,7 +309,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
                     "table-head-cell", 
                     header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
                     header.column.getIsSorted() && "text-primary hover:text-primary/80",
-                    (header.column.columnDef.meta as any)?.className
+                    header.column.columnDef.meta?.className
                   )}
                   onClick={header.column.getToggleSortingHandler()}
                 >
@@ -334,7 +334,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
               table.getRowModel().rows.map((row, idx) => (
                 <tr key={row.id} className={cn('table-row', idx % 2 === 0 && 'bg-card/40', !row.original.isActive && 'opacity-60')}>
                   {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className={cn("px-4 py-3", (cell.column.columnDef.meta as any)?.className)}>
+                    <td key={cell.id} className={cn("px-4 py-3", cell.column.columnDef.meta?.className)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}

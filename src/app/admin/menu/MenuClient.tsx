@@ -522,7 +522,7 @@ export function MenuClient({
                     "table-head-cell", 
                     header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
                     header.column.getIsSorted() && "text-primary hover:text-primary/80",
-                    (header.column.columnDef.meta as any)?.className
+                    header.column.columnDef.meta?.className
                   )}
                   onClick={header.column.getToggleSortingHandler()}
                 >
@@ -586,7 +586,7 @@ export function MenuClient({
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete "{deletingDish?.name}"? A dish used by past orders is archived instead, so order history stays intact.
+              Delete &quot;{deletingDish?.name}&quot;? A dish used by past orders is archived instead, so order history stays intact.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
