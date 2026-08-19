@@ -104,3 +104,22 @@ export async function updateCustomer(id: string, data: { name: string, email?: s
   revalidatePath('/admin/customers')
   return okResult(item)
 }
+
+export async function toggleCustomerActive(id: string, isActive: boolean): Promise<ActionResult<User>> {
+  await requireAdmin()
+
+  let item: User
+  try {
+    const parsedId = idSchema.parse(id)
+
+    item = await prisma.user.update({
+      where: { id: parsedId },
+      data: { isActive }
+    })
+  } catch (err) {
+    return toErrorResult(err, 'Could not update this customer. Please try again.')
+  }
+
+  revalidatePath('/admin/customers')
+  return okResult(item)
+}

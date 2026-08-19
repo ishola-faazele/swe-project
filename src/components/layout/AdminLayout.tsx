@@ -42,10 +42,12 @@ export function AdminLayout({ children, header }: AdminLayoutProps) {
 
   return (
     <div
-      className="grid min-h-screen w-full transition-[grid-template-columns] duration-200 ease-in-out"
-      style={{
-        gridTemplateColumns: mounted ? `${sidebarWidth} 1fr` : '280px 1fr',
-      }}
+      className="grid min-h-screen w-full transition-[grid-template-columns] duration-200 ease-in-out md:grid-cols-[var(--sidebar-width)_1fr]"
+      style={
+        {
+          '--sidebar-width': mounted ? sidebarWidth : '280px',
+        } as React.CSSProperties
+      }
     >
       {/* Desktop sidebar — hidden below md, sticky so the toggle button is
           always visible in the viewport without scrolling. overflow-y-auto

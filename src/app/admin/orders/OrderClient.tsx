@@ -88,6 +88,7 @@ export function OrderClient({
     }),
     columnHelper.accessor("customer", {
       header: "Customer",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => {
         const c = info.getValue()
         return c.name || c.email || c.phone || "Unknown"
@@ -130,6 +131,7 @@ export function OrderClient({
     }),
     columnHelper.accessor("dueDate", {
       header: "Due",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => {
         const dueDate = info.getValue()
         if (!dueDate) return <span className="meta-text">—</span>
@@ -160,6 +162,7 @@ export function OrderClient({
     }),
     columnHelper.accessor("totalPrice", {
       header: "Total",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => <span className="table-cell-num">{formatCurrency(info.getValue())}</span>,
     }),
     columnHelper.display({
@@ -355,7 +358,7 @@ export function OrderClient({
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
                 <th 
                   key={header.id} 
-                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground")}
+                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", (header.column.columnDef.meta as any)?.className)}
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   <div className="flex items-center gap-2">
@@ -394,7 +397,7 @@ export function OrderClient({
                   }}
                 >
                   {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className="px-4 py-3">
+                    <td key={cell.id} className={cn("px-4 py-3", (cell.column.columnDef.meta as any)?.className)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}

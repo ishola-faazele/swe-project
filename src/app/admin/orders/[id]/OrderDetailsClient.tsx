@@ -172,7 +172,7 @@ export function OrderDetailsClient({
         </div>
 
         <div className="rounded-xl border bg-card p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
             <h3 className="text-xl font-semibold">Order Details</h3>
             {!isEditingInfo ? (
               <Button variant="ghost" size="sm" onClick={() => setIsEditingInfo(true)}>
@@ -285,7 +285,7 @@ export function OrderDetailsClient({
       {/* Dishes Ordered — owns the single Edit/Save control set, since one action saves both
           this section and the ingredient section below it. */}
       <div className="rounded-xl border bg-card p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <h3 className="text-xl font-semibold">Dishes Ordered</h3>
           {!isEditing ? (
             <Button variant="outline" onClick={() => setIsEditing(true)}>Edit Order Items</Button>
@@ -309,30 +309,32 @@ export function OrderDetailsClient({
                 No dishes recorded for this order.
               </p>
             ) : (
-              <table className="w-full text-sm text-left">
-                <thead className="bg-muted text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 rounded-l-md font-medium">Dish</th>
-                    <th className="px-4 py-2 font-medium">Unit Price</th>
-                    <th className="px-4 py-2 rounded-r-md font-medium">Line Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.dishes.map((orderDish) => (
-                    <tr key={orderDish.id} className="border-b last:border-0">
-                      <td className="px-4 py-3">{orderDish.quantity}× {orderDish.dishName}</td>
-                      <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice)}</td>
-                      <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice * orderDish.quantity)}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-muted text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 rounded-l-md font-medium">Dish</th>
+                      <th className="px-4 py-2 font-medium">Unit Price</th>
+                      <th className="px-4 py-2 rounded-r-md font-medium">Line Total</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {order.dishes.map((orderDish) => (
+                      <tr key={orderDish.id} className="border-b last:border-0">
+                        <td className="px-4 py-3">{orderDish.quantity}× {orderDish.dishName}</td>
+                        <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice)}</td>
+                        <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice * orderDish.quantity)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         ) : (
           <div className="space-y-4">
             {dishSelections.map((row, index) => (
-              <div key={row.internalId} className="flex gap-4 items-center">
+              <div key={row.internalId} className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-start sm:items-center">
                 <select
                   className="select-field"
                   value={row.dishId}
@@ -401,7 +403,7 @@ export function OrderDetailsClient({
       </div>
 
       <div className="rounded-xl border bg-card p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <h3 className="text-xl font-semibold">{isEditing ? "Extra Ingredients" : "Ingredients Used"}</h3>
           {!isEditing && (
             <Button variant="outline" onClick={() => setIsEditing(true)}>Edit Order Items</Button>
@@ -413,24 +415,26 @@ export function OrderDetailsClient({
             {order.ingredientLogs.length === 0 ? (
               <p className="text-muted-foreground">No ingredients logged for this order.</p>
             ) : (
-              <table className="w-full text-sm text-left">
-                <thead className="bg-muted text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 rounded-l-md font-medium">Item Name</th>
-                    <th className="px-4 py-2 font-medium">Category</th>
-                    <th className="px-4 py-2 rounded-r-md font-medium">Quantity Used</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.ingredientLogs.map((log) => (
-                    <tr key={log.id} className="border-b last:border-0">
-                      <td className="px-4 py-3">{log.inventoryItem.name}</td>
-                      <td className="px-4 py-3">{log.inventoryItem.category}</td>
-                      <td className="px-4 py-3">{log.quantityUsed} {log.inventoryItem.unit}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-muted text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 rounded-l-md font-medium">Item Name</th>
+                      <th className="px-4 py-2 font-medium">Category</th>
+                      <th className="px-4 py-2 rounded-r-md font-medium">Quantity Used</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {order.ingredientLogs.map((log) => (
+                      <tr key={log.id} className="border-b last:border-0">
+                        <td className="px-4 py-3">{log.inventoryItem.name}</td>
+                        <td className="px-4 py-3">{log.inventoryItem.category}</td>
+                        <td className="px-4 py-3">{log.quantityUsed} {log.inventoryItem.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         ) : (
@@ -440,7 +444,7 @@ export function OrderDetailsClient({
               each selected dish already deducts.
             </p>
             {ingredients.map((ingredient, index) => (
-              <div key={ingredient.internalId} className="flex gap-4 items-center">
+              <div key={ingredient.internalId} className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-start sm:items-center">
                 <select
                   className="select-field"
                   value={ingredient.id}

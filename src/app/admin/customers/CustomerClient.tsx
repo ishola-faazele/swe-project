@@ -31,8 +31,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/toast"
-import { createCustomer, deleteCustomer, updateCustomer } from "./actions"
-import { Plus, ShoppingBag, Users, ArrowUpDown, Archive } from "lucide-react"
+import { createCustomer, deleteCustomer, updateCustomer, toggleCustomerActive } from "./actions"
+import { Plus, ShoppingBag, Users, ArrowUpDown, Archive, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMemo } from "react"
 
@@ -79,6 +79,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     }),
     columnHelper.accessor("email", {
       header: "EMAIL",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => (
         <span className="font-mono-data text-xs text-muted-foreground">
           {info.getValue() || '—'}
@@ -95,6 +96,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     }),
     columnHelper.accessor("_count.orders", {
       header: "ORDERS",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => (
         <div className="flex items-center gap-1.5">
           <ShoppingBag className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
@@ -114,6 +116,38 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             onClick={() => setEditingCustomer(info.row.original)}
           >
             Edit
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              const customer = info.row.original
+              const nextIsActive = !customer.isActive
+              try {
+                const result = await toggleCustomerActive(customer.id, nextIsActive)
+                if (!result.ok) {
+                  toast.add({ title: 'Error', description: result.error, type: 'error' })
+                  return
+                }
+                setData(prev => prev.map(c => c.id === customer.id ? { ...c, isActive: nextIsActive } : c))
+                toast.add({
+                  title: nextIsActive ? 'Customer restored' : 'Customer archived',
+                  description: nextIsActive
+                    ? 'This customer is now active again.'
+                    : 'This customer has been archived and hidden from default views.',
+                  type: 'success'
+                })
+              } catch (err) {
+                toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not toggle archive state.', type: 'error' })
+              }
+            }}
+            title={info.row.original.isActive ? "Archive customer" : "Restore customer"}
+          >
+            {info.row.original.isActive ? (
+              <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
           </Button>
           <Button
             variant="destructive"
@@ -262,7 +296,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
                 <th 
                   key={header.id} 
-                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground")}
+                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", (header.column.columnDef.meta as any)?.className)}
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   <div className="flex items-center gap-2">
@@ -280,7 +314,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
               table.getRowModel().rows.map((row, idx) => (
                 <tr key={row.id} className={cn('table-row', idx % 2 === 0 && 'bg-card/40', !row.original.isActive && 'opacity-60')}>
                   {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className="px-4 py-3">
+                    <td key={cell.id} className={cn("px-4 py-3", (cell.column.columnDef.meta as any)?.className)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}

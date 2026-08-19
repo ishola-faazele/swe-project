@@ -357,7 +357,7 @@ export function MenuClient({
     columnHelper.display({
       id: "actions",
       cell: (info) => (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap sm:flex-nowrap gap-2">
           <Button variant="outline" size="sm" onClick={() => openEdit(info.row.original)}>
             <Pencil className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Edit
           </Button>

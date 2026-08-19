@@ -30,8 +30,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive } from "./actions"
-import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown } from "lucide-react"
+import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive, updateInventoryItem } from "./actions"
+import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, Pencil } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/toast"
 
@@ -96,6 +96,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const [showArchived, setShowArchived] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null)
 
   // Client-side filter over the full array the page already fetched — no second query.
@@ -165,6 +166,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     }),
     columnHelper.accessor("category", {
       header: "CATEGORY",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => {
         const cat = info.getValue()
         return (
@@ -190,12 +192,14 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     }),
     columnHelper.accessor("unit", {
       header: "UNIT",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => (
         <span className="font-mono-data text-sm text-muted-foreground">{info.getValue()}</span>
       ),
     }),
     columnHelper.accessor("minimumThreshold", {
       header: "ALERT AT",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => (
         <span className="font-mono-data tabular-nums text-sm text-muted-foreground">
           {info.getValue() || '—'}
@@ -206,6 +210,13 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
       id: "actions",
       cell: (info) => (
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEditingItem(info.row.original)}
+          >
+            Edit
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -261,6 +272,29 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
       toast.add({ title: 'Item created', description: `"${name}" was added to the inventory.`, type: 'success' })
     } catch (err) {
       toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not create this inventory item.', type: 'error' })
+    }
+  }
+
+  async function handleEdit(formData: FormData) {
+    if (!editingItem) return
+    const name = formData.get("name") as string
+    const category = formData.get("category") as Category
+    const currentStock = Number(formData.get("currentStock"))
+    const unit = formData.get("unit") as string
+    const thresholdStr = formData.get("minimumThreshold") as string
+    const minimumThreshold = thresholdStr ? Number(thresholdStr) : undefined
+
+    try {
+      const result = await updateInventoryItem(editingItem.id, { name, currentStock, unit, minimumThreshold, category })
+      if (!result.ok) {
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
+        return
+      }
+      setData(prev => prev.map(i => i.id === editingItem.id ? result.data : i))
+      setEditingItem(null)
+      toast.add({ title: 'Item updated', description: `"${name}" was updated.`, type: 'success' })
+    } catch (err) {
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not update this inventory item.', type: 'error' })
     }
   }
 
@@ -341,6 +375,46 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
             </form>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Inventory Item</DialogTitle>
+            </DialogHeader>
+            {editingItem && (
+              <form action={handleEdit} className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-name">Item Name</Label>
+                  <Input id="edit-name" name="name" defaultValue={editingItem.name} required />
+                </div>
+                <div>
+                  <Label htmlFor="edit-category">Category</Label>
+                  <select id="edit-category" name="category" className="select-field" defaultValue={editingItem.category} required>
+                    <option value="INGREDIENT">Ingredient</option>
+                    <option value="DRINK">Drink</option>
+                    <option value="PACKAGING">Packaging</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="edit-currentStock">Current Stock</Label>
+                    <Input id="edit-currentStock" name="currentStock" type="number" step="any" defaultValue={editingItem.currentStock} required />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-unit">Unit</Label>
+                    <Input id="edit-unit" name="unit" placeholder="kg, pieces…" defaultValue={editingItem.unit} required />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="edit-minimumThreshold">Alert Threshold (Optional)</Label>
+                  <Input id="edit-minimumThreshold" name="minimumThreshold" type="number" step="any" defaultValue={editingItem.minimumThreshold ?? ''} />
+                </div>
+                <Button type="submit" className="w-full">Save Changes</Button>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Table */}
@@ -351,7 +425,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
                 <th 
                   key={header.id} 
-                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground")}
+                  className={cn("table-head-cell", header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", (header.column.columnDef.meta as any)?.className)}
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   <div className="flex items-center gap-2">
@@ -376,7 +450,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
                   )}
                 >
                   {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className="px-4 py-3">
+                    <td key={cell.id} className={cn("px-4 py-3", (cell.column.columnDef.meta as any)?.className)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}

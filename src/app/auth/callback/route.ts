@@ -40,8 +40,9 @@ export async function GET(request: Request) {
         if (!existingUser) {
           await prisma.user.create({
             data: {
-              id: user.id, // Keep Supabase ID in sync with Prisma ID if possible (though Prisma id is uuid default, we can overwrite it if we want, but Prisma schema has default(uuid()). We'll let Prisma generate its own or use Supabase's)
+              id: user.id, // Keep Supabase ID in sync with Prisma ID if possible
               email: user.email,
+              name: user.user_metadata?.full_name || user.user_metadata?.name || 'New User',
               role: isAdmin ? 'ADMIN' : 'CUSTOMER',
             }
           })
