@@ -13,7 +13,7 @@ this file is the short, update-as-you-go version).
 | Phase 2 | Menu & Recipe System | `feature/menu-recipe-system` → `../swe-project-menu-recipe-system` | ✅ Merged into `main` (`e6f2854`) |
 | Phase 3 | Real Customer Notifications (WhatsApp Business Cloud API + Arkesel SMS) | `feature/whatsapp-arkesel-notifications` → `../swe-project-notifications` | 🔄 Implemented, tested, hardened (252 unit / 90 integration tests). **Not yet merged** — held pending webhook verification and template approval. |
 | Phase 4 | High Impact, Low Effort (Daily Revenue Snapshot, Quick Shopping List, Top Revenue Dishes, Analytics, Cost Per Plate, Order Calendar) | — | ⬜ Not started |
-| Phase 5 | High Impact, Medium Effort (WhatsApp Notifications, Stock Count Mode, Smart Low-Stock Alerts, Customer Repeat Orders, Predictive Restocking) | — | ⬜ Not started |
+| Phase 5 | High Impact, Medium Effort (WhatsApp Notifications, Stock Count Mode, Smart Low-Stock Alerts, Customer Repeat Orders) | — | ⬜ Not started |
 | Phase 6 | Medium Impact, Higher Effort (WhatsApp Order Intake, Kitchen Staff Role, Offline First) | — | ⬜ Not started |
 
 **Naming note:** the roadmap's original "Phase 3" was the "compounding-features" bucket, now
@@ -164,7 +164,7 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
 3. **Phase 2 — Core value driver (the actual USP, ideally built on Phase 0's stable foundation):**
    Menu/Recipe system, paired eventually with WhatsApp-native order sharing.
 4. **Phase 4 — High Impact, Low Effort:** Daily Revenue Snapshot, Quick Reorder Shopping List, "Which Dish Brings the Most Revenue?" Report, Curated Analytics Dashboard, Cost Per Plate Calculator, and Order Calendar View.
-5. **Phase 5 — High Impact, Medium Effort:** Stock Count Mode + Variance Tracker, Smart Low-Stock Alerts with Context, Customer Repeat Orders, and Predictive Restocking (simplified). Also involves tying in the Phase 3 WhatsApp notifications.
+5. **Phase 5 — High Impact, Medium Effort:** Stock Count Mode + Variance Tracker, Smart Low-Stock Alerts with Context, and Customer Repeat Orders. Also involves tying in the Phase 3 WhatsApp notifications.
 6. **Phase 6 — Medium Impact, Higher Effort:** WhatsApp Order Intake, Kitchen Staff Role, and Offline First architecture.
 
 ## 7. Decisions log
