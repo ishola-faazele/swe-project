@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { syncPrismaUser } from '@/lib/auth'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -23,35 +24,17 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     
     if (!error) {
-      // Sync user to Prisma Database
+      // One shared identity-resolution implementation instead of the inline block that used to
+      // live here — see syncPrismaUser in src/lib/auth.ts. That function also backfills authEmail
+      // and promotes an admin, so neither concern needs restating at this call site.
+      //
+      // The old `if (user?.email)` guard is deliberately gone: syncPrismaUser handles a
+      // phone-carrying authUser correctly on its own. In practice this route is only ever reached
+      // by the browser-driven PKCE signInWithOtp flow, where an email is always present — dropping
+      // the guard is defense-in-depth and consistency with the shared contract, not a new code path.
       const { data: { user } } = await supabase.auth.getUser()
-      if (user?.email) {
-        // We import prisma here to avoid top-level issues in Edge API if there were any, though this is Node runtime
-        const { prisma } = await import('@/lib/prisma')
-        
-        const existingUser = await prisma.user.findFirst({
-          where: { email: user.email }
-        })
-
-        const isAdmin = 
-          (process.env.ADMIN_EMAIL && user.email === process.env.ADMIN_EMAIL) || 
-          (process.env.ADMIN_PHONE && user.phone === process.env.ADMIN_PHONE)
-
-        if (!existingUser) {
-          await prisma.user.create({
-            data: {
-              id: user.id, // Keep Supabase ID in sync with Prisma ID if possible (though Prisma id is uuid default, we can overwrite it if we want, but Prisma schema has default(uuid()). We'll let Prisma generate its own or use Supabase's)
-              email: user.email,
-              role: isAdmin ? 'ADMIN' : 'CUSTOMER',
-            }
-          })
-        } else if (isAdmin && existingUser.role !== 'ADMIN') {
-          // Promote to admin if email matches
-          await prisma.user.update({
-            where: { id: existingUser.id },
-            data: { role: 'ADMIN' }
-          })
-        }
+      if (user) {
+        await syncPrismaUser({ id: user.id, email: user.email, phone: user.phone })
       }
 
       return NextResponse.redirect(`${origin}${next}`)

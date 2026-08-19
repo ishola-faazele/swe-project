@@ -12,7 +12,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Order, User, InventoryItem, OrderIngredientLog, OrderDish } from '@prisma/client'
+import type { Order, InventoryItem, OrderIngredientLog, OrderDish } from '@prisma/client'
+import type { ClientSafeUser } from '@/lib/user'
 import type { DishWithRecipe } from '@/lib/recipe'
 import { OrderClient } from './OrderClient'
 import { createOrder } from './actions'
@@ -29,17 +30,18 @@ vi.mock('next/navigation', () => ({
 const mockCreateOrder = vi.mocked(createOrder)
 
 type OrderWithRelations = Order & {
-  customer: User
+  customer: ClientSafeUser
   ingredientLogs: (OrderIngredientLog & { inventoryItem: InventoryItem })[]
   dishes: OrderDish[]
 }
 
-const customer: User = {
+const customer: ClientSafeUser = {
   id: 'cust-1',
   shortId: 1,
   name: 'Ada',
   email: 'ada@example.com',
   phone: null,
+  preferredLoginMethod: 'EMAIL',
   role: 'CUSTOMER',
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),

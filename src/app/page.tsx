@@ -1,6 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
-import { prisma } from '@/lib/prisma'
+import { syncPrismaUser } from '@/lib/auth'
 import Link from 'next/link'
 
 export default async function Home(props: { searchParams: Promise<{ code?: string }> }) {
@@ -13,35 +13,13 @@ export default async function Home(props: { searchParams: Promise<{ code?: strin
   const { data: { user } } = await supabase.auth.getUser()
 
   if (user) {
-    let dbUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: user.email },
-          ...(user.phone ? [{ phone: user.phone }] : []),
-        ],
-      },
-    })
+    // Was a second, independently-drifting inline sync block (its own OR-lookup, its own admin
+    // check, its own create/update branches). Both it and the one in auth/callback/route.ts now
+    // call the single shared implementation, so a phone-only identity resolves the same way here
+    // as everywhere else instead of being partially handled.
+    const dbUser = await syncPrismaUser({ id: user.id, email: user.email, phone: user.phone })
 
-    const isAdmin =
-      (process.env.ADMIN_EMAIL && user.email === process.env.ADMIN_EMAIL) ||
-      (process.env.ADMIN_PHONE && user.phone === process.env.ADMIN_PHONE)
-
-    if (!dbUser && user.email) {
-      dbUser = await prisma.user.create({
-        data: {
-          id: user.id,
-          email: user.email,
-          role: isAdmin ? 'ADMIN' : 'CUSTOMER',
-        }
-      })
-    } else if (dbUser && isAdmin && dbUser.role !== 'ADMIN') {
-      dbUser = await prisma.user.update({
-        where: { id: dbUser.id },
-        data: { role: 'ADMIN' }
-      })
-    }
-
-    if (dbUser?.role === 'ADMIN' || isAdmin) {
+    if (dbUser.role === 'ADMIN') {
       redirect('/admin')
     } else {
       redirect('/dashboard')

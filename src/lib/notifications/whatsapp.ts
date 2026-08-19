@@ -1,25 +1,31 @@
 /**
  * WhatsApp Business Cloud API sender.
  *
- * Mirrors email.ts's shape exactly: lazy env read (no client SDK, just `fetch`), env-gated no-op
- * when unconfigured, try/catch around the network call — these functions NEVER throw, because
- * both call sites in src/app/admin/orders/actions.ts invoke them fire-and-forget and a rejection
- * here must never surface as an unhandled rejection or block an order-status change.
+ * Mirrors email.ts's shape exactly: lazy per-call config read (no client SDK, just `fetch`),
+ * settings-gated no-op when disabled or unconfigured, try/catch around the network call — these
+ * functions NEVER throw, because both call sites in src/app/admin/orders/actions.ts invoke them
+ * fire-and-forget and a rejection here must never surface as an unhandled rejection or block an
+ * order-status change.
+ *
+ * Credentials and template configuration come from the NotificationSettings table (admin-managed
+ * at /admin/settings), not env vars — the one exception being WHATSAPP_API_VERSION, see graphUrl().
  *
  * The Cloud API only allows business-initiated messages through a Meta-approved template, so
  * every send here is a template message: the body text is fixed at approval time and only the
  * numbered parameters vary per call.
  */
 import { toGhanaE164 } from '@/lib/phone'
+import { getNotificationSettings } from '@/lib/settings'
 
 // Env-overridable so a future Graph API version bump needs no code change. v24.0 (released
 // 2025-10-08, sunsets 2028-02-18) is mature rather than bleeding-edge and gives ~18 months of
 // runway; the template-message request shape is identical across every version in this range.
 const DEFAULT_GRAPH_API_VERSION = 'v24.0'
 
-// Read lazily, per call, rather than captured in a module-scope const: this matches how every
-// other env var in this module (and in email.ts) is read, and keeps the version genuinely
-// overridable rather than frozen at import time.
+// Deliberately still an ENV VAR, unlike every other WhatsApp setting in this file. The Graph API
+// version is an infrastructure/API-surface concern, not a provider credential the business owner
+// would ever rotate from the Settings UI — so it stays where a developer changes it at deploy time.
+// Read lazily, per call, so it remains genuinely overridable rather than frozen at import time.
 function graphUrl(phoneNumberId: string) {
   const version = process.env.WHATSAPP_API_VERSION || DEFAULT_GRAPH_API_VERSION
   return `https://graph.facebook.com/${version}/${phoneNumberId}/messages`
@@ -44,10 +50,18 @@ export async function sendOrderStatusWhatsApp(
   newStatus: string,
   dueDate?: string | null
 ) {
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  // "enabled" and "configured" are two INDEPENDENT checks with distinct no-op reasons — see the
+  // same pattern in sms.ts.
+  const settings = await getNotificationSettings()
+  if (!settings.whatsappEnabled) {
+    console.log('[WhatsApp] Skipping send — WhatsApp channel is disabled in Settings')
+    return { success: false, reason: 'whatsapp_disabled' }
+  }
+
+  const accessToken = settings.whatsappAccessToken
+  const phoneNumberId = settings.whatsappPhoneNumberId
   if (!accessToken || !phoneNumberId) {
-    console.log('[WhatsApp] Skipping send — WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured')
+    console.log('[WhatsApp] Skipping send — access token/phone number ID not configured in Settings')
     return { success: false, reason: 'whatsapp_not_configured' }
   }
 
@@ -57,10 +71,10 @@ export async function sendOrderStatusWhatsApp(
     return { success: false, reason: 'invalid_phone' }
   }
 
-  const templateName = process.env.WHATSAPP_TEMPLATE_NAME || 'order_status_update'
+  const templateName = settings.whatsappTemplateName || 'order_status_update'
   // 'en', not 'en_US' — this business's real templates are registered under plain "English" in
   // WhatsApp Manager, confirmed live (2026-08-19) after a 132001 "does not exist in en_US" error.
-  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en'
+  const templateLanguage = settings.whatsappTemplateLanguage || 'en'
   const statusLabel = statusLabels[newStatus] ?? newStatus
   // A single space, not an empty string: some Cloud API template implementations reject an
   // empty-string parameter value outright (a 132000-class error). A defensive hedge — if it is
@@ -111,10 +125,16 @@ export async function sendOrderStatusWhatsApp(
 }
 
 export async function sendLowStockWhatsApp(phone: string, itemName: string, currentStock: number, unit: string) {
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const settings = await getNotificationSettings()
+  if (!settings.whatsappEnabled) {
+    console.log('[WhatsApp] Skipping low stock alert — WhatsApp channel is disabled in Settings')
+    return { success: false, reason: 'whatsapp_disabled' }
+  }
+
+  const accessToken = settings.whatsappAccessToken
+  const phoneNumberId = settings.whatsappPhoneNumberId
   if (!accessToken || !phoneNumberId) {
-    console.log('[WhatsApp] Skipping low stock alert — WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured')
+    console.log('[WhatsApp] Skipping low stock alert — access token/phone number ID not configured in Settings')
     return { success: false, reason: 'whatsapp_not_configured' }
   }
 
@@ -124,12 +144,13 @@ export async function sendLowStockWhatsApp(phone: string, itemName: string, curr
     return { success: false, reason: 'invalid_phone' }
   }
 
-  // Deliberately a SEPARATE, dedicated template from sendOrderStatusWhatsApp. A WhatsApp
-  // template's approved body text cannot be swapped per-call — only its parameter values can —
-  // so order_status_update's fixed "your order #{{2}} ... is now: {{3}}" wording cannot be
-  // reused to carry a stock alert without rendering nonsense to whoever receives it.
-  const templateName = process.env.WHATSAPP_LOW_STOCK_TEMPLATE_NAME || 'low_stock_alert'
-  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en'
+  // Deliberately a SEPARATE, dedicated template from sendOrderStatusWhatsApp, and therefore a
+  // separate settings field — never whatsappTemplateName. A WhatsApp template's approved body text
+  // cannot be swapped per-call — only its parameter values can — so order_status_update's fixed
+  // "your order #{{2}} ... is now: {{3}}" wording cannot be reused to carry a stock alert without
+  // rendering nonsense to whoever receives it.
+  const templateName = settings.whatsappLowStockTemplateName || 'low_stock_alert'
+  const templateLanguage = settings.whatsappTemplateLanguage || 'en'
 
   try {
     const response = await fetch(graphUrl(phoneNumberId), {

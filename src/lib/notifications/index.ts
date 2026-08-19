@@ -10,8 +10,8 @@
  * exactly mirroring how email is attempted independently whenever an email address exists.
  */
 
-import { sendOrderStatusEmail, sendLowStockAlert, type OrderStatusEmailData } from './email'
-import { sendOrderStatusSms, sendLowStockSms } from './sms'
+import { sendOrderStatusEmail, sendLowStockAlert, sendAccountCreatedEmail, type OrderStatusEmailData } from './email'
+import { sendOrderStatusSms, sendLowStockSms, sendSms } from './sms'
 import { sendOrderStatusWhatsApp, sendLowStockWhatsApp } from './whatsapp'
 
 export async function notifyOrderStatusChange(data: {
@@ -92,5 +92,68 @@ export async function notifyLowStock(data: {
     results.whatsapp = whatsappResult.status === 'fulfilled' ? whatsappResult.value : { success: false, error: whatsappResult.reason }
   }
 
+  return results
+}
+
+/**
+ * The copy a phone-preferred new customer receives. Kept in one named place so the wording can be
+ * revised without touching fan-out logic.
+ *
+ * Deliberately points at the real site URL rather than a vague "visit our login page" — the
+ * recipient is a non-technical customer who has never used this app and has no other way to find
+ * it. Deliberately does NOT carry a code: a code issued at creation time would very likely expire
+ * before the customer got round to using it, and would then read as broken.
+ */
+function accountCreatedSmsMessage(): string {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+  return `Welcome to Chop with Rostty! Your account is ready. Visit ${siteUrl}/login and enter this phone number to get a login code.`
+}
+
+/**
+ * Tells a brand-new customer how to get into their account.
+ *
+ * EMAIL + SMS ONLY — never WhatsApp, and this module deliberately imports nothing from './whatsapp'
+ * for this path. WhatsApp requires a pre-approved Meta template for every business-initiated
+ * message, and this notification is not going to wait behind a third template review. (The two
+ * EXISTING WhatsApp templates, order_status_update and low_stock_alert, are unaffected and still
+ * fire from notifyOrderStatusChange/notifyLowStock exactly as before.)
+ *
+ * The two branches are mutually exclusive and neither is a fallback for the other: each is gated
+ * purely on preferredLoginMethod plus its own contact field being present. A PHONE-preferred
+ * customer whose SMS fails does not then get an email, and vice versa.
+ *
+ * Consequence worth stating plainly: for a phone-preferred customer with no email, SMS is the ONLY
+ * channel. If SMS is disabled or unconfigured they receive nothing at all — a clean, logged no-op
+ * from sendSms, never an error, and never something that fails createCustomer.
+ */
+export async function notifyAccountCreated(data: {
+  customerName?: string | null
+  customerEmail?: string | null
+  customerPhone?: string | null
+  preferredLoginMethod: 'EMAIL' | 'PHONE'
+  magicLink?: string | null // only meaningful when preferredLoginMethod === 'EMAIL'
+}) {
+  const results: {
+    email?: Awaited<ReturnType<typeof sendAccountCreatedEmail>>
+    sms?: Awaited<ReturnType<typeof sendSms>>
+  } = {}
+
+  if (data.preferredLoginMethod === 'EMAIL' && data.customerEmail && data.magicLink) {
+    results.email = await sendAccountCreatedEmail({
+      to: data.customerEmail,
+      name: data.customerName,
+      magicLink: data.magicLink,
+    })
+  }
+
+  if (data.preferredLoginMethod === 'PHONE' && data.customerPhone) {
+    results.sms = await sendSms({
+      to: data.customerPhone,
+      message: accountCreatedSmsMessage(),
+    })
+  }
+
+  // Neither branch fires for a name-only customer — a shape createCustomerSchema legitimately
+  // allows. That resolves to {} cleanly rather than throwing.
   return results
 }

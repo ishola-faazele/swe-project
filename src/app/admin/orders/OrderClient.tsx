@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Order, User, InventoryItem, OrderStatus, OrderIngredientLog, OrderDish } from "@prisma/client"
+import { Order, InventoryItem, OrderStatus, OrderIngredientLog, OrderDish } from "@prisma/client"
 import {
   createColumnHelper,
   flexRender,
@@ -24,10 +24,11 @@ import { computeDishSubtotal, type DishSelection, type DishWithRecipe } from "@/
 import { BUSINESS_LOCALE, formatCurrency, getCurrencySymbol } from "@/lib/currency"
 import { getDueUrgency, isActiveOrderStatus } from "@/lib/dueDate"
 import { cn } from "@/lib/utils"
+import type { ClientSafeUser } from "@/lib/user"
 import { AlertTriangle, Clock, ClipboardList } from "lucide-react"
 
 type OrderWithRelations = Order & {
-  customer: User,
+  customer: ClientSafeUser,
   ingredientLogs: (OrderIngredientLog & { inventoryItem: InventoryItem })[],
   dishes: OrderDish[]
 }
@@ -40,7 +41,7 @@ export function OrderClient({
   dishes
 }: {
   initialData: OrderWithRelations[],
-  customers: User[],
+  customers: ClientSafeUser[],
   // Still fetched and passed by OrdersPage — kept on the props so the page's fetch shape stays
   // aligned with the order-detail flow, which does read it.
   inventory: InventoryItem[],

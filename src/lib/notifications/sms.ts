@@ -17,11 +17,20 @@
  * shapes — the response/failure-code mapping stays defensive regardless, since a failed send was
  * never deliberately triggered to observe its shape.
  *
- * Like email.ts and whatsapp.ts, this module never throws: env-gated no-op when unconfigured,
- * try/catch around the network call. Both call sites invoke it fire-and-forget, so a rejection
- * here would surface as an unhandled rejection rather than anything a caller could act on.
+ * Like email.ts and whatsapp.ts, this module never throws: settings-gated no-op when disabled or
+ * unconfigured, try/catch around the network call. Both call sites invoke it fire-and-forget, so a
+ * rejection here would surface as an unhandled rejection rather than anything a caller could act on.
+ *
+ * ⚠ The no-op branches deliberately log only that a send was skipped — NEVER the message body.
+ * sendSms is a generic entry point, and one of its callers is now the phone-login OTP flow, so
+ * `data.message` can contain a live, unexpired login code. The unconfigured branch is a genuinely
+ * expected deployed state (immediately after this ships, before the admin enters credentials at
+ * /admin/settings), which would otherwise print usable login codes straight to the server log.
+ * Order-status and low-stock copy isn't sensitive enough to be worth re-litigating this per
+ * message type — just never log the body here.
  */
 import { toGhanaE164 } from '@/lib/phone'
+import { getNotificationSettings } from '@/lib/settings'
 
 const ARKESEL_SMS_ENDPOINT = 'https://sms.arkesel.com/sms/api'
 
@@ -31,11 +40,20 @@ export type SmsData = {
 }
 
 export async function sendSms(data: SmsData) {
-  const apiKey = process.env.ARKESEL_API_KEY
-  const senderId = process.env.ARKESEL_SENDER_ID
+  // Credentials now come from the database (admin-managed at /admin/settings), not env vars.
+  // "enabled" and "configured" are two INDEPENDENT checks with distinct no-op reasons: a channel
+  // can hold valid credentials but be deliberately switched off, or be switched on before any
+  // credentials have been entered.
+  const settings = await getNotificationSettings()
+  if (!settings.smsEnabled) {
+    console.log('[SMS] Skipping send — SMS channel is disabled in Settings')
+    return { success: false, reason: 'sms_disabled' }
+  }
+
+  const apiKey = settings.arkeselApiKey
+  const senderId = settings.arkeselSenderId
   if (!apiKey || !senderId) {
-    console.log('[SMS] Skipping send — ARKESEL_API_KEY/ARKESEL_SENDER_ID not configured')
-    console.log('[SMS] Would have sent:', data)
+    console.log('[SMS] Skipping send — Arkesel API key/sender ID not configured in Settings')
     return { success: false, reason: 'sms_not_configured' }
   }
 

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Category, OrderStatus } from '@prisma/client'
+import { Category, LoginMethod, OrderStatus } from '@prisma/client'
 
 /**
  * An order cannot list more than this many distinct ingredient lines. Not a real product
@@ -121,19 +121,46 @@ export const updateInventoryItemSchema = z.object({
   category: z.enum(Category, 'Select a valid category.').optional(),
 })
 
+/**
+ * A customer must not prefer a login channel they have no contact info for — an EMAIL preference
+ * with no email on file would produce an account-creation notification with nowhere to send it,
+ * and a phone-login attempt that can never resolve.
+ *
+ * Left optional so callers that don't supply the field at all still pass; createCustomer computes
+ * an explicit value in that case rather than leaning on the column default.
+ */
+const preferredLoginMethodMatchesContactField = (v: {
+  email?: string
+  phone?: string
+  preferredLoginMethod?: LoginMethod
+}) =>
+  !v.preferredLoginMethod ||
+  (v.preferredLoginMethod === 'EMAIL' ? Boolean(v.email) : Boolean(v.phone))
+
+const PREFERRED_LOGIN_METHOD_MESSAGE =
+  'Preferred login method must match a contact field that is actually filled in.'
+
+const preferredLoginMethodField = z.enum(LoginMethod, 'Select a valid preferred login method.').optional()
+
 export const createCustomerSchema = z
   .object({
     name: optionalContactField,
     email: optionalContactField,
     phone: optionalContactField,
+    preferredLoginMethod: preferredLoginMethodField,
   })
   .refine(hasAtLeastOneContactMethod, { message: AT_LEAST_ONE_CONTACT_MESSAGE })
+  .refine(preferredLoginMethodMatchesContactField, { message: PREFERRED_LOGIN_METHOD_MESSAGE })
 
 /**
  * updateCustomer overwrites all three fields on every call (preserved from the existing
  * implementation), so the incoming payload *is* the resulting row state — the same
  * at-least-one-contact-method refinement therefore also prevents an edit that blanks a
  * customer's every contact method.
+ *
+ * That same "the payload is the resulting state" property is what makes the preferred-login-method
+ * refinement meaningful on an edit: it stops a save from leaving preferredLoginMethod pointing at
+ * a channel the very same edit just blanked out.
  */
 export const updateCustomerSchema = z
   .object({
@@ -141,5 +168,40 @@ export const updateCustomerSchema = z
     name: optionalContactField,
     email: optionalContactField,
     phone: optionalContactField,
+    preferredLoginMethod: preferredLoginMethodField,
   })
   .refine(hasAtLeastOneContactMethod, { message: AT_LEAST_ONE_CONTACT_MESSAGE })
+  .refine(preferredLoginMethodMatchesContactField, { message: PREFERRED_LOGIN_METHOD_MESSAGE })
+
+/**
+ * Settings-page schemas.
+ *
+ * Every secret field is optional and blankable because the Settings UI never round-trips a stored
+ * secret back to the browser: a blank input means "keep whatever is stored", never "clear it".
+ * updateNotificationSettings translates blank → undefined (a Prisma no-op for that column) rather
+ * than writing an empty string. Non-secret fields overwrite normally, like any form submission.
+ */
+const optionalSettingsField = z.string().trim().optional()
+
+export const updateNotificationSettingsSchema = z.object({
+  resendApiKey: optionalSettingsField,
+  fromEmail: optionalSettingsField,
+  arkeselApiKey: optionalSettingsField,
+  arkeselSenderId: optionalSettingsField,
+  whatsappAccessToken: optionalSettingsField,
+  whatsappPhoneNumberId: optionalSettingsField,
+  whatsappAppSecret: optionalSettingsField,
+  whatsappWebhookVerifyToken: optionalSettingsField,
+  whatsappTemplateName: optionalSettingsField,
+  whatsappLowStockTemplateName: optionalSettingsField,
+  whatsappTemplateLanguage: optionalSettingsField,
+  emailEnabled: z.boolean(),
+  smsEnabled: z.boolean(),
+  whatsappEnabled: z.boolean(),
+})
+
+/** Required booleans, not a partial patch — this is an explicit admin toggle write. */
+export const updateLoginSettingsSchema = z.object({
+  emailLoginEnabled: z.boolean(),
+  phoneLoginEnabled: z.boolean(),
+})

@@ -3,14 +3,34 @@
  * file establishes the pattern: construct a real `Request` and call the exported GET/POST
  * directly. No server, no supertest, no network.
  *
- * ⚠ Every env-dependent case stubs its env var explicitly. This is load-bearing: WHATSAPP_APP_SECRET
- * and WHATSAPP_WEBHOOK_VERIFY_TOKEN are both real, non-empty values in this repo's `.env`, which
- * vitest.config.mts's `node` project loads via `dotenv/config`. The fail-closed cases (403/503)
- * would silently test nothing if they relied on ambient absence.
+ * ⚠ Both secrets now come from the NotificationSettings table, so `@/lib/settings` is mocked here
+ * rather than the environment. Only WHERE the route learns its secret changed — the HMAC
+ * computation, the raw-body-read-before-JSON.parse ordering, and the fail-closed status codes are
+ * all untouched, and every assertion about them below is unchanged.
+ *
+ * The fail-closed cases stub an explicitly EMPTY stored secret rather than relying on an ambient
+ * default, so they genuinely exercise the branch they name. That state is not hypothetical: the
+ * settings row starts empty on a fresh deploy, before the admin has visited /admin/settings.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import crypto from 'node:crypto'
+
+vi.mock('@/lib/settings', () => ({ getNotificationSettings: vi.fn() }))
+
+import { getNotificationSettings } from '@/lib/settings'
 import { GET, POST } from './route'
+
+const settingsMock = vi.mocked(getNotificationSettings)
+
+/** Stubs the two webhook secrets as stored in NotificationSettings. */
+function stubSettings(overrides: Record<string, unknown> = {}) {
+  settingsMock.mockResolvedValue({
+    whatsappWebhookVerifyToken: null,
+    whatsappAppSecret: null,
+    ...overrides,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any)
+}
 
 const TEST_APP_SECRET = 'test-app-secret-NEVER-LOG-ME'
 const TEST_VERIFY_TOKEN = 'test-verify-token-NEVER-LOG-ME'
@@ -65,7 +85,7 @@ afterEach(() => {
 
 describe('GET — Meta verification handshake', () => {
   it('returns 200 with the RAW challenge as plain text on a correct handshake', async () => {
-    vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+    stubSettings({ whatsappWebhookVerifyToken: TEST_VERIFY_TOKEN })
 
     const response = await GET(getRequest({
       'hub.mode': 'subscribe',
@@ -80,7 +100,7 @@ describe('GET — Meta verification handshake', () => {
   })
 
   it('returns the challenge verbatim without JSON-parsing it', async () => {
-    vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+    stubSettings({ whatsappWebhookVerifyToken: TEST_VERIFY_TOKEN })
 
     const response = await GET(getRequest({
       'hub.mode': 'subscribe',
@@ -94,7 +114,7 @@ describe('GET — Meta verification handshake', () => {
   })
 
   it('returns 403 when the verify token does not match', async () => {
-    vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+    stubSettings({ whatsappWebhookVerifyToken: TEST_VERIFY_TOKEN })
 
     const response = await GET(getRequest({
       'hub.mode': 'subscribe',
@@ -107,7 +127,7 @@ describe('GET — Meta verification handshake', () => {
   })
 
   it('returns 403 when hub.mode is not "subscribe"', async () => {
-    vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+    stubSettings({ whatsappWebhookVerifyToken: TEST_VERIFY_TOKEN })
 
     const response = await GET(getRequest({
       'hub.mode': 'unsubscribe',
@@ -119,7 +139,7 @@ describe('GET — Meta verification handshake', () => {
   })
 
   it('returns 403 when hub.challenge is absent', async () => {
-    vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+    stubSettings({ whatsappWebhookVerifyToken: TEST_VERIFY_TOKEN })
 
     const response = await GET(getRequest({
       'hub.mode': 'subscribe',
@@ -131,8 +151,8 @@ describe('GET — Meta verification handshake', () => {
 
   // Fail-closed. Explicitly stubbed empty — the real .env sets this to a live value, so relying
   // on ambient absence would make this test pass without exercising the branch it names.
-  it('fails closed with 403 when WHATSAPP_WEBHOOK_VERIFY_TOKEN is unset', async () => {
-    vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', '')
+  it('fails closed with 403 when no verify token is stored', async () => {
+    stubSettings({ whatsappWebhookVerifyToken: null })
 
     const response = await GET(getRequest({
       'hub.mode': 'subscribe',
@@ -144,8 +164,8 @@ describe('GET — Meta verification handshake', () => {
     expect(await response.text()).toBe('Webhook verify token not configured')
   })
 
-  it('does not auto-verify an empty-token request when the env var is also unset', async () => {
-    vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', '')
+  it('does not auto-verify an empty-token request when no token is stored either', async () => {
+    stubSettings({ whatsappWebhookVerifyToken: null })
 
     const response = await GET(getRequest({
       'hub.mode': 'subscribe',
@@ -161,7 +181,7 @@ describe('GET — Meta verification handshake', () => {
   // through the `mode === 'subscribe' && token === verifyToken && challenge` check.
   describe('missing query params (not merely wrong values)', () => {
     it('returns 403 when hub.verify_token is entirely absent from the query string', async () => {
-      vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+      stubSettings({ whatsappWebhookVerifyToken: TEST_VERIFY_TOKEN })
 
       const response = await GET(getRequest({
         'hub.mode': 'subscribe',
@@ -173,7 +193,7 @@ describe('GET — Meta verification handshake', () => {
     })
 
     it('returns 403 when hub.mode is entirely absent from the query string', async () => {
-      vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+      stubSettings({ whatsappWebhookVerifyToken: TEST_VERIFY_TOKEN })
 
       const response = await GET(getRequest({
         'hub.verify_token': TEST_VERIFY_TOKEN,
@@ -184,7 +204,7 @@ describe('GET — Meta verification handshake', () => {
     })
 
     it('returns 403 for a GET with no query params at all', async () => {
-      vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+      stubSettings({ whatsappWebhookVerifyToken: TEST_VERIFY_TOKEN })
 
       const response = await GET(getRequest({}))
 
@@ -195,7 +215,7 @@ describe('GET — Meta verification handshake', () => {
 
 describe('POST — signature-verified event logging', () => {
   it('accepts a validly-signed payload with 200 {received: true}', async () => {
-    vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+    stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
     const body = JSON.stringify(SAMPLE_PAYLOAD)
 
     const response = await POST(postRequest(body, sign(body)))
@@ -205,7 +225,7 @@ describe('POST — signature-verified event logging', () => {
   })
 
   it('logs the verified payload', async () => {
-    vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+    stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
     const body = JSON.stringify(SAMPLE_PAYLOAD)
 
     await POST(postRequest(body, sign(body)))
@@ -214,7 +234,7 @@ describe('POST — signature-verified event logging', () => {
   })
 
   it('rejects a tampered signature (valid hex, wrong value) with 401', async () => {
-    vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+    stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
     const body = JSON.stringify(SAMPLE_PAYLOAD)
     // Same length, same hex alphabet, wrong digest — the exact case timingSafeEqual exists for.
     const tampered = 'sha256=' + 'a'.repeat(64)
@@ -226,7 +246,7 @@ describe('POST — signature-verified event logging', () => {
   })
 
   it('rejects a signature computed with the WRONG secret with 401', async () => {
-    vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+    stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
     const body = JSON.stringify(SAMPLE_PAYLOAD)
 
     const response = await POST(postRequest(body, sign(body, 'a-different-app-secret')))
@@ -235,7 +255,7 @@ describe('POST — signature-verified event logging', () => {
   })
 
   it('rejects a valid signature over a DIFFERENT body with 401', async () => {
-    vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+    stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
     const signedBody = JSON.stringify(SAMPLE_PAYLOAD)
     const deliveredBody = JSON.stringify({ ...SAMPLE_PAYLOAD, object: 'tampered_in_flight' })
 
@@ -246,7 +266,7 @@ describe('POST — signature-verified event logging', () => {
   })
 
   it('rejects a missing signature header with 401', async () => {
-    vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+    stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
     const body = JSON.stringify(SAMPLE_PAYLOAD)
 
     const response = await POST(postRequest(body, undefined))
@@ -256,7 +276,7 @@ describe('POST — signature-verified event logging', () => {
   })
 
   it('rejects a signature header without the sha256= prefix with 401', async () => {
-    vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+    stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
     const body = JSON.stringify(SAMPLE_PAYLOAD)
     const unprefixed = crypto.createHmac('sha256', TEST_APP_SECRET).update(body, 'utf8').digest('hex')
 
@@ -279,7 +299,7 @@ describe('POST — signature-verified event logging', () => {
     ]
 
     it.each(malformed)('%s → resolves with 401, does not throw', async (_label, signature) => {
-      vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+      stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
       const body = JSON.stringify(SAMPLE_PAYLOAD)
 
       const call = POST(postRequest(body, signature))
@@ -291,7 +311,7 @@ describe('POST — signature-verified event logging', () => {
   })
 
   it('returns 400 when a correctly-signed body is not parseable JSON', async () => {
-    vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+    stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
     const body = 'this is definitely not json'
 
     const response = await POST(postRequest(body, sign(body)))
@@ -301,9 +321,9 @@ describe('POST — signature-verified event logging', () => {
   })
 
   // Fail-closed. Explicitly stubbed empty — the real .env holds a live secret.
-  describe('fails closed when WHATSAPP_APP_SECRET is unset', () => {
+  describe('fails closed when no app secret is stored', () => {
     it('returns 503', async () => {
-      vi.stubEnv('WHATSAPP_APP_SECRET', '')
+      stubSettings({ whatsappAppSecret: null })
       const body = JSON.stringify(SAMPLE_PAYLOAD)
 
       const response = await POST(postRequest(body, sign(body)))
@@ -313,7 +333,7 @@ describe('POST — signature-verified event logging', () => {
     })
 
     it('never reads, parses or logs the payload', async () => {
-      vi.stubEnv('WHATSAPP_APP_SECRET', '')
+      stubSettings({ whatsappAppSecret: null })
       const body = JSON.stringify(SAMPLE_PAYLOAD)
       const request = postRequest(body, sign(body))
 
@@ -325,7 +345,7 @@ describe('POST — signature-verified event logging', () => {
     })
 
     it('rejects even a validly-signed request rather than trusting it unverified', async () => {
-      vi.stubEnv('WHATSAPP_APP_SECRET', '')
+      stubSettings({ whatsappAppSecret: null })
       const body = JSON.stringify(SAMPLE_PAYLOAD)
 
       const response = await POST(postRequest(body, sign(body)))
@@ -338,7 +358,7 @@ describe('POST — signature-verified event logging', () => {
   // would be worse than any other secret in this feature.
   describe('no secrets in logs', () => {
     it('never logs the app secret when rejecting an invalid signature', async () => {
-      vi.stubEnv('WHATSAPP_APP_SECRET', TEST_APP_SECRET)
+      stubSettings({ whatsappAppSecret: TEST_APP_SECRET })
       const body = JSON.stringify(SAMPLE_PAYLOAD)
 
       await POST(postRequest(body, 'sha256=' + 'a'.repeat(64)))
@@ -348,7 +368,7 @@ describe('POST — signature-verified event logging', () => {
     })
 
     it('never logs the app secret when failing closed', async () => {
-      vi.stubEnv('WHATSAPP_APP_SECRET', '')
+      stubSettings({ whatsappAppSecret: null })
       const body = JSON.stringify(SAMPLE_PAYLOAD)
 
       await POST(postRequest(body, sign(body)))
@@ -358,7 +378,7 @@ describe('POST — signature-verified event logging', () => {
     })
 
     it('never logs the verify token when rejecting a GET handshake', async () => {
-      vi.stubEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN', TEST_VERIFY_TOKEN)
+      stubSettings({ whatsappWebhookVerifyToken: TEST_VERIFY_TOKEN })
 
       await GET(getRequest({ 'hub.mode': 'subscribe', 'hub.verify_token': 'wrong', 'hub.challenge': 'x' }))
 

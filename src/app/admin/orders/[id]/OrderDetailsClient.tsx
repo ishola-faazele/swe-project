@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Order, User, InventoryItem, OrderStatus, OrderIngredientLog, OrderDish } from "@prisma/client"
+import { Order, InventoryItem, OrderStatus, OrderIngredientLog, OrderDish } from "@prisma/client"
+import type { ClientSafeUser } from "@/lib/user"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,7 +13,7 @@ import { updateOrderStatus } from "../actions"
 import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
 
 type FullOrder = Order & {
-  customer: User,
+  customer: ClientSafeUser,
   ingredientLogs: (OrderIngredientLog & { inventoryItem: InventoryItem })[],
   dishes: OrderDish[]
 }

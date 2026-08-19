@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { User } from "@prisma/client"
 import {
   createColumnHelper,
   flexRender,
@@ -20,8 +19,9 @@ import {
 import { createCustomer, deleteCustomer, updateCustomer } from "./actions"
 import { Plus, ShoppingBag, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
+import type { ClientSafeUser } from "@/lib/user"
 
-type CustomerWithCount = User & { _count: { orders: number } }
+type CustomerWithCount = ClientSafeUser & { _count: { orders: number } }
 
 const columnHelper = createColumnHelper<CustomerWithCount>()
 
