@@ -117,6 +117,7 @@ export async function createOrder(data: {
       customerEmail: customer.email,
       customerPhone: customer.phone,
       orderId: order.id,
+      orderShortId: order.shortId,
       orderDescription: order.description,
       newStatus: 'PENDING',
     }).catch(console.error)
@@ -133,6 +134,7 @@ export async function createOrder(data: {
         currentStock: item.currentStock,
         unit: item.unit,
         adminEmail: process.env.ADMIN_ALERT_EMAIL,
+        adminPhone: process.env.ADMIN_ALERT_PHONE,
       }).catch(console.error)
     }
   }
@@ -188,6 +190,7 @@ export async function updateOrderStatus(
     customerEmail: order.customer.email,
     customerPhone: order.customer.phone,
     orderId: order.id,
+    orderShortId: order.shortId,
     orderDescription: order.description,
     newStatus: order.status,
     dueDate: order.dueDate?.toLocaleDateString() ?? null,
