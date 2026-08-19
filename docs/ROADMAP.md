@@ -12,9 +12,9 @@ this file is the short, update-as-you-go version).
 | Phase 1 | Quick-Win Polish Pack + enterprise UI overhaul, two rounds (see below) | `feature/polish-pack` → `../swe-project-polish-pack` | ✅ Merged into `main` — round 1 `d280d7a`, round 2 `28b98a3` |
 | Phase 2 | Menu & Recipe System | `feature/menu-recipe-system` → `../swe-project-menu-recipe-system` | ✅ Merged into `main` (`e6f2854`) |
 | Phase 3 | Real Customer Notifications (WhatsApp Business Cloud API + Arkesel SMS) | `feature/whatsapp-arkesel-notifications` → `../swe-project-notifications` | 🔄 Implemented, tested, hardened (252 unit / 90 integration tests). **Not yet merged** — held pending webhook verification and template approval. |
-| Phase 4 | High Impact, Low Effort (Daily Revenue Snapshot, Quick Shopping List, Top Revenue Dishes, Analytics, Cost Per Plate, Order Calendar) | — | ⬜ Not started |
-| Phase 5 | High Impact, Medium Effort (WhatsApp Notifications, Stock Count Mode, Smart Low-Stock Alerts, Customer Repeat Orders) | — | ⬜ Not started |
-| Phase 6 | Medium Impact, Higher Effort (WhatsApp Order Intake, Kitchen Staff Role, Offline First) | — | ⬜ Not started |
+| Phase 4 | High Impact, Low Effort (Daily Revenue Snapshot, Quick Shopping List, Top Revenue Dishes, Analytics, Cost Per Plate, Order Calendar) | `feature/phase-456` | ✅ Completed |
+| Phase 5 | High Impact, Medium Effort (WhatsApp Notifications, Stock Count Mode, Smart Low-Stock Alerts, Customer Repeat Orders) | `feature/phase-456` | ✅ Completed |
+| Phase 6 | Medium Impact, Higher Effort (Offline First, WhatsApp Order Intake, Kitchen Staff Role) | `feature/phase-456` | ✅ Offline First Completed. Others skipped/deferred. |
 
 **Naming note:** the roadmap's original "Phase 3" was the "compounding-features" bucket, now
 split into **Phase 4, 5, and 6**. Real WhatsApp/SMS notifications took the Phase 3 slot instead because the
@@ -170,6 +170,8 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
 ## 7. Decisions log
 
 - **2026-08-19** — Evaluated 20 potential USPs against the reality of a small West African catering business. Kept/modified 6, deferred 8, skipped 5, and proposed 8 new practical USPs (e.g., Daily Revenue Snapshot, Customizable Shopping List, Order Calendar View). Reorganized the remaining roadmap into Phases 4, 5, and 6 based on Impact vs Effort.
+- **2026-08-19** — Implemented and completed Phases 4, 5, and 6 on a single unified branch. Features included Daily Revenue Snapshot, Order Calendar, low-stock contextual alerts, repeat orders, WhatsApp "Share Receipt" via `wa.me`, and a fully resilient "Offline First" architecture. 
+- **2026-08-19** — Resolved a Next.js 16 build/dev incompatibility with the newly added Service Worker library (`@serwist/next`). Serwist relies on Webpack, while Next.js 16 defaults to Turbopack. To fix `next dev` crashing, Serwist was configured to disable itself fully in `development` mode (`disable: process.env.NODE_ENV === "development"`). The production build script was updated to explicitly use Webpack (`next build --webpack`), enabling the service worker to generate correctly without Turbopack interference.
 - **2026-08-17** — User chose to build Phase 2 (Menu & Recipe System) before Phase 0, against
   the PM recommendation, as an explicit accepted tradeoff (not an oversight).
 - **2026-08-17** — User then chose to run Phase 0 and Phase 1 in parallel with the already

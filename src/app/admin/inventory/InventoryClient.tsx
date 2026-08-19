@@ -31,8 +31,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive, updateInventoryItem } from "./actions"
-import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw } from "lucide-react"
+import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive, updateInventoryItem, submitStockCount } from "./actions"
+import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw, ShoppingCart, Copy, Printer, ClipboardCheck, Save } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { HighlightText } from "@/components/ui/highlight"
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -101,6 +101,13 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const [globalFilter, setGlobalFilter] = useState('')
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null)
+  
+  const [isShoppingListOpen, setIsShoppingListOpen] = useState(false)
+  const [shoppingMultiplier, setShoppingMultiplier] = useState<number>(2)
+  
+  const [isCountMode, setIsCountMode] = useState(false)
+  const [stockCounts, setStockCounts] = useState<Record<string, number>>({})
+  const [isSubmittingCount, setIsSubmittingCount] = useState(false)
 
   // Client-side filter over the full array the page already fetched — no second query.
   //
@@ -153,6 +160,38 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     }
   }
 
+  const handleSaveStockCount = async () => {
+    const adjustments = Object.entries(stockCounts).map(([id, newStock]) => {
+      const item = data.find(i => i.id === id)
+      return { id, previousStock: item?.currentStock ?? 0, newStock }
+    }).filter(adj => adj.previousStock !== adj.newStock)
+
+    if (adjustments.length === 0) {
+      setIsCountMode(false)
+      return
+    }
+
+    setIsSubmittingCount(true)
+    try {
+      const result = await submitStockCount(adjustments)
+      if (!result.ok) {
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
+      } else {
+        toast.add({ title: 'Counts saved', description: `Updated ${adjustments.length} item${adjustments.length === 1 ? '' : 's'}.`, type: 'success' })
+        setData(prev => prev.map(item => {
+          const adj = adjustments.find(a => a.id === item.id)
+          return adj ? { ...item, currentStock: adj.newStock } : item
+        }))
+        setIsCountMode(false)
+        setStockCounts({})
+      }
+    } catch (err) {
+      toast.add({ title: 'Error', description: 'Failed to save counts.', type: 'error' })
+    } finally {
+      setIsSubmittingCount(false)
+    }
+  }
+
   const columns = [
     columnHelper.accessor("name", {
       header: "ITEM NAME",
@@ -188,7 +227,31 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     }),
     columnHelper.accessor("currentStock", {
       header: "STOCK LEVEL",
-      cell: (info) => (
+      cell: (info) => isCountMode ? (
+        <div className="flex items-center gap-3">
+          <Input 
+            type="number" 
+            step="any"
+            className="w-24 font-mono-data" 
+            value={stockCounts[info.row.original.id] ?? info.getValue()}
+            onChange={(e) => setStockCounts(prev => ({ ...prev, [info.row.original.id]: Number(e.target.value) }))}
+          />
+          {(() => {
+             const current = info.getValue()
+             const count = stockCounts[info.row.original.id]
+             if (count !== undefined && count !== current) {
+                const diff = count - current
+                const isPositive = diff > 0
+                return (
+                  <span className={cn("text-xs font-mono-data whitespace-nowrap", isPositive ? "text-green-500" : "text-destructive")}>
+                    {isPositive ? '+' : ''}{Number(diff.toFixed(2))}
+                  </span>
+                )
+             }
+             return null
+          })()}
+        </div>
+      ) : (
         <StockBadge
           current={info.getValue()}
           min={info.row.original.minimumThreshold}
@@ -270,7 +333,54 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   // retired item sits at or near zero stock permanently and must not nag the restock banner.
   // This count is independent of the dashboard's — the page now feeds archived rows into `data`
   // for the reveal toggle, so without this filter archiving an item would not clear its warning.
-  const lowStockCount = data.filter(i => i.isActive && i.currentStock <= i.minimumThreshold).length
+  const lowStockItems = data.filter(i => i.isActive && i.minimumThreshold > 0 && i.currentStock <= i.minimumThreshold)
+  const lowStockCount = lowStockItems.length
+
+  const getShoppingListText = () => {
+    if (lowStockItems.length === 0) return "No items are currently below their minimum threshold."
+    
+    const targetLabel = shoppingMultiplier === 1 
+      ? 'Just enough (Minimum)' 
+      : shoppingMultiplier === 1.5 
+      ? 'A bit extra' 
+      : shoppingMultiplier === 2 
+      ? 'Double stock' 
+      : 'Heavy restock'
+
+    const header = `📋 Shopping List\nRestock Target: ${targetLabel}\n\n`
+    const items = lowStockItems.map(item => {
+      const target = item.minimumThreshold * shoppingMultiplier
+      // Use ceil to avoid fractional restocking for items that usually come in whole units, 
+      // though this caters to any unit so toFixed(1) might be better.
+      const needed = Math.max(0, target - item.currentStock)
+      // Format number to drop trailing .0
+      const formattedNeeded = Number(needed.toFixed(1))
+      return `- ${item.name}: ${formattedNeeded} ${item.unit}`
+    }).join("\n")
+    return header + items
+  }
+
+  const handleCopyShoppingList = () => {
+    navigator.clipboard.writeText(getShoppingListText())
+    toast.add({ title: 'Copied!', description: 'Shopping list copied to clipboard.', type: 'success' })
+  }
+
+  const handlePrintShoppingList = () => {
+    const printWindow = window.open('', '', 'height=600,width=800')
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Shopping List</title>')
+      printWindow.document.write('<style>body { font-family: sans-serif; padding: 20px; } pre { font-family: monospace; font-size: 14px; white-space: pre-wrap; }</style>')
+      printWindow.document.write('</head><body >')
+      printWindow.document.write('<pre>' + getShoppingListText() + '</pre>')
+      printWindow.document.write('</body></html>')
+      printWindow.document.close()
+      printWindow.focus()
+      // Give it a tiny bit of time to render before invoking print
+      setTimeout(() => {
+        printWindow.print()
+      }, 100)
+    }
+  }
 
   async function handleAdd(formData: FormData) {
     const name = formData.get("name") as string
@@ -355,7 +465,58 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           <Button onClick={() => setIsOpen(true)}>
             <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Add Item
           </Button>
+
+          {isCountMode ? (
+            <Button variant="default" onClick={handleSaveStockCount} disabled={isSubmittingCount}>
+              <Save className="mr-1.5 h-4 w-4" aria-hidden="true" /> Save Counts
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => setIsCountMode(true)}>
+              <ClipboardCheck className="mr-1.5 h-4 w-4" aria-hidden="true" /> Count Stock
+            </Button>
+          )}
+
+          <Button variant="secondary" onClick={() => setIsShoppingListOpen(true)}>
+            <ShoppingCart className="mr-1.5 h-4 w-4" aria-hidden="true" /> Shopping List
+          </Button>
         </div>
+
+        <Dialog open={isShoppingListOpen} onOpenChange={setIsShoppingListOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Quick Reorder Shopping List</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Label htmlFor="multiplier" className="font-semibold text-foreground">Restock Target:</Label>
+                <select 
+                  id="multiplier" 
+                  className="select-field w-32 bg-card" 
+                  value={shoppingMultiplier} 
+                  onChange={(e) => setShoppingMultiplier(Number(e.target.value))}
+                >
+                  <option value={1}>Just enough (Minimum)</option>
+                  <option value={1.5}>A bit extra</option>
+                  <option value={2}>Double stock</option>
+                  <option value={3}>Stock up heavily</option>
+                </select>
+              </div>
+              <div className="rounded-md bg-muted/50 p-4 max-h-[300px] overflow-y-auto border border-border">
+                <pre className="text-sm font-mono-data whitespace-pre-wrap text-foreground">
+                  {getShoppingListText()}
+                </pre>
+              </div>
+              <div className="flex gap-2">
+                <Button className="w-full" onClick={handleCopyShoppingList} disabled={lowStockItems.length === 0}>
+                  <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" /> Copy
+                </Button>
+                <Button variant="outline" className="w-full" onClick={handlePrintShoppingList} disabled={lowStockItems.length === 0}>
+                  <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Print (PDF)
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogContent>

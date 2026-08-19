@@ -41,6 +41,7 @@ model InventoryItem {
 
   orderLogs       OrderIngredientLog[]
   dishIngredients DishIngredient[]
+  adjustments     StockAdjustmentLog[]
 }
 
 enum Category {
@@ -122,4 +123,14 @@ model OrderDish {
   unitPrice Float    // snapshot of Dish.price at order time
   quantity  Int
   createdAt DateTime @default(now())
+}
+
+model StockAdjustmentLog {
+  id              String        @id @default(uuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  previousStock   Float
+  newStock        Float
+  reason          String?       // e.g., "STOCK_COUNT", "MANUAL_ADJUSTMENT"
+  createdAt       DateTime      @default(now())
 }

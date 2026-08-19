@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label"
 import { computeDishSubtotal, type DishWithRecipe } from "@/lib/recipe"
 import { updateOrderItems, updateOrderDueDate, updateOrderInfo } from "./actions"
 import { updateOrderStatus } from "../actions"
-import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
+import { formatCurrency, getCurrencySymbol, BUSINESS_LOCALE } from "@/lib/currency"
+import { Share2 } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -126,6 +127,11 @@ export function OrderDetailsClient({
   }
 
   async function handleSave() {
+    if (!navigator.onLine) {
+      toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to save changes.', type: 'error' })
+      return
+    }
+    
     setIsSaving(true)
 
     try {
@@ -152,13 +158,46 @@ export function OrderDetailsClient({
     }
   }
 
+  const handleShareReceipt = () => {
+    if (!order.customer.phone) {
+      toast.add({ title: 'No Phone Number', description: 'This customer has no phone number recorded.', type: 'error' })
+      return
+    }
+
+    const lines = [
+      `*Receipt for Order #${order.shortId}*`,
+      `Customer: ${order.customer.name || 'N/A'}`,
+      `Status: ${order.status}`,
+      ``,
+      `*Items:*`,
+      ...order.dishes.map(d => `- ${d.quantity}x ${d.dishName} (${formatCurrency(d.unitPrice)})`),
+      ``,
+      `*Total: ${formatCurrency(order.totalPrice)}*`,
+    ]
+
+    if (order.dueDate) {
+      lines.push(`Due Date: ${order.dueDate.toLocaleDateString(BUSINESS_LOCALE)}`)
+    }
+
+    const text = encodeURIComponent(lines.join('\n'))
+    const phone = order.customer.phone.replace(/[^\d]/g, '')
+    
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank')
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" onClick={() => router.push('/admin/orders')}>
-          &larr; Back to Orders
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" onClick={() => router.push('/admin/orders')}>
+            &larr; Back to Orders
+          </Button>
+          <h2 className="page-title">Order #{order.shortId}</h2>
+        </div>
+        
+        <Button variant="outline" onClick={handleShareReceipt} disabled={!order.customer.phone} className={!order.customer.phone ? 'opacity-50' : ''} title={!order.customer.phone ? 'Customer must have a phone number to share receipt' : 'Share on WhatsApp'}>
+          <Share2 className="mr-1.5 h-4 w-4 text-green-600" aria-hidden="true" /> Share Receipt
         </Button>
-        <h2 className="page-title">Order #{order.shortId}</h2>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -185,6 +224,10 @@ export function OrderDetailsClient({
                   setDescriptionInput(order.description)
                 }}>Cancel</Button>
                 <Button size="sm" disabled={isSavingInfo} onClick={async () => {
+                  if (!navigator.onLine) {
+                    toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to save details.', type: 'error' })
+                    return
+                  }
                   setIsSavingInfo(true)
                   const res = await updateOrderInfo(order.id, descriptionInput, order.notes || '')
                   if (!res.ok) toast.add({ title: 'Error', description: res.error, type: 'error' })
@@ -228,6 +271,11 @@ export function OrderDetailsClient({
                 value={order.status}
                 disabled={order.status === 'CANCELLED'}
                 onChange={async (e) => {
+                  if (!navigator.onLine) {
+                    toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to update status.', type: 'error' })
+                    e.preventDefault()
+                    return
+                  }
                   const val = e.target.value as OrderStatus
                   // Same terminal-action guard as the orders table. The <select>
                   // is already disabled once CANCELLED, so this only ever fires
@@ -261,6 +309,11 @@ export function OrderDetailsClient({
                 autoComplete="off"
                 defaultValue={order.dueDate ? order.dueDate.toISOString().slice(0, 10) : ''}
                 onChange={async (e) => {
+                  if (!navigator.onLine) {
+                    toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to update due date.', type: 'error' })
+                    e.preventDefault()
+                    return
+                  }
                   // Clearing the field is a real edit — it sets dueDate back to NULL.
                   const val = e.target.value ? new Date(e.target.value) : null
                   try {
@@ -516,6 +569,10 @@ export function OrderDetailsClient({
                 setNotesInput(order.notes || '')
               }}>Cancel</Button>
               <Button size="sm" disabled={isSavingNotes} onClick={async () => {
+                if (!navigator.onLine) {
+                  toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to save notes.', type: 'error' })
+                  return
+                }
                 setIsSavingNotes(true)
                 const res = await updateOrderInfo(order.id, order.description, notesInput)
                 if (!res.ok) toast.add({ title: 'Error', description: res.error, type: 'error' })
@@ -568,6 +625,11 @@ export function OrderDetailsClient({
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
+                if (!navigator.onLine) {
+                  toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to cancel order.', type: 'error' })
+                  setCancellingOrder(null)
+                  return
+                }
                 if (!cancellingOrder) return
                 try {
                   const result = await updateOrderStatus(cancellingOrder.id, 'CANCELLED')

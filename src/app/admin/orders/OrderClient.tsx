@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Order, User, InventoryItem, OrderStatus, OrderIngredientLog, OrderDish } from "@prisma/client"
 import {
@@ -13,6 +13,7 @@ import {
   getPaginationRowModel,
   SortingState,
 } from "@tanstack/react-table"
+import { ORDER_STATUS_CONFIG } from "@/lib/orderStatus"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,7 +42,7 @@ import { getDueUrgency, isActiveOrderStatus } from "@/lib/dueDate"
 import { cn } from "@/lib/utils"
 import { HighlightText } from "@/components/ui/highlight"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { AlertTriangle, Clock, ClipboardList, X, Trash2, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown } from "lucide-react"
+import { AlertTriangle, Clock, ClipboardList, X, Trash2, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, CalendarDays, Copy, Repeat } from "lucide-react"
 
 type OrderWithRelations = Order & {
   customer: User,
@@ -64,6 +65,7 @@ export function OrderClient({
 }) {
   const [data, setData] = useState<OrderWithRelations[]>(initialData)
   const [isOpen, setIsOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [selectedDishes, setSelectedDishes] = useState<DishSelection[]>([])
@@ -76,6 +78,11 @@ export function OrderClient({
     { inventoryItemId: string; quantityUsed: number; internalId: number }[]
   >([])
   const [overrideCounter, setOverrideCounter] = useState(0)
+
+  const [initialFormState, setInitialFormState] = useState<{
+    customerId?: string;
+    description?: string;
+  } | null>(null)
 
   const activeDishes = dishes.filter(d => d.isActive)
 
@@ -92,6 +99,44 @@ export function OrderClient({
     )
     setOverrideCounter(expanded.length)
   }
+
+  const handleRepeatOrder = (order: OrderWithRelations) => {
+    setInitialFormState({
+      customerId: order.customerId,
+      description: order.description ? `Repeat: ${order.description}` : 'Repeat order',
+    })
+    
+    const dishesToRepeat = order.dishes
+      .filter(d => d.dishId && activeDishes.some(ad => ad.id === d.dishId))
+      .map(d => ({ dishId: d.dishId!, quantity: d.quantity }))
+    
+    applyDishSelections(dishesToRepeat)
+    setIsOpen(true)
+  }
+
+  // Calculate grouped orders for Calendar View
+  const groupedOrders = React.useMemo(() => {
+    const groups: Record<string, OrderWithRelations[]> = {}
+    data.forEach(order => {
+      if (!order.dueDate) return
+      // Use YYYY-MM-DD string to group safely by UTC midnight date
+      const key = order.dueDate.toISOString().split('T')[0]
+      if (!groups[key]) groups[key] = []
+      groups[key].push(order)
+    })
+    const sortedKeys = Object.keys(groups).sort()
+    return sortedKeys.map(key => {
+      // Re-parse as local midnight to format nicely for UI
+      // Replacing hyphens with slashes ensures Date parses it as local timezone in some browsers,
+      // but providing YYYY-MM-DD parse it as UTC. We append T00:00:00 to specify time.
+      const dateObj = new Date(`${key}T00:00:00`)
+      return {
+        dateStr: key,
+        displayDate: dateObj.toLocaleDateString(BUSINESS_LOCALE, { weekday: 'long', month: 'short', day: 'numeric' }),
+        orders: groups[key].sort((a, b) => a.shortId - b.shortId)
+      }
+    })
+  }, [data])
 
   const columns = [
     columnHelper.accessor("shortId", {
@@ -118,6 +163,11 @@ export function OrderClient({
           value={info.getValue()}
           disabled={info.row.original.status === 'CANCELLED'}
           onChange={async (e) => {
+            if (!navigator.onLine) {
+              toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to update order status.', type: 'error' })
+              e.preventDefault()
+              return
+            }
             const val = e.target.value as OrderStatus
             // Cancellation is terminal — there is no un-cancel, a mistake means
             // re-creating the order from scratch. The <select> is already
@@ -185,19 +235,34 @@ export function OrderClient({
     columnHelper.display({
       id: "actions",
       cell: (info) => (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-          title="Delete order"
-          onClick={(e) => {
-            e.stopPropagation();
-            setDeletingOrder(info.row.original);
-          }}
-        >
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-          <span className="sr-only">Delete</span>
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="Repeat order"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRepeatOrder(info.row.original);
+            }}
+          >
+            <Repeat className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Repeat</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="Delete order"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeletingOrder(info.row.original);
+            }}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Delete</span>
+          </Button>
+        </div>
       ),
     })
   ]
@@ -217,6 +282,11 @@ export function OrderClient({
   const router = useRouter()
 
   async function handleAdd(formData: FormData) {
+    if (!navigator.onLine) {
+      toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to create orders.', type: 'error' })
+      return
+    }
+    
     const customerId = formData.get("customerId") as string
     const description = formData.get("description") as string
     const totalPrice = Number(formData.get("totalPrice"))
@@ -266,25 +336,46 @@ export function OrderClient({
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
         <h2 className="page-title">Orders</h2>
-        <div className="flex flex-1 sm:flex-none items-center gap-4">
+        <div className="flex flex-1 sm:flex-none flex-wrap items-center gap-4">
+          <div className="flex bg-muted/50 p-1 rounded-md border border-border shrink-0">
+            <button 
+              onClick={() => setViewMode('list')} 
+              className={cn("px-3 py-1 text-sm font-medium rounded-sm transition-colors", viewMode === 'list' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
+            >
+              List
+            </button>
+            <button 
+              onClick={() => setViewMode('calendar')} 
+              className={cn("px-3 py-1 text-sm font-medium rounded-sm transition-colors", viewMode === 'calendar' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
+            >
+              Calendar
+            </button>
+          </div>
           <Input
             placeholder="Search orders..."
             value={globalFilter ?? ''}
             onChange={(e) => setGlobalFilter(String(e.target.value))}
-            className="max-w-xs bg-card"
+            className="max-w-[180px] bg-card shrink-0"
           />
-          <Button onClick={() => setIsOpen(true)}>Create Order</Button>
+          <Button onClick={() => {
+            setInitialFormState(null)
+            setSelectedDishes([])
+            setTotalPriceInput('')
+            setShowIngredientPreview(false)
+            setIngredientOverrides([])
+            setIsOpen(true)
+          }} className="shrink-0">Create Order</Button>
         </div>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Create New Order</DialogTitle>
+              <DialogTitle>{initialFormState ? 'Repeat Order' : 'Create New Order'}</DialogTitle>
             </DialogHeader>
-            <form action={handleAdd} className="space-y-6">
+            <form action={handleAdd} className="space-y-6" key={initialFormState ? 'repeat' : 'new'}>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="customerId">Customer</Label>
-                  <select id="customerId" name="customerId" className="select-field" required defaultValue="">
+                  <select id="customerId" name="customerId" className="select-field" required defaultValue={initialFormState?.customerId ?? ""}>
                     <option value="" disabled>Select customer</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>
@@ -314,7 +405,7 @@ export function OrderClient({
 
               <div className="space-y-2">
                 <Label htmlFor="description">Description (optional)</Label>
-                <Input id="description" name="description" placeholder="Short description (e.g. Birthday party, 40 pies)" />
+                <Input id="description" name="description" placeholder="Short description (e.g. Birthday party, 40 pies)" defaultValue={initialFormState?.description ?? ""} />
               </div>
 
               <div className="space-y-2">
@@ -461,89 +552,152 @@ export function OrderClient({
         </Dialog>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-popover">
-              {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th 
-                  key={header.id} 
-                  className={cn(
-                    "table-head-cell", 
-                    header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
-                    header.column.getIsSorted() && "text-primary hover:text-primary/80",
-                    header.column.columnDef.meta?.className
-                  )}
-                  onClick={header.column.getToggleSortingHandler()}
-                >
-                  <div className="flex items-center gap-2">
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    {header.column.getCanSort() && (
-                      header.column.getIsSorted() === 'asc' ? (
-                        <ArrowUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                      ) : header.column.getIsSorted() === 'desc' ? (
-                        <ArrowDown className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                      ) : (
-                        <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
-                      )
-                    )}
-                  </div>
-                </th>
-              )))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row, idx) => {
-                // Row tint REINFORCES the Due column's badge; it never carries
-                // the urgency on its own. Expressed as classes rather than an
-                // inline style object specifically so the hover: variants below
-                // are possible at all — inline styles cannot express :hover.
-                const urgency = isActiveOrderStatus(row.original.status)
-                  ? getDueUrgency(row.original.dueDate)
-                  : "none"
-                return (
-                <tr
-                  key={row.id}
-                  className={cn(
-                    "table-row cursor-pointer",
-                    urgency === 'overdue' && 'bg-destructive/8 hover:bg-destructive/12',
-                    urgency === 'due-today' && 'bg-primary/6 hover:bg-primary/10',
-                    urgency !== 'overdue' && urgency !== 'due-today' && (idx % 2 === 0 ? 'bg-card/40' : ''),
-                  )}
-                  onClick={(e) => {
-                    if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'BUTTON') {
-                      router.push(`/admin/orders/${row.original.id}`)
-                    }
-                  }}
-                >
-                  {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className={cn("px-4 py-3", cell.column.columnDef.meta?.className)}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+      {viewMode === 'calendar' ? (
+        <div className="space-y-8 animate-in fade-in duration-300">
+          {groupedOrders.length === 0 ? (
+            <div className="empty-state py-12 rounded-lg border border-border">
+              <div className="empty-state-icon">
+                <CalendarDays className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <p className="empty-state-title">No scheduled orders</p>
+              <p className="empty-state-hint">Orders with due dates will appear here.</p>
+            </div>
+          ) : (
+            groupedOrders.map(group => (
+              <div key={group.dateStr} className="space-y-4">
+                <h3 className="font-semibold text-lg flex items-center gap-2 border-b border-border/50 pb-2">
+                   <CalendarDays className="h-5 w-5 text-primary" /> {group.displayDate}
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {group.orders.map(order => {
+                    const cfg = ORDER_STATUS_CONFIG[order.status] || { className: 'badge-neutral', label: order.status, icon: Clock }
+                    const StatusIcon = cfg.icon
+                    const isOverdue = isActiveOrderStatus(order.status) && getDueUrgency(order.dueDate) === 'overdue'
+                    return (
+                      <div 
+                        key={order.id} 
+                        className={cn(
+                          "border rounded-lg p-4 bg-card cursor-pointer hover:shadow-md transition-all",
+                          isOverdue ? "border-destructive/30 bg-destructive/5" : "border-border hover:border-primary/40"
+                        )}
+                        onClick={() => router.push(`/admin/orders/${order.id}`)}
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <span className="font-bold text-primary font-mono-data tracking-tight text-lg">#{order.shortId}</span>
+                          <span className={cn(cfg.className, "text-[10px] px-2 py-0.5 rounded-full")}>
+                            <StatusIcon className="h-3 w-3 mr-1 inline" aria-hidden="true" />
+                            {cfg.label}
+                          </span>
+                        </div>
+                        <p className="font-medium text-foreground/90 leading-tight mb-1">
+                          {order.customer.name || order.customer.email || `#${order.customer.shortId}`}
+                        </p>
+                        <p className="text-sm text-muted-foreground line-clamp-2 min-h-[40px]">
+                          {order.description || <span className="italic opacity-50">No description</span>}
+                        </p>
+                        <div className="mt-4 pt-3 border-t border-border/50 flex justify-between items-center">
+                           <div className="text-xs text-muted-foreground">
+                             {order.dishes?.length > 0 ? `${order.dishes.length} items` : 'No dishes'}
+                           </div>
+                           <div className="font-mono-data font-bold text-foreground">
+                             {formatCurrency(order.totalPrice)}
+                           </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto rounded-lg border border-border animate-in fade-in duration-300">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-popover">
+                  {table.getHeaderGroups().map(hg => hg.headers.map(header => (
+                    <th 
+                      key={header.id} 
+                      className={cn(
+                        "table-head-cell", 
+                        header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
+                        header.column.getIsSorted() && "text-primary hover:text-primary/80",
+                        header.column.columnDef.meta?.className
+                      )}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      <div className="flex items-center gap-2">
+                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getCanSort() && (
+                          header.column.getIsSorted() === 'asc' ? (
+                            <ArrowUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                          ) : header.column.getIsSorted() === 'desc' ? (
+                            <ArrowDown className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                          ) : (
+                            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                          )
+                        )}
+                      </div>
+                    </th>
+                  )))}
                 </tr>
-                )
-              })
-            ) : (
-              <tr>
-                <td colSpan={columns.length}>
-                  <div className="empty-state">
-                    <div className="empty-state-icon">
-                      <ClipboardList className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <p className="empty-state-title">No orders found</p>
-                    <p className="empty-state-hint">
-                      Create an order to start tracking it through the kitchen queue.
-                    </p>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      <TablePagination table={table} />
+              </thead>
+              <tbody>
+                {table.getRowModel().rows.length ? (
+                  table.getRowModel().rows.map((row, idx) => {
+                    // Row tint REINFORCES the Due column's badge; it never carries
+                    // the urgency on its own. Expressed as classes rather than an
+                    // inline style object specifically so the hover: variants below
+                    // are possible at all — inline styles cannot express :hover.
+                    const urgency = isActiveOrderStatus(row.original.status)
+                      ? getDueUrgency(row.original.dueDate)
+                      : "none"
+                    return (
+                    <tr
+                      key={row.id}
+                      className={cn(
+                        "table-row cursor-pointer",
+                        urgency === 'overdue' && 'bg-destructive/8 hover:bg-destructive/12',
+                        urgency === 'due-today' && 'bg-primary/6 hover:bg-primary/10',
+                        urgency !== 'overdue' && urgency !== 'due-today' && (idx % 2 === 0 ? 'bg-card/40' : ''),
+                      )}
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'BUTTON') {
+                          router.push(`/admin/orders/${row.original.id}`)
+                        }
+                      }}
+                    >
+                      {row.getVisibleCells().map(cell => (
+                        <td key={cell.id} className={cn("px-4 py-3", cell.column.columnDef.meta?.className)}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
+                    )
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={columns.length}>
+                      <div className="empty-state">
+                        <div className="empty-state-icon">
+                          <ClipboardList className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <p className="empty-state-title">No orders found</p>
+                        <p className="empty-state-hint">
+                          Create an order to start tracking it through the kitchen queue.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <TablePagination table={table} />
+        </>
+      )}
 
       <AlertDialog open={!!deletingOrder} onOpenChange={(open) => !open && setDeletingOrder(null)}>
         <AlertDialogContent>
@@ -559,6 +713,11 @@ export function OrderClient({
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
+                if (!navigator.onLine) {
+                  toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to delete orders.', type: 'error' })
+                  setDeletingOrder(null)
+                  return
+                }
                 if (!deletingOrder) return
                 try {
                   const result = await deleteOrder(deletingOrder.id)
@@ -594,6 +753,11 @@ export function OrderClient({
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
+                if (!navigator.onLine) {
+                  toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to cancel orders.', type: 'error' })
+                  setCancellingOrder(null)
+                  return
+                }
                 if (!cancellingOrder) return
                 try {
                   const result = await updateOrderStatus(cancellingOrder.id, 'CANCELLED')
