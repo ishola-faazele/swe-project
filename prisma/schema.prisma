@@ -14,6 +14,20 @@ model User {
   name      String?
   email     String?  @unique
   phone     String?  @unique
+  // The email Supabase Auth actually uses as this row's identity key. Equals `email` for
+  // email-first customers; a generated synthetic placeholder (see syntheticEmailForPhone in
+  // src/lib/auth.ts) for phone-only ones. Deliberately NULLABLE: Postgres permits multiple NULLs
+  // under a UNIQUE constraint, and the backfill design in syncPrismaUser/
+  // resolveCustomerForPhoneLogin needs a null state to backfill INTO for rows an admin created
+  // ahead of the customer's first login.
+  //
+  // NEVER rendered, exported, or included in any notification — it is an internal Supabase-identity
+  // implementation detail, not contact info. Client-facing queries omit it explicitly
+  // (see `omit: { authEmail: true }` in admin/customers/actions.ts and admin/orders/actions.ts).
+  authEmail String?  @unique
+  // Which channel this customer is told to log in with at account-creation time. Never
+  // auto-mutated by a later contact-info edit — manual admin edit only (locked product decision).
+  preferredLoginMethod LoginMethod @default(EMAIL)
   role      Role     @default(CUSTOMER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -24,6 +38,72 @@ model User {
 enum Role {
   ADMIN
   CUSTOMER
+}
+
+enum LoginMethod {
+  EMAIL
+  PHONE
+}
+
+/**
+ * A single issued phone-login OTP. The code itself is NEVER stored — only an HMAC-SHA256 digest
+ * of it (see src/lib/otp.ts), so a database dump can't be replayed into a login.
+ */
+model OtpCode {
+  id         String    @id @default(uuid())
+  phone      String    // E.164, the output of the existing toGhanaE164()
+  codeHash   String    // HMAC-SHA256(code, OTP_HASH_SECRET) — never plaintext
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  // Both lookups in login/actions.ts filter by phone and order by createdAt — the cooldown check
+  // and the verify-candidate lookup.
+  @@index([phone, createdAt])
+}
+
+/**
+ * Application-level singleton — see getNotificationSettings() in src/lib/settings.ts. Deliberately
+ * uses this schema's standard `String @id @default(uuid())` convention rather than a fixed-literal
+ * integer PK: a second primary-key pattern for two tables would be a bigger inconsistency than the
+ * tiny, self-healing race on the very first read.
+ *
+ * This table is the SOLE source of truth for provider credentials once its row exists. There is no
+ * env-var fallback anywhere in the sender modules, deliberately — a stale env var could otherwise
+ * keep a channel sending after an admin explicitly toggled it off here.
+ */
+model NotificationSettings {
+  id                           String   @id @default(uuid())
+  resendApiKey                 String?
+  fromEmail                    String?
+  arkeselApiKey                String?
+  arkeselSenderId              String?
+  whatsappAccessToken          String?
+  whatsappPhoneNumberId        String?
+  whatsappAppSecret            String?
+  whatsappWebhookVerifyToken   String?
+  whatsappTemplateName         String?
+  whatsappLowStockTemplateName String?
+  whatsappTemplateLanguage     String?
+  emailEnabled                 Boolean  @default(true)
+  smsEnabled                   Boolean  @default(true)
+  whatsappEnabled              Boolean  @default(true)
+  updatedAt                    DateTime @updatedAt
+}
+
+/**
+ * Separate singleton from NotificationSettings on purpose: login availability and alert delivery
+ * are independently toggleable, so an admin can keep SMS notifications running while still
+ * deciding phone login isn't ready for customers yet.
+ */
+model LoginSettings {
+  id                String   @id @default(uuid())
+  emailLoginEnabled Boolean  @default(true)
+  // Opt-in on purpose — email-only login stays the default, unaffected behavior until the admin
+  // has verified real SMS delivery post-deploy. See the Rollout Plan in docs/tdd-auth-settings.md.
+  phoneLoginEnabled Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
 }
 
 model InventoryItem {
