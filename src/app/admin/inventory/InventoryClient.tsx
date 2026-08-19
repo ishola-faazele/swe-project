@@ -32,7 +32,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive, updateInventoryItem } from "./actions"
-import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw } from "lucide-react"
+import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw, ShoppingCart, Copy } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { HighlightText } from "@/components/ui/highlight"
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -101,6 +101,9 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const [globalFilter, setGlobalFilter] = useState('')
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null)
+  
+  const [isShoppingListOpen, setIsShoppingListOpen] = useState(false)
+  const [shoppingMultiplier, setShoppingMultiplier] = useState<number>(2)
 
   // Client-side filter over the full array the page already fetched — no second query.
   //
@@ -270,7 +273,29 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   // retired item sits at or near zero stock permanently and must not nag the restock banner.
   // This count is independent of the dashboard's — the page now feeds archived rows into `data`
   // for the reveal toggle, so without this filter archiving an item would not clear its warning.
-  const lowStockCount = data.filter(i => i.isActive && i.currentStock <= i.minimumThreshold).length
+  const lowStockItems = data.filter(i => i.isActive && i.minimumThreshold > 0 && i.currentStock <= i.minimumThreshold)
+  const lowStockCount = lowStockItems.length
+
+  const getShoppingListText = () => {
+    if (lowStockItems.length === 0) return "No items are currently below their minimum threshold."
+    
+    const header = `📋 Shopping List\nRestocking to ${shoppingMultiplier}x safety level\n\n`
+    const items = lowStockItems.map(item => {
+      const target = item.minimumThreshold * shoppingMultiplier
+      // Use ceil to avoid fractional restocking for items that usually come in whole units, 
+      // though this caters to any unit so toFixed(1) might be better.
+      const needed = Math.max(0, target - item.currentStock)
+      // Format number to drop trailing .0
+      const formattedNeeded = Number(needed.toFixed(1))
+      return `- ${item.name}: ${formattedNeeded} ${item.unit}`
+    }).join("\n")
+    return header + items
+  }
+
+  const handleCopyShoppingList = () => {
+    navigator.clipboard.writeText(getShoppingListText())
+    toast.add({ title: 'Copied!', description: 'Shopping list copied to clipboard.', type: 'success' })
+  }
 
   async function handleAdd(formData: FormData) {
     const name = formData.get("name") as string
@@ -355,7 +380,43 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           <Button onClick={() => setIsOpen(true)}>
             <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Add Item
           </Button>
+
+          <Button variant="secondary" onClick={() => setIsShoppingListOpen(true)}>
+            <ShoppingCart className="mr-1.5 h-4 w-4" aria-hidden="true" /> Shopping List
+          </Button>
         </div>
+
+        <Dialog open={isShoppingListOpen} onOpenChange={setIsShoppingListOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Quick Reorder Shopping List</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Label htmlFor="multiplier" className="font-semibold text-foreground">Restock Target:</Label>
+                <select 
+                  id="multiplier" 
+                  className="select-field w-32 bg-card" 
+                  value={shoppingMultiplier} 
+                  onChange={(e) => setShoppingMultiplier(Number(e.target.value))}
+                >
+                  <option value={1}>1x (To Min)</option>
+                  <option value={1.5}>1.5x Min</option>
+                  <option value={2}>2x Min</option>
+                  <option value={3}>3x Min</option>
+                </select>
+              </div>
+              <div className="rounded-md bg-muted/50 p-4 max-h-[300px] overflow-y-auto border border-border">
+                <pre className="text-sm font-mono-data whitespace-pre-wrap text-foreground">
+                  {getShoppingListText()}
+                </pre>
+              </div>
+              <Button className="w-full" onClick={handleCopyShoppingList} disabled={lowStockItems.length === 0}>
+                <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" /> Copy to Clipboard
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogContent>
