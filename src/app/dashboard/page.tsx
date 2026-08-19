@@ -1,43 +1,20 @@
-import { createClient } from '@/utils/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
+import { getCurrentDbUser } from '@/lib/auth'
 import { BUSINESS_LOCALE, formatCurrency } from '@/lib/currency'
 import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus'
+import { AddContactForm } from './AddContactForm'
 import { Inbox } from 'lucide-react'
 
 export default async function CustomerDashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/login')
-  }
-
-  // Find the customer in the DB by email or phone
-  const customer = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: user.email },
-        ...(user.phone ? [{ phone: user.phone }] : []),
-      ],
-    },
-  })
+  // The canonical id → authEmail → email resolver (src/lib/auth.ts) — replaces this page's own
+  // former ad-hoc OR-lookup, which predates that resolver and duplicated its logic incompletely
+  // (it never checked authEmail, so a phone-only customer's synthetic identity email would never
+  // match anything here).
+  const customer = await getCurrentDbUser()
 
   if (!customer) {
-    return (
-      <div className="flex-1 space-y-6">
-        <h1 className="page-title">Welcome!</h1>
-        <div className="rounded-xl border bg-card p-8 text-center">
-          <p className="text-lg text-muted-foreground">
-            No customer profile found for your account yet.
-          </p>
-          <p className="text-sm text-muted-foreground mt-2">
-            Your profile will be created when you place your first order.
-            Please contact us to get started!
-          </p>
-        </div>
-      </div>
-    )
+    redirect('/login')
   }
 
   const orders = await prisma.order.findMany({
@@ -45,12 +22,30 @@ export default async function CustomerDashboardPage() {
     orderBy: { createdAt: 'desc' },
   })
 
+  // Never both — createCustomerSchema requires at least one contact method, so a customer can be
+  // missing at most one of the two. Nothing renders once both are set; there's nothing left to add.
+  const missingChannel = !customer.email ? 'email' : !customer.phone ? 'phone' : null
+
   return (
     <div className="flex-1 space-y-6">
       <div>
         <h1 className="page-title">Your Orders</h1>
         <p className="text-muted-foreground mt-1">Track the status of all your orders below.</p>
       </div>
+
+      {missingChannel && (
+        <div className="rounded-xl border bg-card p-6">
+          <h2 className="text-sm font-bold text-foreground">
+            Add your {missingChannel === 'email' ? 'email' : 'phone number'}
+          </h2>
+          <p className="meta-text mt-0.5 mb-4">
+            {missingChannel === 'email'
+              ? "You signed up with a phone number. Add an email so you can also sign in that way."
+              : "You signed up with an email. Add a phone number so you can also sign in that way."}
+          </p>
+          <AddContactForm channel={missingChannel} />
+        </div>
+      )}
 
       {orders.length === 0 ? (
         <div className="rounded-xl border bg-card">

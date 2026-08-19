@@ -29,14 +29,21 @@ const columnHelper = createColumnHelper<CustomerWithCount>()
 /**
  * The contact fields plus the preferred-login-method select, shared by the Add and Edit dialogs.
  *
+ * Email and phone are editable ONLY when adding a new customer (`customer` is undefined) — once
+ * set, contact info is write-once (see updateCustomer/updateCustomerSchema): neither the admin
+ * nor the customer can change an existing value, only the customer themselves can fill a slot
+ * that's still empty, from their own dashboard, after proving they own the new value. In edit
+ * mode the two fields render `disabled`, which also means the browser excludes them from the
+ * submitted FormData entirely — updateCustomer never receives them even if this component tried.
+ *
  * Email and phone are controlled here specifically so the select can react to what is actually
  * filled in as it is typed — the rest of the form stays uncontrolled, as it was. Controlled inputs
  * still carry their `name`, so FormData picks them up exactly like before.
  *
  * The available options are derived on every render rather than synced through an effect: if the
- * current choice stops being valid (the admin clears the email it pointed at), it falls back to
- * whatever is still filled in. That keeps this form from ever submitting a combination the
- * server-side refinement in validation.ts would reject.
+ * current choice stops being valid (the admin clears the email it pointed at, add-mode only),
+ * it falls back to whatever is still filled in. That keeps this form from ever submitting a
+ * combination the server-side check would reject.
  */
 function CustomerFormFields({
   customer,
@@ -45,6 +52,7 @@ function CustomerFormFields({
   customer?: CustomerWithCount | null
   idPrefix: string
 }) {
+  const isEdit = Boolean(customer)
   const [email, setEmail] = useState(customer?.email ?? "")
   const [phone, setPhone] = useState(customer?.phone ?? "")
   const [method, setMethod] = useState<string>(customer?.preferredLoginMethod ?? "")
@@ -75,8 +83,16 @@ function CustomerFormFields({
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Optional"
+          placeholder={isEdit ? "Not set" : "Optional"}
+          disabled={isEdit}
         />
+        {isEdit && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {customer?.email
+              ? "Can't be changed once set."
+              : "Not set — the customer can add this themselves from their dashboard, once logged in."}
+          </p>
+        )}
       </div>
       <div>
         <Label htmlFor={`${idPrefix}-phone`}>Phone Number</Label>
@@ -85,8 +101,16 @@ function CustomerFormFields({
           name="phone"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          placeholder="Optional"
+          placeholder={isEdit ? "Not set" : "Optional"}
+          disabled={isEdit}
         />
+        {isEdit && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {customer?.phone
+              ? "Can't be changed once set."
+              : "Not set — the customer can add this themselves from their dashboard, once logged in."}
+          </p>
+        )}
       </div>
       <div>
         <Label htmlFor={`${idPrefix}-preferredLoginMethod`}>Preferred login method</Label>
@@ -109,9 +133,12 @@ function CustomerFormFields({
           How this customer is told to sign in when their account is created.
         </p>
       </div>
-      <p className="text-xs text-muted-foreground">
-        At least one contact method is required.
-      </p>
+      {!isEdit && (
+        <p className="text-xs text-muted-foreground">
+          At least one contact method is required. Once saved, contact info can&apos;t be changed here —
+          only the customer can add a missing one later.
+        </p>
+      )}
     </>
   )
 }
@@ -233,12 +260,12 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
   async function handleEdit(formData: FormData) {
     if (!editingCustomer) return
     const name = formData.get("name") as string
-    const email = formData.get("email") as string
-    const phone = formData.get("phone") as string
+    // email/phone are deliberately NOT read here — updateCustomer doesn't accept them, and the
+    // disabled inputs they'd come from aren't submitted by the browser anyway.
     const rawMethod = formData.get("preferredLoginMethod") as string
     const preferredLoginMethod = rawMethod ? (rawMethod as LoginMethod) : undefined
     try {
-      const result = await updateCustomer(editingCustomer.id, { name, email, phone, preferredLoginMethod })
+      const result = await updateCustomer(editingCustomer.id, { name, preferredLoginMethod })
       if (!result.ok) {
         alert(result.error)
         return

@@ -70,7 +70,7 @@ function stubAvailable(
 function otpRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'otp-1',
-    phone: NORMALIZED_PHONE,
+    identifier: NORMALIZED_PHONE,
     codeHash: hashOtpCode(CORRECT_CODE),
     expiresAt: new Date(Date.now() + 60_000),
     attempts: 0,
@@ -108,7 +108,7 @@ describe('requestPhoneOtp', () => {
   it('normalizes the phone number before storing or sending', async () => {
     await requestPhoneOtp('024 123 4567')
 
-    expect(otpCreate.mock.calls[0][0].data.phone).toBe(NORMALIZED_PHONE)
+    expect(otpCreate.mock.calls[0][0].data.identifier).toBe(NORMALIZED_PHONE)
     expect(sendSmsMock.mock.calls[0][0].to).toBe(NORMALIZED_PHONE)
   })
 

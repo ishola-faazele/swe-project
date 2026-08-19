@@ -88,7 +88,7 @@ beforeEach(() => {
 afterEach(async () => {
   // OtpCode rows have no FK to a registry user, so this file cleans them up itself.
   if (createdOtpPhones.length) {
-    await prisma.otpCode.deleteMany({ where: { phone: { in: createdOtpPhones } } })
+    await prisma.otpCode.deleteMany({ where: { identifier: { in: createdOtpPhones } } })
     createdOtpPhones.length = 0
   }
   await cleanupRegistry(reg)
@@ -177,7 +177,7 @@ describe('OtpCode lifecycle against the real database', () => {
     const result = await requestPhoneOtp(phone)
     expect(result.ok).toBe(true)
 
-    const row = await prisma.otpCode.findFirst({ where: { phone } })
+    const row = await prisma.otpCode.findFirst({ where: { identifier: phone } })
     expect(row).not.toBeNull()
 
     const sentCode = sendSmsMock.mock.calls[0][0].message.match(/\b(\d{6})\b/)![1]
@@ -196,7 +196,7 @@ describe('OtpCode lifecycle against the real database', () => {
     const second = await requestPhoneOtp(phone)
 
     expect(second.ok).toBe(false)
-    expect(await prisma.otpCode.count({ where: { phone } })).toBe(1)
+    expect(await prisma.otpCode.count({ where: { identifier: phone } })).toBe(1)
   })
 
   test('an expired code is not a valid candidate', async () => {
@@ -205,7 +205,7 @@ describe('OtpCode lifecycle against the real database', () => {
     const code = generateOtpCode()
     await prisma.otpCode.create({
       data: {
-        phone,
+        identifier: phone,
         codeHash: hashOtpCode(code),
         expiresAt: new Date(Date.now() - 1000), // already past
       },
@@ -223,7 +223,7 @@ describe('OtpCode lifecycle against the real database', () => {
     const code = generateOtpCode()
     await prisma.otpCode.create({
       data: {
-        phone,
+        identifier: phone,
         codeHash: hashOtpCode(code),
         expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
         consumedAt: new Date(),
@@ -241,7 +241,7 @@ describe('OtpCode lifecycle against the real database', () => {
     const code = generateOtpCode()
     await prisma.otpCode.create({
       data: {
-        phone,
+        identifier: phone,
         codeHash: hashOtpCode(code),
         expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
         attempts: MAX_OTP_ATTEMPTS,
@@ -260,7 +260,7 @@ describe('OtpCode lifecycle against the real database', () => {
     const code = generateOtpCode()
     await prisma.otpCode.create({
       data: {
-        phone,
+        identifier: phone,
         codeHash: hashOtpCode(code),
         expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
       },
@@ -271,7 +271,7 @@ describe('OtpCode lifecycle against the real database', () => {
       expect(wrong.ok).toBe(false)
     }
 
-    const row = await prisma.otpCode.findFirst({ where: { phone } })
+    const row = await prisma.otpCode.findFirst({ where: { identifier: phone } })
     expect(row!.attempts).toBe(MAX_OTP_ATTEMPTS)
 
     // Even the right code is refused now — the cap, not the comparison, is what rejects.
@@ -286,7 +286,7 @@ describe('OtpCode lifecycle against the real database', () => {
     const code = generateOtpCode()
     await prisma.otpCode.create({
       data: {
-        phone,
+        identifier: phone,
         codeHash: hashOtpCode(code),
         expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
       },
@@ -301,7 +301,7 @@ describe('OtpCode lifecycle against the real database', () => {
     expect(created).not.toBeNull()
     reg.userIds.push(created!.id)
 
-    const row = await prisma.otpCode.findFirst({ where: { phone } })
+    const row = await prisma.otpCode.findFirst({ where: { identifier: phone } })
     expect(row!.consumedAt).not.toBeNull()
   })
 })

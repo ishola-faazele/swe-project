@@ -84,7 +84,7 @@ export async function requestPhoneOtp(rawPhone: string): Promise<ActionResult<vo
     // Per-phone cooldown. Guards the business's real SMS credit balance against a repeated tap —
     // deliberately not IP-based, which is an explicit v1 non-goal.
     const recent = await prisma.otpCode.findFirst({
-      where: { phone },
+      where: { identifier: phone },
       orderBy: { createdAt: 'desc' },
     })
     if (recent && Date.now() - recent.createdAt.getTime() < OTP_COOLDOWN_MS) {
@@ -98,7 +98,7 @@ export async function requestPhoneOtp(rawPhone: string): Promise<ActionResult<vo
     const code = generateOtpCode()
     await prisma.otpCode.create({
       data: {
-        phone,
+        identifier: phone,
         codeHash: hashOtpCode(code), // only the digest is persisted, never the code itself
         expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
       },
@@ -145,7 +145,7 @@ export async function verifyPhoneOtp(
     }
 
     const candidate = await prisma.otpCode.findFirst({
-      where: { phone, consumedAt: null, expiresAt: { gt: new Date() } },
+      where: { identifier: phone, consumedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: 'desc' },
     })
     if (!candidate) {

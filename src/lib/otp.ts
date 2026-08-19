@@ -1,5 +1,9 @@
 /**
- * Phone-login OTP generation and hashing.
+ * OTP code generation, hashing, and verification — channel-agnostic. Used by phone login
+ * (src/app/login/actions.ts) AND by the customer-dashboard flow for adding a missing email or
+ * phone to an already-authenticated account (src/app/dashboard/actions.ts). Neither this module
+ * nor the OtpCode row it backs cares which channel a code was sent through or what it's meant to
+ * verify — that's entirely up to the caller.
  *
  * Follows src/lib/phone.ts's and src/lib/recipe.ts's "no Prisma, no next/*" convention as far as
  * it can — this module needs node:crypto and one env var, but has zero Next.js or database

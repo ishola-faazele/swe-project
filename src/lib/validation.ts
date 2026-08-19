@@ -153,25 +153,20 @@ export const createCustomerSchema = z
   .refine(preferredLoginMethodMatchesContactField, { message: PREFERRED_LOGIN_METHOD_MESSAGE })
 
 /**
- * updateCustomer overwrites all three fields on every call (preserved from the existing
- * implementation), so the incoming payload *is* the resulting row state — the same
- * at-least-one-contact-method refinement therefore also prevents an edit that blanks a
- * customer's every contact method.
+ * updateCustomer deliberately does NOT accept email or phone — once the admin sets a contact
+ * method at creation, it's write-once. Only the customer themselves, logged in, can fill a
+ * missing slot (see src/app/dashboard/actions.ts), and never change one that's already set. Only
+ * `name` and `preferredLoginMethod` are genuinely editable here.
  *
- * That same "the payload is the resulting state" property is what makes the preferred-login-method
- * refinement meaningful on an edit: it stops a save from leaving preferredLoginMethod pointing at
- * a channel the very same edit just blanked out.
+ * `preferredLoginMethod` still can't be validated against "a contact field that's actually
+ * filled in" at the schema level, since the payload no longer carries email/phone at all — that
+ * check happens in updateCustomer itself, against the row's EXISTING stored values.
  */
-export const updateCustomerSchema = z
-  .object({
-    id: idSchema,
-    name: optionalContactField,
-    email: optionalContactField,
-    phone: optionalContactField,
-    preferredLoginMethod: preferredLoginMethodField,
-  })
-  .refine(hasAtLeastOneContactMethod, { message: AT_LEAST_ONE_CONTACT_MESSAGE })
-  .refine(preferredLoginMethodMatchesContactField, { message: PREFERRED_LOGIN_METHOD_MESSAGE })
+export const updateCustomerSchema = z.object({
+  id: idSchema,
+  name: optionalContactField,
+  preferredLoginMethod: preferredLoginMethodField,
+})
 
 /**
  * Settings-page schemas — toggles only. Provider credentials live in .env and are never
@@ -188,3 +183,15 @@ export const updateLoginSettingsSchema = z.object({
   emailLoginEnabled: z.boolean(),
   phoneLoginEnabled: z.boolean(),
 })
+
+/**
+ * Used by the customer-dashboard "add a missing email" flow (src/app/dashboard/actions.ts).
+ * Trimmed and lowercased before the format check so "  Ama@Example.com  " and "ama@example.com"
+ * are recognized as the same address — matters here specifically because this value ends up
+ * stored as a unique column.
+ */
+export const addEmailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email('Enter a valid email address.'))

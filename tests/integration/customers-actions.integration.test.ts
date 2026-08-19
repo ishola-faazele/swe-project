@@ -20,6 +20,7 @@ import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { notifyAccountCreated } from '@/lib/notifications'
 import { AuthError } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import {
   createCustomer,
   deleteCustomer,
@@ -229,11 +230,43 @@ describe('customers/actions.ts auth matrix (TEST-009)', () => {
     test('succeeds for an ADMIN session', async () => {
       const target = await createTestCustomer(reg)
       mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
-      const result = await updateCustomer(target.id, {
+      const result = await updateCustomer(target.id, { name: 'Updated Name' })
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.data.name).toBe('Updated Name')
+    })
+
+    // Contact info is write-once by design (see updateCustomerSchema) — this proves it server-side,
+    // not just at the type level. A real client can still POST whatever shape it wants.
+    test('ignores email/phone even if a caller bypasses the type system and sends them', async () => {
+      const target = await createTestCustomer(reg, { email: 'original@test.rosty.local' })
+      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
+
+      await updateCustomer(target.id, {
         name: 'Updated Name',
-        email: target.email ?? undefined,
-        phone: target.phone ?? undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...({ email: 'attacker-supplied@test.rosty.local' } as any),
       })
+
+      const row = await prisma.user.findUnique({ where: { id: target.id } })
+      expect(row?.email).toBe('original@test.rosty.local')
+    })
+
+    test('rejects a preferredLoginMethod that does not match an existing contact field', async () => {
+      const target = await createTestCustomer(reg, { email: 'has-email-only@test.rosty.local', phone: null })
+      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
+
+      const result = await updateCustomer(target.id, { preferredLoginMethod: 'PHONE' })
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error).toContain('must match a contact field')
+    })
+
+    test('accepts a preferredLoginMethod that matches an existing contact field', async () => {
+      const target = await createTestCustomer(reg, { email: 'has-email-only@test.rosty.local', phone: null })
+      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
+
+      const result = await updateCustomer(target.id, { preferredLoginMethod: 'EMAIL' })
+
       expect(result.ok).toBe(true)
     })
   })

@@ -51,16 +51,19 @@ enum LoginMethod {
  */
 model OtpCode {
   id         String    @id @default(uuid())
-  phone      String    // E.164, the output of the existing toGhanaE164()
+  // E.164 phone (toGhanaE164 output) OR a trimmed, lowercased email address — one generic column
+  // rather than two, so phone-login OTP and the customer-dashboard add-a-missing-contact flow
+  // share one model and one query shape instead of two nearly-identical ones.
+  identifier String
   codeHash   String    // HMAC-SHA256(code, OTP_HASH_SECRET) — never plaintext
   expiresAt  DateTime
   attempts   Int       @default(0)
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
 
-  // Both lookups in login/actions.ts filter by phone and order by createdAt — the cooldown check
-  // and the verify-candidate lookup.
-  @@index([phone, createdAt])
+  // Every lookup filters by identifier and orders by createdAt — the cooldown check and the
+  // verify-candidate lookup, for both phone login and email/phone contact verification.
+  @@index([identifier, createdAt])
 }
 
 /**

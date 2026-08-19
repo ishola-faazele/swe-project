@@ -147,9 +147,13 @@ export async function deleteCustomer(id: string): Promise<ActionResult<void>> {
   return okResult(undefined)
 }
 
+/**
+ * Deliberately does NOT accept email or phone — see validation.ts's updateCustomerSchema for why
+ * contact info is write-once by the admin. Only `name` and `preferredLoginMethod` are editable.
+ */
 export async function updateCustomer(
   id: string,
-  data: { name?: string, email?: string, phone?: string, preferredLoginMethod?: LoginMethod }
+  data: { name?: string, preferredLoginMethod?: LoginMethod }
 ): Promise<ActionResult<ClientSafeUser>> {
   await requireAdmin()
 
@@ -157,17 +161,29 @@ export async function updateCustomer(
   try {
     const input = updateCustomerSchema.parse({ id, ...data })
 
-    // All three contact fields are overwritten on every call, preserving existing behavior — which
-    // is why updateCustomerSchema's at-least-one-contact-method refinement also prevents an edit
-    // that would blank out every way of reaching this customer, and why its
-    // preferred-login-method refinement prevents an edit leaving that field pointing at a channel
-    // the same edit just cleared. No extra guarding is needed here.
+    if (input.preferredLoginMethod) {
+      // The schema can't validate this against "a contact field that's actually filled in" —
+      // the payload no longer carries email/phone, only the row's EXISTING stored values do.
+      const current = await prisma.user.findUnique({
+        where: { id: input.id },
+        select: { email: true, phone: true },
+      })
+      if (!current) {
+        throw new ActionError('Customer not found.', 'NOT_FOUND')
+      }
+      const hasChannel = input.preferredLoginMethod === 'EMAIL' ? Boolean(current.email) : Boolean(current.phone)
+      if (!hasChannel) {
+        throw new ActionError(
+          'Preferred login method must match a contact field this customer actually has.',
+          'VALIDATION'
+        )
+      }
+    }
+
     item = await prisma.user.update({
       where: { id: input.id },
       data: {
         name: input.name || null,
-        email: input.email || null,
-        phone: input.phone || null,
         ...(input.preferredLoginMethod ? { preferredLoginMethod: input.preferredLoginMethod } : {}),
       },
       omit: OMIT_AUTH_EMAIL,

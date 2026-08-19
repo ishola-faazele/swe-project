@@ -195,3 +195,50 @@ export async function sendAccountCreatedEmail(data: {
     return { success: false, error }
   }
 }
+
+/**
+ * Delivers an OTP code by email — the email counterpart to sms.ts's sendSms, used when a
+ * logged-in customer adds a missing email to their profile (src/app/dashboard/actions.ts).
+ *
+ * Never logs `code` on any path, including success: this is a live, unexpired credential for as
+ * long as it's unconsumed, the same reasoning sms.ts's no-op branches already apply to an OTP
+ * message body.
+ */
+export async function sendVerificationEmail(to: string, code: string) {
+  const settings = await getNotificationSettings()
+  if (!settings.emailEnabled) {
+    console.log('[Email] Skipping verification email — email channel is disabled in Settings')
+    return { success: false, reason: 'email_disabled' }
+  }
+  const resend = getResendClient()
+  if (!resend) {
+    console.log('[Email] Skipping verification email — RESEND_API_KEY not set in .env')
+    return { success: false, reason: 'no_api_key' }
+  }
+
+  try {
+    const result = await resend.emails.send({
+      from: process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL,
+      to,
+      subject: 'Your Chop with Rostty verification code',
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px 12px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">🍽️ Chop with Rostty</h1>
+          </div>
+          <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+            <p style="font-size: 16px; color: #374151;">Your verification code is:</p>
+            <p style="font-size: 32px; font-weight: 700; letter-spacing: 4px; color: #111827; margin: 16px 0;">${code}</p>
+            <p style="font-size: 14px; color: #9ca3af;">It expires in 10 minutes. If you didn't request this, you can safely ignore it.</p>
+          </div>
+        </div>
+      `,
+    })
+
+    console.log('[Email] Verification email sent successfully')
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('[Email] Failed to send verification email:', error)
+    return { success: false, error }
+  }
+}
