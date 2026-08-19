@@ -156,3 +156,51 @@ a *different* success signal, that mapping can now be sharpened with a real samp
 - **No admin-facing delivery-status UI** and **no persistence** of webhook events (explicit PRD
   non-goals).
 - **A silently-expired token surfaces only in logs** — nothing proactively warns an admin.
+
+---
+
+# Addendum — Phone-OTP Login & Settings expansion (2026-08-19)
+
+The env vars named throughout the sections above are **no longer read by application code**. Those
+credentials now live in the `NotificationSettings` table, managed at `/admin/settings`. The
+checklists remain valid — read "set `ARKESEL_API_KEY`" as "set the Arkesel API key in Settings",
+and so on. See `docs/auth-settings-rollout-runbook.md` for the deploy sequence and its
+notification-silence window.
+
+## Verified WITHOUT any live send (done during implementation)
+
+Run against the real local Supabase and the real dev database. No SMS, no WhatsApp message, no
+Arkesel credit consumed.
+
+- ✅ `/login` renders the email form only, with **no** Phone tab, in the default shipped state
+  (`phoneLoginEnabled: false`). Confirmed absent from the server-rendered HTML, not merely hidden.
+- ✅ With `phoneLoginEnabled` + `smsEnabled` + an Arkesel key set, `/login` renders **both** tabs.
+  Dev settings were restored to defaults afterwards.
+- ✅ `NotificationSettings` / `LoginSettings` singletons auto-create exactly one row each on first
+  read, with `phoneLoginEnabled` defaulting to `false`.
+- ✅ `GET /auth/confirm?token_hash=bogus&type=signup` → **307** to
+  `/login?message=That sign-in link has expired or was already used…`. A real Supabase rejection,
+  handled cleanly — no 500, no unhandled throw.
+- ✅ `GET /auth/confirm` with no params → 307 to `/login?message=That sign-in link is invalid…`,
+  without calling Supabase at all.
+- ✅ `npm run build` registers `/auth/confirm` and `/admin/settings` as dynamic server functions,
+  and the webhook route stays on the Node runtime.
+
+## STILL REQUIRED before enabling phone login — needs the owner's explicit go-ahead
+
+These were **not** performed: they send real messages and cost real credit.
+
+- [ ] **First-ever phone-OTP login for a number that has never logged in before.** This is the
+      highest-value case and the one no mocked test can cover: Supabase reports
+      `verification_type: "signup"` on a first login and `"magiclink"` afterwards, and redeeming
+      with the wrong one returns HTTP 403. The code reads the type back from the response rather
+      than hard-coding it (asserted in unit tests for both values), but only a live run proves the
+      end-to-end handshake.
+- [ ] **A real account-creation SMS** to a phone-preferred customer — check the copy, the site URL,
+      and that it contains **no** login code.
+- [ ] **A real account-creation email** to an email-preferred customer — check the sign-in link
+      actually establishes a session via `/auth/confirm`.
+
+No WhatsApp QA is needed for account creation: that notification is email + SMS only, deliberately.
+The two existing WhatsApp templates (`order_status_update`, `low_stock_alert`) are unchanged by
+this expansion and their QA above does not need re-running.
