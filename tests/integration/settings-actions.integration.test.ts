@@ -1,13 +1,9 @@
 /**
- * Integration: auth matrix and blank-secret semantics for src/app/admin/settings/actions.ts,
- * against the real isolated database.
+ * Integration: auth matrix and toggle-persistence for src/app/admin/settings/actions.ts, against
+ * the real isolated database.
  *
- * The load-bearing case here is "a blank secret field must not clobber a stored value" — the
- * Settings UI cannot display a stored secret, so most saves arrive with those fields empty, and
- * getting this backwards would silently wipe a live credential on every unrelated edit.
- *
- * NOTE: unlike every other file in this suite, `@/lib/settings` is NOT mocked — these tests
- * exercise the real find-or-create singleton behavior against real rows.
+ * Provider credentials are NOT exercised here — they live in .env, never in this table. See
+ * src/lib/settings.ts's header for why. This file only covers the on/off toggles.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -36,22 +32,8 @@ import type { User } from '@prisma/client'
 
 const createClientMock = vi.mocked(createClient)
 
-const REAL_SECRET = 'sk_live_a-real-looking-secret'
-
-/** A complete, valid notification-settings payload — every field the schema requires. */
 function notificationPayload(overrides: Record<string, unknown> = {}) {
   return {
-    resendApiKey: '',
-    fromEmail: 'orders@example.com',
-    arkeselApiKey: '',
-    arkeselSenderId: 'Rostty',
-    whatsappAccessToken: '',
-    whatsappPhoneNumberId: '123456789012345',
-    whatsappAppSecret: '',
-    whatsappWebhookVerifyToken: '',
-    whatsappTemplateName: 'order_status_update',
-    whatsappLowStockTemplateName: 'low_stock_alert',
-    whatsappTemplateLanguage: 'en',
     emailEnabled: true,
     smsEnabled: true,
     whatsappEnabled: true,
@@ -166,113 +148,45 @@ describe('settings/actions.ts', () => {
       expect(notif.emailEnabled).toBe(true)
       expect(notif.smsEnabled).toBe(true)
       expect(notif.whatsappEnabled).toBe(true)
-      expect(notif.arkeselApiKey).toBeNull()
       expect(login.emailLoginEnabled).toBe(true)
       // Opt-in on purpose: email-only login stays the default until SMS is verified post-deploy.
       expect(login.phoneLoginEnabled).toBe(false)
     })
   })
 
-  describe('blank secret fields keep the stored value', () => {
+  describe('toggle persistence', () => {
     beforeEach(() => {
       mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
     })
 
-    test('saving a real secret, then saving again with that field blank, leaves it intact', async () => {
-      await updateNotificationSettings(notificationPayload({ arkeselApiKey: REAL_SECRET }))
-      const afterFirst = await prisma.notificationSettings.findFirst()
-      expect(afterFirst!.arkeselApiKey).toBe(REAL_SECRET)
-
-      // The realistic case: the admin edits the sender ID and never touches the key field.
+    test('each channel toggle persists independently', async () => {
       await updateNotificationSettings(
-        notificationPayload({ arkeselApiKey: '', arkeselSenderId: 'ChangedSender' })
-      )
-
-      const afterSecond = await prisma.notificationSettings.findFirst()
-      expect(afterSecond!.arkeselApiKey).toBe(REAL_SECRET) // preserved
-      expect(afterSecond!.arkeselSenderId).toBe('ChangedSender') // non-secret did overwrite
-    })
-
-    test('a whitespace-only secret field also counts as blank', async () => {
-      await updateNotificationSettings(notificationPayload({ arkeselApiKey: REAL_SECRET }))
-
-      await updateNotificationSettings(notificationPayload({ arkeselApiKey: '   ' }))
-
-      const row = await prisma.notificationSettings.findFirst()
-      expect(row!.arkeselApiKey).toBe(REAL_SECRET)
-    })
-
-    test('a non-blank secret field overwrites the stored value', async () => {
-      await updateNotificationSettings(notificationPayload({ arkeselApiKey: REAL_SECRET }))
-
-      await updateNotificationSettings(notificationPayload({ arkeselApiKey: 'sk_live_rotated' }))
-
-      const row = await prisma.notificationSettings.findFirst()
-      expect(row!.arkeselApiKey).toBe('sk_live_rotated')
-    })
-
-    test('all five secret fields independently follow blank-means-keep', async () => {
-      await updateNotificationSettings(
-        notificationPayload({
-          resendApiKey: 'resend-secret',
-          arkeselApiKey: 'arkesel-secret',
-          whatsappAccessToken: 'whatsapp-token',
-          whatsappAppSecret: 'app-secret',
-          whatsappWebhookVerifyToken: 'verify-token',
-        })
-      )
-
-      // Rotate exactly one, leave the rest blank.
-      await updateNotificationSettings(
-        notificationPayload({ whatsappAppSecret: 'app-secret-rotated' })
+        notificationPayload({ emailEnabled: true, smsEnabled: false, whatsappEnabled: false })
       )
 
       const row = await prisma.notificationSettings.findFirst()
-      expect(row!.resendApiKey).toBe('resend-secret')
-      expect(row!.arkeselApiKey).toBe('arkesel-secret')
-      expect(row!.whatsappAccessToken).toBe('whatsapp-token')
-      expect(row!.whatsappAppSecret).toBe('app-secret-rotated')
-      expect(row!.whatsappWebhookVerifyToken).toBe('verify-token')
+      expect(row!.emailEnabled).toBe(true)
+      expect(row!.smsEnabled).toBe(false)
+      expect(row!.whatsappEnabled).toBe(false)
     })
 
-    // Non-secrets DO round-trip through the UI, so blanking one is a legitimate edit.
-    test('a blank non-secret field genuinely clears it', async () => {
-      await updateNotificationSettings(notificationPayload({ fromEmail: 'orders@example.com' }))
-
-      await updateNotificationSettings(notificationPayload({ fromEmail: '' }))
+    test('a later save overwrites the previous toggle state, not merges with it', async () => {
+      await updateNotificationSettings(notificationPayload({ smsEnabled: false }))
+      await updateNotificationSettings(notificationPayload({ smsEnabled: true }))
 
       const row = await prisma.notificationSettings.findFirst()
-      expect(row!.fromEmail).toBeNull()
+      expect(row!.smsEnabled).toBe(true)
     })
 
-    test('the returned shape is masked — no stored secret comes back to the caller', async () => {
-      const result = await updateNotificationSettings(
-        notificationPayload({ arkeselApiKey: REAL_SECRET })
-      )
+    test('the returned shape carries no credential fields at all', async () => {
+      const result = await updateNotificationSettings(notificationPayload())
 
       expect(result.ok).toBe(true)
       if (result.ok) {
-        expect(JSON.stringify(result.data)).not.toContain(REAL_SECRET)
-        expect(result.data.arkeselApiKeySet).toBe(true)
+        expect(Object.keys(result.data).sort()).toEqual(
+          ['emailEnabled', 'id', 'smsEnabled', 'updatedAt', 'whatsappEnabled'].sort()
+        )
       }
-    })
-
-    test('channel toggles persist independently of credentials', async () => {
-      await updateNotificationSettings(
-        notificationPayload({
-          arkeselApiKey: REAL_SECRET,
-          smsEnabled: false,
-          emailEnabled: true,
-          whatsappEnabled: false,
-        })
-      )
-
-      const row = await prisma.notificationSettings.findFirst()
-      // Credentials present but the channel is off — the two are genuinely independent.
-      expect(row!.arkeselApiKey).toBe(REAL_SECRET)
-      expect(row!.smsEnabled).toBe(false)
-      expect(row!.emailEnabled).toBe(true)
-      expect(row!.whatsappEnabled).toBe(false)
     })
   })
 })

@@ -4,14 +4,9 @@
  * make a real network call. A real Arkesel send costs credits from a live balance and delivers
  * to a real phone.
  *
- * ⚠ Credentials now come from the NotificationSettings table, not env vars, so `@/lib/settings` is
- * mocked here rather than the environment. Every config-dependent case sets its settings shape
- * explicitly: the mock has no ambient default, so a test that forgot to configure would fail
- * loudly rather than silently passing for the wrong reason.
- *
- * "enabled" and "configured" are two INDEPENDENT gates with distinct no-op reasons, and both are
- * covered below. The Arkesel v1 transport itself is untouched by that refactor — every
- * request-shape and success/failure-mapping assertion in this file is unchanged in intent.
+ * "enabled" comes from the database (mocked via @/lib/settings) — "configured" (the API key and
+ * sender ID) comes from process.env, stubbed per-test via vi.stubEnv. These are two INDEPENDENT
+ * gates with distinct no-op reasons, and both are covered below.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -31,15 +26,19 @@ let fetchMock: ReturnType<typeof vi.fn>
 
 const settingsMock = vi.mocked(getNotificationSettings)
 
-/** A fully-configured, enabled SMS channel, with known assertable values. */
+/** The database-backed side: just the enabled toggle. */
 function stubSettings(overrides: Record<string, unknown> = {}) {
   settingsMock.mockResolvedValue({
     smsEnabled: true,
-    arkeselApiKey: TEST_API_KEY,
-    arkeselSenderId: TEST_SENDER_ID,
     ...overrides,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any)
+}
+
+/** The env-backed side: the actual credentials, exactly as production reads them. */
+function stubArkeselEnv({ apiKey = TEST_API_KEY, senderId = TEST_SENDER_ID }: { apiKey?: string; senderId?: string } = {}) {
+  vi.stubEnv('ARKESEL_API_KEY', apiKey)
+  vi.stubEnv('ARKESEL_SENDER_ID', senderId)
 }
 
 /** A `Response`-shaped stub — only the three members sendSms actually touches. */
@@ -56,6 +55,7 @@ beforeEach(() => {
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
   stubSettings()
+  stubArkeselEnv()
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -68,8 +68,8 @@ afterEach(() => {
 
 describe('sendSms', () => {
   describe('settings-gated no-op — "configured" and "enabled" are independent', () => {
-    it('no-ops without calling fetch when the Arkesel API key is not stored', async () => {
-      stubSettings({ arkeselApiKey: null })
+    it('no-ops without calling fetch when the Arkesel API key is not set', async () => {
+      stubArkeselEnv({ apiKey: '' })
 
       const result = await sendSms({ to: GHANA_PHONE, message: 'hello' })
 
@@ -77,8 +77,8 @@ describe('sendSms', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
-    it('no-ops without calling fetch when the Arkesel sender ID is not stored', async () => {
-      stubSettings({ arkeselSenderId: null })
+    it('no-ops without calling fetch when the Arkesel sender ID is not set', async () => {
+      stubArkeselEnv({ senderId: '' })
 
       const result = await sendSms({ to: GHANA_PHONE, message: 'hello' })
 
@@ -98,7 +98,8 @@ describe('sendSms', () => {
     })
 
     it('reports sms_not_configured — not sms_disabled — when enabled but credential-less', async () => {
-      stubSettings({ smsEnabled: true, arkeselApiKey: null, arkeselSenderId: null })
+      stubSettings({ smsEnabled: true })
+      stubArkeselEnv({ apiKey: '', senderId: '' })
 
       const result = await sendSms({ to: GHANA_PHONE, message: 'hello' })
 
@@ -108,8 +109,6 @@ describe('sendSms', () => {
 
   describe('phone-normalization no-op', () => {
     it('no-ops without calling fetch on a non-Ghana number', async () => {
-      stubSettings()
-
       const result = await sendSms({ to: NON_GHANA_PHONE, message: 'hello' })
 
       expect(result).toEqual({ success: false, reason: 'invalid_phone' })
@@ -117,8 +116,6 @@ describe('sendSms', () => {
     })
 
     it('no-ops without calling fetch on an empty phone string', async () => {
-      stubSettings()
-
       const result = await sendSms({ to: '', message: 'hello' })
 
       expect(result).toEqual({ success: false, reason: 'invalid_phone' })
@@ -128,7 +125,6 @@ describe('sendSms', () => {
 
   describe('the v1 query-string request shape', () => {
     beforeEach(() => {
-      stubSettings()
       fetchMock.mockResolvedValue(mockResponse(200, { code: 'ok', message: 'Successfully Send' }))
     })
 
@@ -217,8 +213,6 @@ describe('sendSms', () => {
   })
 
   describe('success/failure mapping — checks both signals, requires neither field', () => {
-    beforeEach(() => stubSettings())
-
     it('maps 200 + {code: "ok"} to {success: true, data}', async () => {
       const body = { code: 'ok', message: 'Successfully Send', balance: 522, user: 'Faazele Ishola' }
       fetchMock.mockResolvedValue(mockResponse(200, body))
@@ -289,7 +283,6 @@ describe('sendSms', () => {
   // whole request object an especially easy mistake to make while debugging.
   describe('no secrets in logs', () => {
     it('never logs the API key on an HTTP-failure path', async () => {
-      stubSettings()
       fetchMock.mockResolvedValue(mockResponse(401, { code: '102', message: 'Authentication Failed' }))
 
       await sendSms({ to: GHANA_PHONE, message: 'hello' })
@@ -299,7 +292,6 @@ describe('sendSms', () => {
     })
 
     it('never logs the API key on a code-failure path', async () => {
-      stubSettings()
       fetchMock.mockResolvedValue(mockResponse(200, { code: '102', message: 'Authentication Failed' }))
 
       await sendSms({ to: GHANA_PHONE, message: 'hello' })
@@ -309,7 +301,6 @@ describe('sendSms', () => {
     })
 
     it('never logs the API key on a thrown-network-error path', async () => {
-      stubSettings()
       fetchMock.mockRejectedValue(new Error('network down'))
 
       await sendSms({ to: GHANA_PHONE, message: 'hello' })
@@ -322,7 +313,7 @@ describe('sendSms', () => {
   // PROACTIVE-001 — the no-op branches used to log the whole `data` object, message body included.
   // sendSms is a generic entry point and now carries phone-login OTPs, so that would print a live,
   // unexpired login code to the server log. The unconfigured branch is not hypothetical: it is the
-  // real state of a fresh deploy until the admin enters credentials at /admin/settings.
+  // real state of a fresh deploy until ARKESEL_API_KEY/ARKESEL_SENDER_ID are set in .env.
   describe('no OTP codes in logs on a no-op path', () => {
     const OTP_MESSAGE = 'Your Chop with Rostty login code is 483920. It expires in 10 minutes.'
 
@@ -337,7 +328,7 @@ describe('sendSms', () => {
     })
 
     it('never echoes the message body when credentials are absent', async () => {
-      stubSettings({ arkeselApiKey: null })
+      stubArkeselEnv({ apiKey: '' })
 
       await sendSms({ to: GHANA_PHONE, message: OTP_MESSAGE })
 
@@ -350,7 +341,6 @@ describe('sendSms', () => {
 
 describe('sendOrderStatusSms', () => {
   beforeEach(() => {
-    stubSettings()
     fetchMock.mockResolvedValue(mockResponse(200, { code: 'ok' }))
   })
 
@@ -391,7 +381,7 @@ describe('sendOrderStatusSms', () => {
   })
 
   it('propagates sendSms\'s no-op result rather than throwing when unconfigured', async () => {
-    stubSettings({ arkeselApiKey: null })
+    stubArkeselEnv({ apiKey: '' })
 
     const result = await sendOrderStatusSms(GHANA_PHONE, 42, 'jollof', 'PENDING')
 
@@ -402,7 +392,6 @@ describe('sendOrderStatusSms', () => {
 
 describe('sendLowStockSms', () => {
   beforeEach(() => {
-    stubSettings()
     fetchMock.mockResolvedValue(mockResponse(200, { code: 'ok' }))
   })
 

@@ -1,13 +1,11 @@
 /**
  * Unit tests for src/lib/notifications/email.ts.
  *
- * No email.test.ts existed before this expansion (unlike sms/whatsapp), so this file is new and
- * covers all three senders plus the settings-accessor refactor and the singleton-cache removal.
- *
  * The `resend` SDK is mocked wholesale: NO test here may construct a real client or make a real
- * network call. Settings come from a mocked `@/lib/settings`, never env vars.
+ * network call. "enabled" comes from the database (mocked @/lib/settings); "configured" (the API
+ * key/from-address) comes from process.env, stubbed per-test via vi.stubEnv.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sendMock = vi.fn()
 const resendConstructorMock = vi.fn()
@@ -31,14 +29,19 @@ const settingsMock = vi.mocked(getNotificationSettings)
 const TEST_API_KEY = 'test-resend-key-NEVER-LOG-ME'
 const TEST_FROM = 'Chop with Rostty <orders@example.com>'
 
+/** The database-backed side: just the enabled toggle. */
 function stubSettings(overrides: Record<string, unknown> = {}) {
   settingsMock.mockResolvedValue({
     emailEnabled: true,
-    resendApiKey: TEST_API_KEY,
-    fromEmail: TEST_FROM,
     ...overrides,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any)
+}
+
+/** The env-backed side: the actual credentials, exactly as production reads them. */
+function stubResendEnv({ apiKey = TEST_API_KEY, from = TEST_FROM }: { apiKey?: string; from?: string } = {}) {
+  vi.stubEnv('RESEND_API_KEY', apiKey)
+  vi.stubEnv('FROM_EMAIL', from)
 }
 
 const ORDER = {
@@ -58,9 +61,14 @@ function sentEmail() {
 beforeEach(() => {
   vi.clearAllMocks()
   stubSettings()
+  stubResendEnv()
   sendMock.mockResolvedValue({ id: 'email-id' })
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  vi.unstubAllEnvs()
 })
 
 describe('settings-gated no-op — "configured" and "enabled" are independent', () => {
@@ -97,7 +105,7 @@ describe('settings-gated no-op — "configured" and "enabled" are independent', 
   })
 
   it('no-ops with the existing no_api_key reason when the key is absent but the channel is on', async () => {
-    stubSettings({ emailEnabled: true, resendApiKey: null })
+    stubResendEnv({ apiKey: '' })
 
     await expect(sendOrderStatusEmail(ORDER)).resolves.toEqual({ success: false, reason: 'no_api_key' })
     await expect(sendLowStockAlert('Rice', 3, 'kg', 'admin@example.com')).resolves.toEqual({
@@ -108,15 +116,14 @@ describe('settings-gated no-op — "configured" and "enabled" are independent', 
   })
 })
 
-// THE regression test for the singleton-cache removal. The API key can now change at runtime via
-// the Settings UI with no redeploy; a lingering module-scope client would keep using the first key
-// it ever saw, silently sending with a rotated-away credential until the process restarted.
+// THE regression test for the singleton-cache removal. The API key can be rotated in .env with a
+// redeploy; a lingering module-scope client would keep using the first key it ever saw.
 describe('constructs a fresh Resend client per call, never a cached one', () => {
-  it('uses each distinct stored key in sequence rather than the first one twice', async () => {
-    stubSettings({ resendApiKey: 'first-key' })
+  it('uses each distinct key in sequence rather than the first one twice', async () => {
+    stubResendEnv({ apiKey: 'first-key' })
     await sendOrderStatusEmail(ORDER)
 
-    stubSettings({ resendApiKey: 'second-key-after-rotation' })
+    stubResendEnv({ apiKey: 'second-key-after-rotation' })
     await sendOrderStatusEmail(ORDER)
 
     expect(resendConstructorMock).toHaveBeenCalledTimes(2)
@@ -125,10 +132,10 @@ describe('constructs a fresh Resend client per call, never a cached one', () => 
   })
 
   it('picks up a rotated key across two different senders too', async () => {
-    stubSettings({ resendApiKey: 'first-key' })
+    stubResendEnv({ apiKey: 'first-key' })
     await sendOrderStatusEmail(ORDER)
 
-    stubSettings({ resendApiKey: 'second-key-after-rotation' })
+    stubResendEnv({ apiKey: 'second-key-after-rotation' })
     await sendLowStockAlert('Rice', 3, 'kg', 'admin@example.com')
 
     expect(resendConstructorMock).toHaveBeenNthCalledWith(2, 'second-key-after-rotation')
@@ -136,15 +143,15 @@ describe('constructs a fresh Resend client per call, never a cached one', () => 
 })
 
 describe('sendOrderStatusEmail', () => {
-  it('sends from the stored fromEmail to the customer', async () => {
+  it('sends from the configured FROM_EMAIL to the customer', async () => {
     await sendOrderStatusEmail(ORDER)
 
     expect(sentEmail().from).toBe(TEST_FROM)
     expect(sentEmail().to).toBe('ama@example.com')
   })
 
-  it('falls back to the default from-address when none is stored', async () => {
-    stubSettings({ fromEmail: null })
+  it('falls back to the default from-address when none is set', async () => {
+    stubResendEnv({ from: '' })
 
     await sendOrderStatusEmail(ORDER)
 
@@ -191,7 +198,7 @@ describe('sendAccountCreatedEmail', () => {
     expect(sentEmail().html).toContain(MAGIC_LINK)
   })
 
-  it('sends to the customer from the stored from-address', async () => {
+  it('sends to the customer from the configured from-address', async () => {
     await sendAccountCreatedEmail({ to: 'ama@example.com', name: 'Ama', magicLink: MAGIC_LINK })
 
     expect(sentEmail().to).toBe('ama@example.com')

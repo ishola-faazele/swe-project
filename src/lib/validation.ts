@@ -174,27 +174,10 @@ export const updateCustomerSchema = z
   .refine(preferredLoginMethodMatchesContactField, { message: PREFERRED_LOGIN_METHOD_MESSAGE })
 
 /**
- * Settings-page schemas.
- *
- * Every secret field is optional and blankable because the Settings UI never round-trips a stored
- * secret back to the browser: a blank input means "keep whatever is stored", never "clear it".
- * updateNotificationSettings translates blank → undefined (a Prisma no-op for that column) rather
- * than writing an empty string. Non-secret fields overwrite normally, like any form submission.
+ * Settings-page schemas — toggles only. Provider credentials live in .env and are never
+ * admin-editable; see src/lib/settings.ts's header for why.
  */
-const optionalSettingsField = z.string().trim().optional()
-
 export const updateNotificationSettingsSchema = z.object({
-  resendApiKey: optionalSettingsField,
-  fromEmail: optionalSettingsField,
-  arkeselApiKey: optionalSettingsField,
-  arkeselSenderId: optionalSettingsField,
-  whatsappAccessToken: optionalSettingsField,
-  whatsappPhoneNumberId: optionalSettingsField,
-  whatsappAppSecret: optionalSettingsField,
-  whatsappWebhookVerifyToken: optionalSettingsField,
-  whatsappTemplateName: optionalSettingsField,
-  whatsappLowStockTemplateName: optionalSettingsField,
-  whatsappTemplateLanguage: optionalSettingsField,
   emailEnabled: z.boolean(),
   smsEnabled: z.boolean(),
   whatsappEnabled: z.boolean(),

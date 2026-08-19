@@ -1,22 +1,19 @@
 /**
  * Transactional email sender (Resend).
  *
- * Credentials come from the NotificationSettings table (admin-managed at /admin/settings), not
- * env vars. "enabled" and "configured" are two INDEPENDENT checks with distinct no-op reasons —
- * same pattern as sms.ts and whatsapp.ts. These functions never throw.
- *
- * ⚠ The Resend client is constructed FRESH PER CALL, never cached in a module-scope singleton.
- * This is a real bug fix, not a style preference: the API key can now change at runtime through
- * the Settings UI with no redeploy, and a cached client would keep using a stale or
- * rotated-away key until the process happened to restart. Previously that could not happen —
- * rotating the key required a redeploy, which restarted the process anyway — so the cache was
- * safe before this change and is not safe after it. Construction is cheap (no network call at
- * construction time), so there is no meaningful cost to dropping it.
+ * "Enabled" comes from the database (admin-managed at /admin/settings); "configured" (the API
+ * key/from-address) comes from .env, same as it always has — see src/lib/settings.ts's header for
+ * why credentials never moved into the database. These functions never throw.
  */
 import { Resend } from 'resend'
 import { getNotificationSettings } from '@/lib/settings'
 
 const DEFAULT_FROM_EMAIL = 'Chop with Rostty <onboarding@resend.dev>'
+
+function getResendClient(): Resend | null {
+  const apiKey = process.env.RESEND_API_KEY
+  return apiKey ? new Resend(apiKey) : null
+}
 
 export type OrderStatusEmailData = {
   customerEmail: string
@@ -33,11 +30,12 @@ export async function sendOrderStatusEmail(data: OrderStatusEmailData) {
     console.log('[Email] Skipping email send — email channel is disabled in Settings')
     return { success: false, reason: 'email_disabled' }
   }
-  if (!settings.resendApiKey) {
-    console.log('[Email] Skipping email send — Resend API key not configured in Settings')
+  const resend = getResendClient()
+  if (!resend) {
+    console.log('[Email] Skipping email send — RESEND_API_KEY not set in .env')
     return { success: false, reason: 'no_api_key' }
   }
-  const fromEmail = settings.fromEmail || DEFAULT_FROM_EMAIL
+  const fromEmail = process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL
 
   const statusMessages: Record<string, string> = {
     PENDING: 'Your order has been received and is pending.',
@@ -51,7 +49,7 @@ export async function sendOrderStatusEmail(data: OrderStatusEmailData) {
   const statusMessage = statusMessages[data.newStatus] || `Your order status has been updated to: ${data.newStatus}`
 
   try {
-    const result = await new Resend(settings.resendApiKey).emails.send({
+    const result = await resend.emails.send({
       from: fromEmail,
       to: data.customerEmail,
       subject: `Order Update: ${data.newStatus} — ${data.orderDescription}`,
@@ -93,14 +91,15 @@ export async function sendLowStockAlert(itemName: string, currentStock: number, 
     console.log('[Email] Skipping low stock alert — email channel is disabled in Settings')
     return { success: false, reason: 'email_disabled' }
   }
-  if (!settings.resendApiKey) {
-    console.log('[Email] Skipping low stock alert — Resend API key not configured in Settings')
+  const resend = getResendClient()
+  if (!resend) {
+    console.log('[Email] Skipping low stock alert — RESEND_API_KEY not set in .env')
     return { success: false, reason: 'no_api_key' }
   }
 
   try {
-    const result = await new Resend(settings.resendApiKey).emails.send({
-      from: settings.fromEmail || DEFAULT_FROM_EMAIL,
+    const result = await resend.emails.send({
+      from: process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL,
       to: adminEmail,
       subject: `⚠️ Low Stock Alert: ${itemName}`,
       html: `
@@ -146,14 +145,15 @@ export async function sendAccountCreatedEmail(data: {
     console.log('[Email] Skipping account-created email — email channel is disabled in Settings')
     return { success: false, reason: 'email_disabled' }
   }
-  if (!settings.resendApiKey) {
-    console.log('[Email] Skipping account-created email — Resend API key not configured in Settings')
+  const resend = getResendClient()
+  if (!resend) {
+    console.log('[Email] Skipping account-created email — RESEND_API_KEY not set in .env')
     return { success: false, reason: 'no_api_key' }
   }
 
   try {
-    const result = await new Resend(settings.resendApiKey).emails.send({
-      from: settings.fromEmail || DEFAULT_FROM_EMAIL,
+    const result = await resend.emails.send({
+      from: process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL,
       to: data.to,
       subject: 'Your Chop with Rostty account is ready',
       html: `

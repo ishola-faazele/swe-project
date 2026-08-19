@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label'
 import { LoginSubmitButton } from '@/components/layout/LoginSubmitButton'
 import { Tabs, TabsList, TabsPanel, TabsTrigger } from '@/components/ui/tabs'
 import { PhoneLoginForm } from './PhoneLoginForm'
-import { getLoginSettings, getNotificationSettings } from '@/lib/settings'
+import { getLoginSettings, getNotificationSettings, isArkeselConfigured } from '@/lib/settings'
 import { cn } from '@/lib/utils'
 
 export default async function LoginPage({
@@ -30,7 +30,7 @@ export default async function LoginPage({
   // hidden by a client-side conditional — a customer with dev tools open never finds a route to
   // nowhere. The server actions re-check this independently regardless; this is the UX half.
   const phoneLoginAvailable = Boolean(
-    loginSettings.phoneLoginEnabled && notifSettings.smsEnabled && notifSettings.arkeselApiKey
+    loginSettings.phoneLoginEnabled && notifSettings.smsEnabled && isArkeselConfigured()
   )
 
   const emailForm = (

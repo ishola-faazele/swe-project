@@ -4,12 +4,10 @@
  * make a real network call, because a real call would send a real WhatsApp message to a real
  * phone and cost real money.
  *
- * ⚠ Credentials and template configuration now come from the NotificationSettings table, so
- * `@/lib/settings` is mocked here rather than the environment. WHATSAPP_API_VERSION is the one
- * exception — it remains a real env var, and the override case below still stubs it as such.
- *
- * "enabled" and "configured" are two INDEPENDENT gates with distinct no-op reasons, covered for
- * both exported senders. The Graph API request construction is untouched by that refactor.
+ * "enabled" comes from the database (mocked via @/lib/settings) — "configured" (access token,
+ * phone number ID, template names/language, API version) comes from process.env, stubbed
+ * per-test via vi.stubEnv. These are two INDEPENDENT gates with distinct no-op reasons, covered
+ * for both exported senders.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -29,20 +27,34 @@ let fetchMock: ReturnType<typeof vi.fn>
 
 const settingsMock = vi.mocked(getNotificationSettings)
 
-/** Stubs a fully-configured, enabled WhatsApp channel with known, assertable values. */
+/** The database-backed side: just the enabled toggle. */
 function stubSettings(overrides: Record<string, unknown> = {}) {
   settingsMock.mockResolvedValue({
     whatsappEnabled: true,
-    whatsappAccessToken: TEST_TOKEN,
-    whatsappPhoneNumberId: TEST_PHONE_NUMBER_ID,
-    whatsappTemplateName: 'order_status_update',
-    whatsappLowStockTemplateName: 'low_stock_alert',
-    whatsappTemplateLanguage: 'en_US',
     ...overrides,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any)
-  // Still a genuine env var — deliberately NOT moved into the settings table.
-  vi.stubEnv('WHATSAPP_API_VERSION', 'v24.0')
+}
+
+/** The env-backed side: everything else, exactly as production reads it. */
+function stubWhatsAppEnv(overrides: Partial<Record<
+  'accessToken' | 'phoneNumberId' | 'templateName' | 'lowStockTemplateName' | 'templateLanguage' | 'apiVersion',
+  string
+>> = {}) {
+  const {
+    accessToken = TEST_TOKEN,
+    phoneNumberId = TEST_PHONE_NUMBER_ID,
+    templateName = 'order_status_update',
+    lowStockTemplateName = 'low_stock_alert',
+    templateLanguage = 'en_US',
+    apiVersion = 'v24.0',
+  } = overrides
+  vi.stubEnv('WHATSAPP_ACCESS_TOKEN', accessToken)
+  vi.stubEnv('WHATSAPP_PHONE_NUMBER_ID', phoneNumberId)
+  vi.stubEnv('WHATSAPP_TEMPLATE_NAME', templateName)
+  vi.stubEnv('WHATSAPP_LOW_STOCK_TEMPLATE_NAME', lowStockTemplateName)
+  vi.stubEnv('WHATSAPP_TEMPLATE_LANGUAGE', templateLanguage)
+  vi.stubEnv('WHATSAPP_API_VERSION', apiVersion)
 }
 
 /** A `Response`-shaped stub — only the three members the sender actually touches. */
@@ -60,6 +72,7 @@ beforeEach(() => {
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
   stubSettings()
+  stubWhatsAppEnv()
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -72,8 +85,8 @@ afterEach(() => {
 
 describe('sendOrderStatusWhatsApp', () => {
   describe('settings-gated no-op — "configured" and "enabled" are independent', () => {
-    it('no-ops without calling fetch when the access token is not stored', async () => {
-      stubSettings({ whatsappAccessToken: null })
+    it('no-ops without calling fetch when the access token is not set', async () => {
+      stubWhatsAppEnv({ accessToken: '' })
 
       const result = await sendOrderStatusWhatsApp(GHANA_PHONE, 'Ama', 42, 'PENDING')
 
@@ -81,8 +94,8 @@ describe('sendOrderStatusWhatsApp', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
-    it('no-ops without calling fetch when the phone number ID is not stored', async () => {
-      stubSettings({ whatsappPhoneNumberId: null })
+    it('no-ops without calling fetch when the phone number ID is not set', async () => {
+      stubWhatsAppEnv({ phoneNumberId: '' })
 
       const result = await sendOrderStatusWhatsApp(GHANA_PHONE, 'Ama', 42, 'PENDING')
 
@@ -102,8 +115,6 @@ describe('sendOrderStatusWhatsApp', () => {
 
   describe('phone-normalization no-op', () => {
     it('no-ops without calling fetch when the phone cannot be normalized to a Ghana number', async () => {
-      stubSettings()
-
       const result = await sendOrderStatusWhatsApp(NON_GHANA_PHONE, 'Ama', 42, 'PENDING')
 
       expect(result).toEqual({ success: false, reason: 'invalid_phone' })
@@ -111,8 +122,6 @@ describe('sendOrderStatusWhatsApp', () => {
     })
 
     it('no-ops on an empty phone string', async () => {
-      stubSettings()
-
       const result = await sendOrderStatusWhatsApp('', 'Ama', 42, 'PENDING')
 
       expect(result).toEqual({ success: false, reason: 'invalid_phone' })
@@ -122,7 +131,6 @@ describe('sendOrderStatusWhatsApp', () => {
 
   describe('successful send', () => {
     beforeEach(() => {
-      stubSettings()
       fetchMock.mockResolvedValue(mockResponse(200, { messages: [{ id: 'wamid.TEST' }] }))
     })
 
@@ -208,8 +216,6 @@ describe('sendOrderStatusWhatsApp', () => {
   })
 
   describe('failure modes — never throws', () => {
-    beforeEach(() => stubSettings())
-
     it('maps a non-2xx Graph API response to {success: false, reason: api_error, status, data}', async () => {
       const graphError = {
         error: { message: 'Template name does not exist', type: 'OAuthException', code: 100, fbtrace_id: 'Abc123' },
@@ -245,13 +251,10 @@ describe('sendOrderStatusWhatsApp', () => {
     })
   })
 
-  // PROACTIVE-001: the TDD states "no secrets logged" as a security principle in prose but never
-  // gives it a test. These make that property regression-proof — it matters because the real
-  // .env now holds genuine credentials, so an accidental debug log would leak something that
-  // actually works, not an obvious placeholder.
+  // PROACTIVE-001: no-secrets-in-logs matters because the real .env now holds genuine
+  // credentials, so an accidental debug log would leak something that actually works.
   describe('no secrets in logs', () => {
     it('never logs the access token on an API-error failure path', async () => {
-      stubSettings()
       fetchMock.mockResolvedValue(mockResponse(401, { error: { message: 'Invalid OAuth access token' } }))
 
       await sendOrderStatusWhatsApp(GHANA_PHONE, 'Ama', 42, 'PENDING')
@@ -261,7 +264,6 @@ describe('sendOrderStatusWhatsApp', () => {
     })
 
     it('never logs the access token on a thrown-network-error path', async () => {
-      stubSettings()
       fetchMock.mockRejectedValue(new Error('network down'))
 
       await sendOrderStatusWhatsApp(GHANA_PHONE, 'Ama', 42, 'PENDING')
@@ -274,8 +276,8 @@ describe('sendOrderStatusWhatsApp', () => {
 
 describe('sendLowStockWhatsApp', () => {
   describe('settings-gated no-op — "configured" and "enabled" are independent', () => {
-    it('no-ops without calling fetch when the access token is not stored', async () => {
-      stubSettings({ whatsappAccessToken: null })
+    it('no-ops without calling fetch when the access token is not set', async () => {
+      stubWhatsAppEnv({ accessToken: '' })
 
       const result = await sendLowStockWhatsApp(GHANA_PHONE, 'Rice', 3, 'kg')
 
@@ -283,8 +285,8 @@ describe('sendLowStockWhatsApp', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
-    it('no-ops without calling fetch when the phone number ID is not stored', async () => {
-      stubSettings({ whatsappPhoneNumberId: null })
+    it('no-ops without calling fetch when the phone number ID is not set', async () => {
+      stubWhatsAppEnv({ phoneNumberId: '' })
 
       const result = await sendLowStockWhatsApp(GHANA_PHONE, 'Rice', 3, 'kg')
 
@@ -303,8 +305,6 @@ describe('sendLowStockWhatsApp', () => {
   })
 
   it('no-ops without calling fetch when the admin phone cannot be normalized', async () => {
-    stubSettings()
-
     const result = await sendLowStockWhatsApp(NON_GHANA_PHONE, 'Rice', 3, 'kg')
 
     expect(result).toEqual({ success: false, reason: 'invalid_phone' })
@@ -313,7 +313,6 @@ describe('sendLowStockWhatsApp', () => {
 
   describe('successful send', () => {
     beforeEach(() => {
-      stubSettings()
       fetchMock.mockResolvedValue(mockResponse(200, { messages: [{ id: 'wamid.LOWSTOCK' }] }))
     })
 
@@ -347,12 +346,6 @@ describe('sendLowStockWhatsApp', () => {
     })
 
     it('uses a template DISTINCT from the order-status one — they are independently configured', async () => {
-      stubSettings({
-        whatsappTemplateName: 'order_status_update',
-        whatsappLowStockTemplateName: 'low_stock_alert',
-      })
-      fetchMock.mockResolvedValue(mockResponse(200, { messages: [{ id: 'wamid.LOWSTOCK' }] }))
-
       await sendLowStockWhatsApp(GHANA_PHONE, 'Rice', 3, 'kg')
       await sendOrderStatusWhatsApp(GHANA_PHONE, 'Ama', 42, 'PENDING')
 
@@ -363,12 +356,8 @@ describe('sendLowStockWhatsApp', () => {
 
     // Regression guard: the two template settings must stay independent. Pointing the order-status
     // one somewhere else must not drag the low-stock alert along with it.
-    it('does not read whatsappTemplateName for the low-stock alert', async () => {
-      stubSettings({
-        whatsappTemplateName: 'some_other_order_template',
-        whatsappLowStockTemplateName: 'low_stock_alert',
-      })
-      fetchMock.mockResolvedValue(mockResponse(200, { messages: [{ id: 'wamid.LOWSTOCK' }] }))
+    it('does not read WHATSAPP_TEMPLATE_NAME for the low-stock alert', async () => {
+      vi.stubEnv('WHATSAPP_TEMPLATE_NAME', 'some_other_order_template')
 
       await sendLowStockWhatsApp(GHANA_PHONE, 'Rice', 3, 'kg')
 
@@ -377,8 +366,6 @@ describe('sendLowStockWhatsApp', () => {
   })
 
   describe('failure modes — never throws', () => {
-    beforeEach(() => stubSettings())
-
     it('maps a non-2xx response to {success: false, reason: api_error, status, data}', async () => {
       const graphError = { error: { message: 'Template not approved', type: 'OAuthException', code: 132001 } }
       fetchMock.mockResolvedValue(mockResponse(400, graphError))
@@ -400,7 +387,6 @@ describe('sendLowStockWhatsApp', () => {
   })
 
   it('never logs the access token on a failure path', async () => {
-    stubSettings()
     fetchMock.mockResolvedValue(mockResponse(500, { error: { message: 'Internal error' } }))
 
     await sendLowStockWhatsApp(GHANA_PHONE, 'Rice', 3, 'kg')

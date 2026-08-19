@@ -16,7 +16,6 @@
  */
 import { NextResponse } from 'next/server'
 import crypto from 'node:crypto'
-import { getNotificationSettings } from '@/lib/settings'
 
 const SIGNATURE_HEADER = 'x-hub-signature-256'
 const SIGNATURE_PREFIX = 'sha256='
@@ -27,13 +26,11 @@ export async function GET(request: Request) {
   const token = searchParams.get('hub.verify_token')
   const challenge = searchParams.get('hub.challenge')
 
-  const { whatsappWebhookVerifyToken: verifyToken } = await getNotificationSettings()
+  const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN
   if (!verifyToken) {
     // Fail closed: an unset verify token means we cannot distinguish a legitimate Meta handshake
     // from any other GET request. Reject rather than silently "auto-verifying."
-    // This is a REAL deployed state, not a theoretical one — the settings row starts empty, so
-    // this branch is live until the admin enters the token at /admin/settings.
-    console.error('[WhatsApp Webhook] Webhook verify token not configured — rejecting verification handshake')
+    console.error('[WhatsApp Webhook] WHATSAPP_WEBHOOK_VERIFY_TOKEN not set — rejecting verification handshake')
     return new NextResponse('Webhook verify token not configured', { status: 403 })
   }
 
@@ -47,11 +44,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { whatsappAppSecret: appSecret } = await getNotificationSettings()
+  const appSecret = process.env.WHATSAPP_APP_SECRET
   if (!appSecret) {
     // Fail closed: nothing can be verified without the secret, so the body is never even read.
     // Checked before the body read on purpose — an unverifiable payload must not be consumed.
-    console.error('[WhatsApp Webhook] App secret not configured — rejecting POST')
+    console.error('[WhatsApp Webhook] WHATSAPP_APP_SECRET not set — rejecting POST')
     return new NextResponse('Not configured', { status: 503 })
   }
 

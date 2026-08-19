@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { mintSessionForAuthEmail, resolveCustomerForPhoneLogin } from '@/lib/auth'
 import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { toGhanaE164 } from '@/lib/phone'
-import { getLoginSettings, getNotificationSettings } from '@/lib/settings'
+import { getLoginSettings, getNotificationSettings, isArkeselConfigured } from '@/lib/settings'
 import { sendSms } from '@/lib/notifications/sms'
 import {
   MAX_OTP_ATTEMPTS,
@@ -25,8 +25,8 @@ import {
 const PHONE_LOGIN_UNAVAILABLE = 'Phone login is not available right now.'
 
 /**
- * Phone login requires BOTH the login toggle and a working SMS channel — the code has to actually
- * reach the customer for the flow to mean anything.
+ * Phone login requires the login toggle, the SMS channel toggle, AND Arkesel actually being
+ * configured in .env — the code has to actually reach the customer for the flow to mean anything.
  *
  * Re-checked on EVERY call in both actions, never once at page render: every Server Action in this
  * app is an independently POST-able endpoint, so hiding the UI is not an enforcement boundary.
@@ -37,9 +37,7 @@ async function isPhoneLoginAvailable(): Promise<boolean> {
     getLoginSettings(),
     getNotificationSettings(),
   ])
-  return Boolean(
-    loginSettings.phoneLoginEnabled && notifSettings.smsEnabled && notifSettings.arkeselApiKey
-  )
+  return Boolean(loginSettings.phoneLoginEnabled && notifSettings.smsEnabled && isArkeselConfigured())
 }
 
 export async function login(formData: FormData) {

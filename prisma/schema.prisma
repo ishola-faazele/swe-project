@@ -73,23 +73,18 @@ model OtpCode {
  * env-var fallback anywhere in the sender modules, deliberately — a stale env var could otherwise
  * keep a channel sending after an admin explicitly toggled it off here.
  */
+/**
+ * On/off toggles ONLY — provider credentials (Resend/Arkesel/WhatsApp keys, sender IDs, template
+ * names) live in .env, exactly as before this table existed, and are never admin-editable. This
+ * table exists purely so the admin can silence a channel from the UI without a redeploy; it was
+ * briefly over-scoped to also hold raw credentials and was reverted (see docs/ROADMAP.md).
+ */
 model NotificationSettings {
-  id                           String   @id @default(uuid())
-  resendApiKey                 String?
-  fromEmail                    String?
-  arkeselApiKey                String?
-  arkeselSenderId              String?
-  whatsappAccessToken          String?
-  whatsappPhoneNumberId        String?
-  whatsappAppSecret            String?
-  whatsappWebhookVerifyToken   String?
-  whatsappTemplateName         String?
-  whatsappLowStockTemplateName String?
-  whatsappTemplateLanguage     String?
-  emailEnabled                 Boolean  @default(true)
-  smsEnabled                   Boolean  @default(true)
-  whatsappEnabled              Boolean  @default(true)
-  updatedAt                    DateTime @updatedAt
+  id              String   @id @default(uuid())
+  emailEnabled    Boolean  @default(true)
+  smsEnabled      Boolean  @default(true)
+  whatsappEnabled Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
 }
 
 /**

@@ -19,6 +19,7 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/settings', () => ({
   getLoginSettings: vi.fn(),
   getNotificationSettings: vi.fn(),
+  isArkeselConfigured: vi.fn(),
 }))
 vi.mock('@/lib/notifications/sms', () => ({ sendSms: vi.fn() }))
 vi.mock('@/lib/auth', () => ({
@@ -28,7 +29,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/utils/supabase/server', () => ({ createClient: vi.fn() }))
 
 import { prisma } from '@/lib/prisma'
-import { getLoginSettings, getNotificationSettings } from '@/lib/settings'
+import { getLoginSettings, getNotificationSettings, isArkeselConfigured } from '@/lib/settings'
 import { sendSms } from '@/lib/notifications/sms'
 import { mintSessionForAuthEmail, resolveCustomerForPhoneLogin } from '@/lib/auth'
 import { MAX_OTP_ATTEMPTS, hashOtpCode } from '@/lib/otp'
@@ -40,6 +41,7 @@ const otpUpdate = vi.mocked(prisma.otpCode.update)
 const otpUpdateMany = vi.mocked(prisma.otpCode.updateMany)
 const loginSettingsMock = vi.mocked(getLoginSettings)
 const notifSettingsMock = vi.mocked(getNotificationSettings)
+const arkeselConfiguredMock = vi.mocked(isArkeselConfigured)
 const sendSmsMock = vi.mocked(sendSms)
 const resolveCustomerMock = vi.mocked(resolveCustomerForPhoneLogin)
 const mintSessionMock = vi.mocked(mintSessionForAuthEmail)
@@ -49,16 +51,20 @@ const NORMALIZED_PHONE = '233241234567'
 const TEST_SECRET = 'test-otp-pepper'
 const CORRECT_CODE = '123456'
 
-/** Phone login fully available: toggle on, SMS on, key present. */
-function stubAvailable(login: Record<string, unknown> = {}, notif: Record<string, unknown> = {}) {
+/** Phone login fully available: toggle on, SMS on, Arkesel configured in env. */
+function stubAvailable(
+  login: Record<string, unknown> = {},
+  notif: Record<string, unknown> = {},
+  arkeselConfigured = true
+) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   loginSettingsMock.mockResolvedValue({ phoneLoginEnabled: true, emailLoginEnabled: true, ...login } as any)
   notifSettingsMock.mockResolvedValue({
     smsEnabled: true,
-    arkeselApiKey: 'a-key',
     ...notif,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any)
+  arkeselConfiguredMock.mockReturnValue(arkeselConfigured)
 }
 
 function otpRow(overrides: Record<string, unknown> = {}) {
@@ -150,8 +156,8 @@ describe('requestPhoneOtp', () => {
       expect(otpCreate).not.toHaveBeenCalled()
     })
 
-    it('rejects when Arkesel has no stored API key', async () => {
-      stubAvailable({}, { arkeselApiKey: null })
+    it('rejects when Arkesel is not configured in env', async () => {
+      stubAvailable({}, {}, false)
 
       const result = await requestPhoneOtp(RAW_PHONE)
 
@@ -165,7 +171,7 @@ describe('requestPhoneOtp', () => {
       const a = await requestPhoneOtp(RAW_PHONE)
       stubAvailable({}, { smsEnabled: false })
       const b = await requestPhoneOtp(RAW_PHONE)
-      stubAvailable({}, { arkeselApiKey: null })
+      stubAvailable({}, {}, false)
       const c = await requestPhoneOtp(RAW_PHONE)
 
       expect(a.ok).toBe(false)

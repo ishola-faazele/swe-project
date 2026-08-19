@@ -1,10 +1,11 @@
 /**
- * Unit tests for src/lib/settings.ts — the DB-backed settings accessors.
+ * Unit tests for src/lib/settings.ts — the DB-backed on/off toggles and the isArkeselConfigured
+ * env check. Provider credentials themselves are NOT here — see the module's header for why.
  *
  * Prisma is mocked directly, matching auth.test.ts's convention for Prisma-touching unit tests.
  * No real database.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
@@ -14,33 +15,16 @@ vi.mock('@/lib/prisma', () => ({
 }))
 
 import { prisma } from '@/lib/prisma'
-import {
-  getLoginSettings,
-  getMaskedNotificationSettings,
-  getNotificationSettings,
-} from './settings'
+import { getLoginSettings, getNotificationSettings, isArkeselConfigured } from './settings'
 
 const notifFindFirst = vi.mocked(prisma.notificationSettings.findFirst)
 const notifCreate = vi.mocked(prisma.notificationSettings.create)
 const loginFindFirst = vi.mocked(prisma.loginSettings.findFirst)
 const loginCreate = vi.mocked(prisma.loginSettings.create)
 
-const REAL_SECRET = 'super-secret-key'
-
 function notificationRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'settings-1',
-    resendApiKey: null,
-    fromEmail: null,
-    arkeselApiKey: null,
-    arkeselSenderId: null,
-    whatsappAccessToken: null,
-    whatsappPhoneNumberId: null,
-    whatsappAppSecret: null,
-    whatsappWebhookVerifyToken: null,
-    whatsappTemplateName: null,
-    whatsappLowStockTemplateName: null,
-    whatsappTemplateLanguage: null,
     emailEnabled: true,
     smsEnabled: true,
     whatsappEnabled: true,
@@ -115,95 +99,32 @@ describe('getLoginSettings', () => {
   })
 })
 
-describe('getMaskedNotificationSettings', () => {
-  // The load-bearing test for this whole module: anything returned here is serialized into the
-  // page's RSC payload and readable from the browser, so a raw secret must never appear in it.
-  it('never contains a stored secret value anywhere in its output', async () => {
-    notifFindFirst.mockResolvedValueOnce(
-      notificationRow({
-        resendApiKey: REAL_SECRET,
-        arkeselApiKey: REAL_SECRET,
-        whatsappAccessToken: REAL_SECRET,
-        whatsappAppSecret: REAL_SECRET,
-        whatsappWebhookVerifyToken: REAL_SECRET,
-      })
-    )
-
-    const masked = await getMaskedNotificationSettings()
-
-    expect(JSON.stringify(masked)).not.toContain(REAL_SECRET)
+describe('isArkeselConfigured', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
   })
 
-  it('reports each of the five secret fields as set, independently', async () => {
-    notifFindFirst.mockResolvedValueOnce(
-      notificationRow({
-        resendApiKey: REAL_SECRET,
-        arkeselApiKey: null,
-        whatsappAccessToken: REAL_SECRET,
-        whatsappAppSecret: null,
-        whatsappWebhookVerifyToken: REAL_SECRET,
-      })
-    )
-
-    const masked = await getMaskedNotificationSettings()
-
-    expect(masked.resendApiKeySet).toBe(true)
-    expect(masked.arkeselApiKeySet).toBe(false)
-    expect(masked.whatsappAccessTokenSet).toBe(true)
-    expect(masked.whatsappAppSecretSet).toBe(false)
-    expect(masked.whatsappWebhookVerifyTokenSet).toBe(true)
+  it('is true only when both ARKESEL_API_KEY and ARKESEL_SENDER_ID are set', () => {
+    vi.stubEnv('ARKESEL_API_KEY', 'key')
+    vi.stubEnv('ARKESEL_SENDER_ID', 'Rostty')
+    expect(isArkeselConfigured()).toBe(true)
   })
 
-  it('reports every secret as unset on a fresh, unconfigured row', async () => {
-    notifFindFirst.mockResolvedValueOnce(notificationRow())
-
-    const masked = await getMaskedNotificationSettings()
-
-    expect(masked.resendApiKeySet).toBe(false)
-    expect(masked.arkeselApiKeySet).toBe(false)
-    expect(masked.whatsappAccessTokenSet).toBe(false)
-    expect(masked.whatsappAppSecretSet).toBe(false)
-    expect(masked.whatsappWebhookVerifyTokenSet).toBe(false)
+  it('is false when the API key is missing', () => {
+    vi.stubEnv('ARKESEL_API_KEY', '')
+    vi.stubEnv('ARKESEL_SENDER_ID', 'Rostty')
+    expect(isArkeselConfigured()).toBe(false)
   })
 
-  // Non-secret configuration DOES round-trip — the admin has to see and edit the current values.
-  it('round-trips non-secret configuration in full', async () => {
-    notifFindFirst.mockResolvedValueOnce(
-      notificationRow({
-        fromEmail: 'orders@example.com',
-        arkeselSenderId: 'Rostty',
-        whatsappPhoneNumberId: '123456789012345',
-        whatsappTemplateName: 'order_status_update',
-        whatsappLowStockTemplateName: 'low_stock_alert',
-        whatsappTemplateLanguage: 'en',
-        emailEnabled: false,
-        smsEnabled: true,
-        whatsappEnabled: false,
-      })
-    )
-
-    const masked = await getMaskedNotificationSettings()
-
-    expect(masked.fromEmail).toBe('orders@example.com')
-    expect(masked.arkeselSenderId).toBe('Rostty')
-    expect(masked.whatsappPhoneNumberId).toBe('123456789012345')
-    expect(masked.whatsappTemplateName).toBe('order_status_update')
-    expect(masked.whatsappLowStockTemplateName).toBe('low_stock_alert')
-    expect(masked.whatsappTemplateLanguage).toBe('en')
-    expect(masked.emailEnabled).toBe(false)
-    expect(masked.smsEnabled).toBe(true)
-    expect(masked.whatsappEnabled).toBe(false)
+  it('is false when the sender ID is missing', () => {
+    vi.stubEnv('ARKESEL_API_KEY', 'key')
+    vi.stubEnv('ARKESEL_SENDER_ID', '')
+    expect(isArkeselConfigured()).toBe(false)
   })
 
-  it('exposes no raw-secret-named keys at all', async () => {
-    notifFindFirst.mockResolvedValueOnce(notificationRow({ resendApiKey: REAL_SECRET }))
-
-    const masked = await getMaskedNotificationSettings()
-
-    expect(Object.keys(masked)).not.toContain('resendApiKey')
-    expect(Object.keys(masked)).not.toContain('arkeselApiKey')
-    expect(Object.keys(masked)).not.toContain('whatsappAccessToken')
-    expect(Object.keys(masked)).not.toContain('whatsappAppSecret')
-    expect(Object.keys(masked)).not.toContain('whatsappWebhookVerifyToken')
+  it('is false when neither is set', () => {
+    vi.stubEnv('ARKESEL_API_KEY', '')
+    vi.stubEnv('ARKESEL_SENDER_ID', '')
+    expect(isArkeselConfigured()).toBe(false)
   })
 })
