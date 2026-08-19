@@ -19,6 +19,7 @@ vi.mock('@/lib/notifications', () => ({
 }))
 
 import { createClient } from '@/utils/supabase/server'
+import { notifyLowStock, notifyOrderStatusChange } from '@/lib/notifications'
 import { prisma } from '@/lib/prisma'
 import { cleanupFixtures, createCustomer, createDishWithRecipe, createInventoryItem, uniqueName } from '../../test/helpers/fixtures'
 import { createOrder, deleteOrder } from '@/app/admin/orders/actions'
@@ -26,6 +27,8 @@ import { createTestAdmin, mockAuthSession, newRegistry, cleanupRegistry, type Te
 import { randomUUID } from 'node:crypto'
 
 const createClientMock = vi.mocked(createClient)
+const notifyOrderStatusChangeMock = vi.mocked(notifyOrderStatusChange)
+const notifyLowStockMock = vi.mocked(notifyLowStock)
 
 describe('orders actions (integration)', () => {
   let inventoryItemIds: string[]
@@ -83,6 +86,14 @@ describe('orders actions (integration)', () => {
 
       const updatedRice = await prisma.inventoryItem.findUniqueOrThrow({ where: { id: rice.id } })
       expect(updatedRice.currentStock).toBeCloseTo(80 - 1.25)
+
+      // Call-site contract: createOrder must hand the notification fan-out the order's
+      // human-facing shortId, not just the internal UUID — the WhatsApp/SMS copy is built from
+      // it, and AGENTS.md bans UUIDs in customer-facing strings.
+      expect(notifyOrderStatusChangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ orderShortId: result.data.shortId, newStatus: 'PENDING' })
+      )
+      expect(result.data.shortId).toEqual(expect.any(Number))
     })
 
     it('every selected dish gets an OrderDish row with dishName/unitPrice snapshotted from DB-fresh data, not client input', async () => {
@@ -136,6 +147,71 @@ describe('orders actions (integration)', () => {
       const orderDishes = await prisma.orderDish.findMany({ where: { orderId: result.data.id } })
       expect(orderDishes).toHaveLength(1)
       expect(orderDishes[0].dishId).toBe(dish.id)
+    })
+
+    it('passes ADMIN_ALERT_PHONE to notifyLowStock when a deduction crosses the threshold', async () => {
+      // ADMIN_ALERT_PHONE is genuinely unset for integration runs (the config loads only
+      // .env.test, which carries just the DB URLs), so it is set explicitly here and restored in
+      // the finally block — leaking it would silently change how every later test file behaves.
+      const previousAdminAlertPhone = process.env.ADMIN_ALERT_PHONE
+      process.env.ADMIN_ALERT_PHONE = '0241234567'
+
+      try {
+        // 10 in stock, threshold 8, one dish consuming 5 → 5 <= 8 after deduction, so the
+        // low-stock branch fires. minimumThreshold must be > 0 for the guard to engage at all.
+        const rice = await createInventoryItem({ currentStock: 10, minimumThreshold: 8 })
+        inventoryItemIds.push(rice.id)
+        const jollof = await createDishWithRecipe(uniqueName('Jollof'), 1200, [
+          { inventoryItemId: rice.id, quantityPerDish: 5 },
+        ])
+        dishIds.push(jollof.id)
+        const customer = await createCustomer()
+        userIds.push(customer.id)
+
+        const result = await createOrder({
+          customerId: customer.id,
+          description: 'low stock trigger order',
+          totalPrice: 1200,
+          dishes: [{ dishId: jollof.id, quantity: 1 }],
+        })
+        if (!result.ok) throw new Error('fixture setup failed: ' + result.error)
+        orderIds.push(result.data.id)
+
+        const afterDeduction = await prisma.inventoryItem.findUniqueOrThrow({ where: { id: rice.id } })
+        expect(afterDeduction.currentStock).toBeLessThanOrEqual(afterDeduction.minimumThreshold)
+
+        expect(notifyLowStockMock).toHaveBeenCalledWith(
+          expect.objectContaining({ itemName: rice.name, adminPhone: '0241234567' })
+        )
+      } finally {
+        if (previousAdminAlertPhone === undefined) {
+          delete process.env.ADMIN_ALERT_PHONE
+        } else {
+          process.env.ADMIN_ALERT_PHONE = previousAdminAlertPhone
+        }
+      }
+    })
+
+    it('does not fire a low-stock alert when the deduction stays above the threshold', async () => {
+      const rice = await createInventoryItem({ currentStock: 100, minimumThreshold: 5 })
+      inventoryItemIds.push(rice.id)
+      const jollof = await createDishWithRecipe(uniqueName('Jollof'), 1200, [
+        { inventoryItemId: rice.id, quantityPerDish: 1 },
+      ])
+      dishIds.push(jollof.id)
+      const customer = await createCustomer()
+      userIds.push(customer.id)
+
+      const result = await createOrder({
+        customerId: customer.id,
+        description: 'well-stocked order',
+        totalPrice: 1200,
+        dishes: [{ dishId: jollof.id, quantity: 1 }],
+      })
+      if (!result.ok) throw new Error('fixture setup failed: ' + result.error)
+      orderIds.push(result.data.id)
+
+      expect(notifyLowStockMock).not.toHaveBeenCalled()
     })
 
     it('creates zero OrderIngredientLog/OrderDish rows for an order with no dish selections (legacy-shaped create)', async () => {
