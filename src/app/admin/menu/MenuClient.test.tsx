@@ -85,7 +85,6 @@ const archivedDish = makeDish({
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
 describe('MenuClient — table', () => {
@@ -122,7 +121,7 @@ describe('MenuClient — create dialog', () => {
     expect(screen.getByRole('heading', { name: 'Add Dish' })).toBeInTheDocument()
   })
 
-  it('recipe builder: "Add Ingredient" adds a row, "X" removes it', async () => {
+  it('recipe builder: "Add Ingredient" adds a row, remove button removes it', async () => {
     const user = userEvent.setup()
     render(<MenuClient initialData={[]} inventory={[rice, chicken]} />)
     await user.click(screen.getByRole('button', { name: /add dish/i }))
@@ -135,7 +134,7 @@ describe('MenuClient — create dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
     expect(screen.getAllByPlaceholderText('Qty')).toHaveLength(2)
 
-    await user.click(screen.getAllByRole('button', { name: 'X' })[0])
+    await user.click(screen.getAllByRole('button', { name: 'Remove ingredient' })[0])
     expect(screen.getAllByPlaceholderText('Qty')).toHaveLength(1)
   })
 
@@ -165,6 +164,7 @@ describe('MenuClient — create dialog', () => {
     expect(mockCreateDish).toHaveBeenCalledWith({
       name: 'Fried Rice',
       price: 1300,
+      servingSize: 1,
       ingredients: [{ inventoryItemId: rice.id, quantityPerDish: 0.25 }],
     })
     // Dialog closes and the new row appears optimistically.
@@ -307,12 +307,12 @@ describe('MenuClient — archive/restore', () => {
 })
 
 describe('MenuClient — delete', () => {
-  it('is gated behind confirm(): declining leaves deleteDish uncalled', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('is gated behind confirmation: declining leaves deleteDish uncalled', async () => {
     const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
 
     expect(mockDeleteDish).not.toHaveBeenCalled()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()
@@ -323,7 +323,9 @@ describe('MenuClient — delete', () => {
     const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+    const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
+    await user.click(confirmButtons[confirmButtons.length - 1])
 
     expect(await screen.findByText('No dishes yet')).toBeInTheDocument()
   })
@@ -333,7 +335,9 @@ describe('MenuClient — delete', () => {
     const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+    const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
+    await user.click(confirmButtons[confirmButtons.length - 1])
 
     expect(await screen.findByText('ARCHIVED')).toBeInTheDocument()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()

@@ -7,6 +7,10 @@ import {
   flexRender,
   getCoreRowModel,
   useReactTable,
+  getSortedRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  SortingState,
 } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,8 +25,20 @@ import { toast } from "@/components/ui/toast"
 import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
 import { mergeDuplicateIngredients } from "@/lib/recipe"
 import { createDish, updateDish, deleteDish, toggleDishActive } from "./actions"
-import { Plus, UtensilsCrossed } from "lucide-react"
+import { Plus, UtensilsCrossed, X, Pencil, Archive, RotateCcw, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { HighlightText } from "@/components/ui/highlight"
+import { TablePagination } from "@/components/ui/table-pagination"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 type DishWithIngredients = Dish & {
   ingredients: (DishIngredient & { inventoryItem: InventoryItem })[]
@@ -141,9 +157,10 @@ function RecipeBuilder({
                 type="button"
                 variant="ghost"
                 size="sm"
+                aria-label="Remove ingredient"
                 onClick={() => setRows(rows.filter((_, i) => i !== index))}
               >
-                X
+                <X className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
           )
@@ -162,7 +179,10 @@ export function MenuClient({
 }) {
   const [data, setData] = useState<DishWithIngredients[]>(initialData)
   const [isOpen, setIsOpen] = useState(false)
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [globalFilter, setGlobalFilter] = useState('')
   const [editingDish, setEditingDish] = useState<DishWithIngredients | null>(null)
+  const [deletingDish, setDeletingDish] = useState<DishWithIngredients | null>(null)
   const [newRecipe, setNewRecipe] = useState<RecipeRow[]>([])
   const [editRecipe, setEditRecipe] = useState<RecipeRow[]>([])
   const [counter, setCounter] = useState(0)
@@ -211,8 +231,9 @@ export function MenuClient({
   async function handleAdd(formData: FormData) {
     const name = formData.get("name") as string
     const price = Number(formData.get("price"))
+    const servingSize = Number(formData.get("servingSize")) || 1
 
-    const newDish = await createDish({ name, price, ingredients: recipePayload(newRecipe) })
+    const newDish = await createDish({ name, price, servingSize, ingredients: recipePayload(newRecipe) })
 
     setData([...data, { ...newDish, ingredients: buildIngredients(newDish.id, newRecipe, null) }])
     setIsOpen(false)
@@ -228,6 +249,7 @@ export function MenuClient({
     const updated = await updateDish(editingDish.id, {
       name,
       price,
+      servingSize: Number(formData.get("servingSize")) || 1,
       ingredients: recipePayload(editRecipe),
     })
 
@@ -262,23 +284,24 @@ export function MenuClient({
     })
   }
 
-  async function handleDelete(dish: DishWithIngredients) {
-    if (!confirm(`Delete "${dish.name}"? A dish used by past orders is archived instead, so order history stays intact.`)) {
-      return
-    }
+  async function performDelete(dish: DishWithIngredients) {
+    try {
+      const result = await deleteDish(dish.id)
 
-    const result = await deleteDish(dish.id)
-
-    if (result.archived) {
-      setData(prev => prev.map(d => d.id === dish.id ? { ...d, isActive: false } : d))
-      toast.add({
-        title: 'Dish archived',
-        description: `"${dish.name}" is referenced by past orders, so it was archived instead of deleted.`,
-        type: 'info',
-      })
-    } else {
-      setData(prev => prev.filter(d => d.id !== dish.id))
-      toast.add({ title: 'Dish deleted', description: `"${dish.name}" was removed from the menu.`, type: 'success' })
+      if (result.archived) {
+        setData(prev => prev.map(d => d.id === dish.id ? { ...d, isActive: false } : d))
+        toast.add({
+          title: 'Dish archived',
+          description: `"${dish.name}" is referenced by past orders, so it was archived instead of deleted.`,
+          type: 'info',
+        })
+      } else {
+        setData(prev => prev.filter(d => d.id !== dish.id))
+        toast.add({ title: 'Dish deleted', description: `"${dish.name}" was removed from the menu.`, type: 'success' })
+      }
+      setDeletingDish(null)
+    } catch (err) {
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not delete this dish.', type: 'error' })
     }
   }
 
@@ -295,7 +318,7 @@ export function MenuClient({
       header: "DISH",
       cell: (info) => (
         <span className="font-medium text-foreground">
-          {info.getValue()}
+          {info.getValue() ? <HighlightText text={info.getValue()} query={globalFilter} /> : null}
         </span>
       ),
     }),
@@ -339,15 +362,38 @@ export function MenuClient({
     columnHelper.display({
       id: "actions",
       cell: (info) => (
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => openEdit(info.row.original)}>
-            Edit
+        <div className="flex flex-wrap sm:flex-nowrap gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="Edit dish"
+            onClick={() => openEdit(info.row.original)}
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Edit</span>
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => handleToggleActive(info.row.original)}>
-            {info.row.original.isActive ? 'Archive' : 'Restore'}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title={info.row.original.isActive ? "Archive dish" : "Restore dish"}
+            onClick={() => handleToggleActive(info.row.original)}
+          >
+            {info.row.original.isActive
+              ? <Archive className="h-4 w-4" aria-hidden="true" />
+              : <RotateCcw className="h-4 w-4" aria-hidden="true" />}
+            <span className="sr-only">{info.row.original.isActive ? "Archive" : "Restore"}</span>
           </Button>
-          <Button variant="destructive" size="sm" onClick={() => handleDelete(info.row.original)}>
-            Delete
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="Delete dish"
+            onClick={() => setDeletingDish(info.row.original)}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Delete</span>
           </Button>
         </div>
       ),
@@ -357,20 +403,34 @@ export function MenuClient({
   const table = useReactTable({
     data,
     columns,
+    state: { sorting, globalFilter },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   })
 
   return (
     <div className="space-y-5">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
         <p className="meta-text text-sm">
           {data.filter(d => d.isActive).length} active dish{data.filter(d => d.isActive).length !== 1 ? 'es' : ''}
         </p>
-        {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
-        <Button onClick={() => setIsOpen(true)}>
-          <Plus className="h-4 w-4 mr-1.5" /> Add Dish
-        </Button>
+        <div className="flex flex-1 sm:flex-none items-center gap-4">
+          <Input
+            placeholder="Search menu..."
+            value={globalFilter ?? ''}
+            onChange={(e) => setGlobalFilter(String(e.target.value))}
+            className="w-full sm:w-64 bg-card"
+          />
+          {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
+          <Button onClick={() => setIsOpen(true)}>
+            <Plus className="h-4 w-4 mr-1.5" /> Add Dish
+          </Button>
+        </div>
       </div>
 
       {/* Create dialog */}
@@ -380,7 +440,7 @@ export function MenuClient({
             <DialogTitle>Add Dish</DialogTitle>
           </DialogHeader>
           <form action={handleAdd} className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Dish Name</Label>
                 <Input id="name" name="name" placeholder="e.g. Jollof Rice" required />
@@ -388,6 +448,11 @@ export function MenuClient({
               <div className="space-y-2">
                 <Label htmlFor="price">Price ({getCurrencySymbol()})</Label>
                 <Input id="price" name="price" type="number" step="any" min="0" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="servingSize">Recipe Serves</Label>
+                <Input id="servingSize" name="servingSize" type="number" min="1" step="1" defaultValue={1} />
+                <p className="text-[10px] text-muted-foreground">How many units does this recipe cover? (1 = per-unit)</p>
               </div>
             </div>
 
@@ -411,7 +476,7 @@ export function MenuClient({
             <DialogTitle>Edit Dish #{editingDish?.shortId}</DialogTitle>
           </DialogHeader>
           <form action={handleEdit} className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-name">Dish Name</Label>
                 <Input id="edit-name" name="name" defaultValue={editingDish?.name ?? ''} required />
@@ -419,6 +484,11 @@ export function MenuClient({
               <div className="space-y-2">
                 <Label htmlFor="edit-price">Price ({getCurrencySymbol()})</Label>
                 <Input id="edit-price" name="price" type="number" step="any" min="0" defaultValue={editingDish?.price ?? 0} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-servingSize">Recipe Serves</Label>
+                <Input id="edit-servingSize" name="servingSize" type="number" min="1" step="1" defaultValue={editingDish?.servingSize ?? 1} />
+                <p className="text-[10px] text-muted-foreground">How many units does this recipe cover? (1 = per-unit)</p>
               </div>
             </div>
 
@@ -446,8 +516,28 @@ export function MenuClient({
           <thead>
             <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th key={header.id} className="table-head-cell">
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                <th 
+                  key={header.id} 
+                  className={cn(
+                    "table-head-cell", 
+                    header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
+                    header.column.getIsSorted() && "text-primary hover:text-primary/80",
+                    header.column.columnDef.meta?.className
+                  )}
+                  onClick={header.column.getToggleSortingHandler()}
+                >
+                  <div className="flex items-center gap-2">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getCanSort() && (
+                      header.column.getIsSorted() === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : header.column.getIsSorted() === 'desc' ? (
+                        <ArrowDown className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                      )
+                    )}
+                  </div>
                 </th>
               )))}
             </tr>
@@ -488,6 +578,28 @@ export function MenuClient({
           </tbody>
         </table>
       </div>
+      <TablePagination table={table} />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingDish} onOpenChange={(open) => !open && setDeletingDish(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete &quot;{deletingDish?.name}&quot;? A dish used by past orders is archived instead, so order history stays intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deletingDish && performDelete(deletingDish)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

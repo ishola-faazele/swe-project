@@ -14,6 +14,13 @@ import userEvent from '@testing-library/user-event'
 import type { InventoryItem } from '@prisma/client'
 import { InventoryClient } from './InventoryClient'
 import { deleteInventoryItem, toggleInventoryItemActive } from './actions'
+import { toast } from '@/components/ui/toast'
+
+vi.mock('@/components/ui/toast', () => ({
+  toast: {
+    add: vi.fn(),
+  },
+}))
 
 vi.mock('./actions', () => ({
   createInventoryItem: vi.fn(),
@@ -23,6 +30,7 @@ vi.mock('./actions', () => ({
 
 const mockDeleteInventoryItem = vi.mocked(deleteInventoryItem)
 const mockToggleInventoryItemActive = vi.mocked(toggleInventoryItemActive)
+const mockToastAdd = vi.mocked(toast.add)
 
 function makeItem(overrides: Partial<InventoryItem> = {}): InventoryItem {
   return {
@@ -48,12 +56,8 @@ const retiredPalmOil = makeItem({
   isActive: false,
 })
 
-let alertSpy: ReturnType<typeof vi.spyOn>
-
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
-  alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
 })
 
 describe('InventoryClient — archived visibility', () => {
@@ -105,9 +109,14 @@ describe('InventoryClient — delete vs archive', () => {
     render(<InventoryClient initialData={[rice]} />)
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
+    const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
+    await user.click(confirmButtons[confirmButtons.length - 1])
 
     expect(mockDeleteInventoryItem).toHaveBeenCalledWith(rice.id)
-    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('archived instead of deleted'))
+    expect(mockToastAdd).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Item archived',
+      description: expect.stringContaining('archived instead of deleted')
+    }))
 
     // Still present in `data` — hidden by the default filter, not dropped from state.
     expect(screen.queryByText('Long Grain Rice')).not.toBeInTheDocument()
@@ -121,6 +130,8 @@ describe('InventoryClient — delete vs archive', () => {
     render(<InventoryClient initialData={[rice]} />)
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
+    const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
+    await user.click(confirmButtons[confirmButtons.length - 1])
 
     expect(screen.queryByText('Long Grain Rice')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /show archived/i })).not.toBeInTheDocument()
@@ -133,17 +144,18 @@ describe('InventoryClient — delete vs archive', () => {
     render(<InventoryClient initialData={[rice]} />)
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
+    const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
+    await user.click(confirmButtons[confirmButtons.length - 1])
 
-    expect(alertSpy).toHaveBeenCalledWith('Nope.')
+    expect(mockToastAdd).toHaveBeenCalledWith(expect.objectContaining({ description: 'Nope.', type: 'error' }))
     expect(screen.getByText('Long Grain Rice')).toBeInTheDocument()
   })
 
   it('does not call the action at all when the confirm is dismissed', async () => {
     const user = userEvent.setup()
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(<InventoryClient initialData={[rice]} />)
-
     await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
 
     expect(mockDeleteInventoryItem).not.toHaveBeenCalled()
   })
@@ -192,7 +204,7 @@ describe('InventoryClient — manual archive/restore', () => {
 
     await user.click(screen.getByRole('button', { name: 'Archive' }))
 
-    expect(alertSpy).toHaveBeenCalledWith('Could not update this inventory item. Please try again.')
+    expect(mockToastAdd).toHaveBeenCalledWith(expect.objectContaining({ description: 'Could not update this inventory item. Please try again.', type: 'error' }))
     expect(screen.getByText('Long Grain Rice')).toBeInTheDocument()
   })
 })

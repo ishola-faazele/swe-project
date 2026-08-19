@@ -7,9 +7,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { computeDishSubtotal, type DishWithRecipe } from "@/lib/recipe"
-import { updateOrderItems, updateOrderDueDate } from "./actions"
+import { updateOrderItems, updateOrderDueDate, updateOrderInfo } from "./actions"
 import { updateOrderStatus } from "../actions"
 import { formatCurrency, getCurrencySymbol } from "@/lib/currency"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { toast } from "@/components/ui/toast"
 
 type FullOrder = Order & {
   customer: User,
@@ -51,7 +62,13 @@ export function OrderDetailsClient({
   const [dishCounter, setDishCounter] = useState(order.dishes.length)
   const [totalPriceInput, setTotalPriceInput] = useState<number | ''>(order.totalPrice)
   const [isSaving, setIsSaving] = useState(false)
-
+  const [isEditingInfo, setIsEditingInfo] = useState(false)
+  const [descriptionInput, setDescriptionInput] = useState(order.description)
+  const [notesInput, setNotesInput] = useState(order.notes || '')
+  const [isSavingInfo, setIsSavingInfo] = useState(false)
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [isSavingNotes, setIsSavingNotes] = useState(false)
+  const [cancellingOrder, setCancellingOrder] = useState<FullOrder | null>(null)
   const activeDishes = dishes.filter(d => d.isActive)
 
   // Same derived-with-override behaviour as the create form: the total re-derives inside each
@@ -122,14 +139,14 @@ export function OrderDetailsClient({
         totalPrice: totalPriceInput === '' ? 0 : totalPriceInput,
       })
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
       setIsEditing(false)
       // revalidatePath inside the action already re-renders this route in the same round trip,
       // so no explicit router.refresh() is needed here — matching existing behavior.
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Could not update this order's items.")
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : "Could not update this order's items.", type: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -155,10 +172,55 @@ export function OrderDetailsClient({
         </div>
 
         <div className="rounded-xl border bg-card p-6 shadow-sm">
-          <h3 className="text-xl font-semibold mb-4">Order Details</h3>
-          <div className="space-y-2">
-            <p><span className="font-medium text-muted-foreground">Description:</span> {order.description || "—"}</p>
-            <p><span className="font-medium text-muted-foreground">Total Price:</span> <span className="table-cell-num">{formatCurrency(order.totalPrice)}</span></p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+            <h3 className="text-xl font-semibold">Order Details</h3>
+            {!isEditingInfo ? (
+              <Button variant="ghost" size="sm" onClick={() => setIsEditingInfo(true)}>
+                Edit Details
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setIsEditingInfo(false)
+                  setDescriptionInput(order.description)
+                }}>Cancel</Button>
+                <Button size="sm" disabled={isSavingInfo} onClick={async () => {
+                  setIsSavingInfo(true)
+                  const res = await updateOrderInfo(order.id, descriptionInput, order.notes || '')
+                  if (!res.ok) toast.add({ title: 'Error', description: res.error, type: 'error' })
+                  else {
+                    setIsEditingInfo(false)
+                    toast.add({ title: 'Success', description: 'Order details saved.', type: 'success' })
+                  }
+                  setIsSavingInfo(false)
+                }}>
+                  {isSavingInfo ? "Saving..." : "Save Details"}
+                </Button>
+              </div>
+            )}
+          </div>
+          <div className="space-y-4">
+            {!isEditingInfo ? (
+              <>
+                <div>
+                  <span className="font-medium text-muted-foreground">Description:</span>
+                  <p className="mt-1">{order.description || "—"}</p>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="edit-desc">Description</Label>
+                  <Input 
+                    id="edit-desc" 
+                    value={descriptionInput} 
+                    onChange={e => setDescriptionInput(e.target.value)} 
+                  />
+                </div>
+              </div>
+            )}
+            
+            <p className="pt-2"><span className="font-medium text-muted-foreground">Total Price:</span> <span className="table-cell-num">{formatCurrency(order.totalPrice)}</span></p>
             <div className="flex items-center gap-2 mt-2">
               <Label htmlFor="orderStatus" className="font-medium text-muted-foreground">Status:</Label>
               <select
@@ -171,20 +233,19 @@ export function OrderDetailsClient({
                   // is already disabled once CANCELLED, so this only ever fires
                   // on the way IN to cancellation.
                   if (val === 'CANCELLED') {
-                    const confirmed = confirm(
-                      `Cancel order #${order.shortId}? This cannot be undone — a new order must be created if this was a mistake.`
-                    )
-                    if (!confirmed) return
+                    setCancellingOrder(order)
+                    return
                   }
                   try {
                     const result = await updateOrderStatus(order.id, val)
                     if (!result.ok) {
-                      alert(result.error)
+                      toast.add({ title: 'Error', description: result.error, type: 'error' })
                       return
                     }
                     router.refresh()
+                    toast.add({ title: 'Success', description: `Order status updated to ${val}.`, type: 'success' })
                   } catch (err) {
-                    alert(err instanceof Error ? err.message : 'Could not update this order.')
+                    toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not update this order.', type: 'error' })
                   }
                 }}
                 className="select-field w-auto"
@@ -205,12 +266,13 @@ export function OrderDetailsClient({
                   try {
                     const result = await updateOrderDueDate(order.id, val)
                     if (!result.ok) {
-                      alert(result.error)
+                      toast.add({ title: 'Error', description: result.error, type: 'error' })
                       return
                     }
                     router.refresh()
+                    toast.add({ title: 'Success', description: 'Due date updated.', type: 'success' })
                   } catch (err) {
-                    alert(err instanceof Error ? err.message : 'Could not update this due date.')
+                    toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not update this due date.', type: 'error' })
                   }
                 }}
                 className="select-field w-auto"
@@ -223,7 +285,7 @@ export function OrderDetailsClient({
       {/* Dishes Ordered — owns the single Edit/Save control set, since one action saves both
           this section and the ingredient section below it. */}
       <div className="rounded-xl border bg-card p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <h3 className="text-xl font-semibold">Dishes Ordered</h3>
           {!isEditing ? (
             <Button variant="outline" onClick={() => setIsEditing(true)}>Edit Order Items</Button>
@@ -244,34 +306,35 @@ export function OrderDetailsClient({
           <div className="space-y-3">
             {order.dishes.length === 0 ? (
               <p className="text-muted-foreground">
-                No dishes recorded for this order — it was placed before the menu existed, or was
-                entered as notes only.
+                No dishes recorded for this order.
               </p>
             ) : (
-              <table className="w-full text-sm text-left">
-                <thead className="bg-muted text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 rounded-l-md font-medium">Dish</th>
-                    <th className="px-4 py-2 font-medium">Unit Price</th>
-                    <th className="px-4 py-2 rounded-r-md font-medium">Line Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.dishes.map((orderDish) => (
-                    <tr key={orderDish.id} className="border-b last:border-0">
-                      <td className="px-4 py-3">{orderDish.quantity}× {orderDish.dishName}</td>
-                      <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice)}</td>
-                      <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice * orderDish.quantity)}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-muted text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 rounded-l-md font-medium">Dish</th>
+                      <th className="px-4 py-2 font-medium">Unit Price</th>
+                      <th className="px-4 py-2 rounded-r-md font-medium">Line Total</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {order.dishes.map((orderDish) => (
+                      <tr key={orderDish.id} className="border-b last:border-0">
+                        <td className="px-4 py-3">{orderDish.quantity}× {orderDish.dishName}</td>
+                        <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice)}</td>
+                        <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice * orderDish.quantity)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         ) : (
           <div className="space-y-4">
             {dishSelections.map((row, index) => (
-              <div key={row.internalId} className="flex gap-4 items-center">
+              <div key={row.internalId} className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-start sm:items-center">
                 <select
                   className="select-field"
                   value={row.dishId}
@@ -340,7 +403,7 @@ export function OrderDetailsClient({
       </div>
 
       <div className="rounded-xl border bg-card p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <h3 className="text-xl font-semibold">{isEditing ? "Extra Ingredients" : "Ingredients Used"}</h3>
           {!isEditing && (
             <Button variant="outline" onClick={() => setIsEditing(true)}>Edit Order Items</Button>
@@ -352,24 +415,26 @@ export function OrderDetailsClient({
             {order.ingredientLogs.length === 0 ? (
               <p className="text-muted-foreground">No ingredients logged for this order.</p>
             ) : (
-              <table className="w-full text-sm text-left">
-                <thead className="bg-muted text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 rounded-l-md font-medium">Item Name</th>
-                    <th className="px-4 py-2 font-medium">Category</th>
-                    <th className="px-4 py-2 rounded-r-md font-medium">Quantity Used</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.ingredientLogs.map((log) => (
-                    <tr key={log.id} className="border-b last:border-0">
-                      <td className="px-4 py-3">{log.inventoryItem.name}</td>
-                      <td className="px-4 py-3">{log.inventoryItem.category}</td>
-                      <td className="px-4 py-3">{log.quantityUsed} {log.inventoryItem.unit}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-muted text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 rounded-l-md font-medium">Item Name</th>
+                      <th className="px-4 py-2 font-medium">Category</th>
+                      <th className="px-4 py-2 rounded-r-md font-medium">Quantity Used</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {order.ingredientLogs.map((log) => (
+                      <tr key={log.id} className="border-b last:border-0">
+                        <td className="px-4 py-3">{log.inventoryItem.name}</td>
+                        <td className="px-4 py-3">{log.inventoryItem.category}</td>
+                        <td className="px-4 py-3">{log.quantityUsed} {log.inventoryItem.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         ) : (
@@ -379,7 +444,7 @@ export function OrderDetailsClient({
               each selected dish already deducts.
             </p>
             {ingredients.map((ingredient, index) => (
-              <div key={ingredient.internalId} className="flex gap-4 items-center">
+              <div key={ingredient.internalId} className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-start sm:items-center">
                 <select
                   className="select-field"
                   value={ingredient.id}
@@ -435,6 +500,96 @@ export function OrderDetailsClient({
           </div>
         )}
       </div>
+
+      {/* Additional Notes Card */}
+      <div className="rounded-xl border bg-card p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-semibold">Additional Notes</h3>
+          {!isEditingNotes ? (
+            <Button variant="ghost" size="sm" onClick={() => setIsEditingNotes(true)}>
+              Edit Notes
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => {
+                setIsEditingNotes(false)
+                setNotesInput(order.notes || '')
+              }}>Cancel</Button>
+              <Button size="sm" disabled={isSavingNotes} onClick={async () => {
+                setIsSavingNotes(true)
+                const res = await updateOrderInfo(order.id, order.description, notesInput)
+                if (!res.ok) toast.add({ title: 'Error', description: res.error, type: 'error' })
+                else {
+                  setIsEditingNotes(false)
+                  toast.add({ title: 'Success', description: 'Notes saved.', type: 'success' })
+                }
+                setIsSavingNotes(false)
+              }}>
+                {isSavingNotes ? "Saving..." : "Save Notes"}
+              </Button>
+            </div>
+          )}
+        </div>
+        <div className="space-y-4">
+          {!isEditingNotes ? (
+            <div>
+              {order.notes ? (
+                <ul className="list-disc list-inside mt-1 space-y-1">
+                  {order.notes.split('\n').filter(line => line.trim() !== '').map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground">—</p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <textarea 
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={notesInput}
+                onChange={e => setNotesInput(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <AlertDialog open={!!cancellingOrder} onOpenChange={(open) => !open && setCancellingOrder(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cancel order #{cancellingOrder?.shortId}? This cannot be undone — a new order must be created if this was a mistake.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Active</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!cancellingOrder) return
+                try {
+                  const result = await updateOrderStatus(cancellingOrder.id, 'CANCELLED')
+                  if (!result.ok) {
+                    toast.add({ title: 'Error', description: result.error, type: 'error' })
+                    return
+                  }
+                  toast.add({ title: 'Order cancelled', description: `Order #${cancellingOrder.shortId} was cancelled.`, type: 'success' })
+                  router.refresh()
+                } catch (err) {
+                  toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not cancel this order.', type: 'error' })
+                } finally {
+                  setCancellingOrder(null)
+                }
+              }}
+            >
+              Cancel Order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   )
 }

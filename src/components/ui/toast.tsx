@@ -50,6 +50,8 @@ function Toast({ className, ...props }: ToastPrimitive.Root.Props) {
         "data-expanded:data-ending-style:data-[swipe-direction=left]:[transform:translateX(calc(var(--toast-swipe-movement-x)-150%))_translateY(var(--offset-y))]",
         "data-expanded:data-ending-style:data-[swipe-direction=right]:[transform:translateX(calc(var(--toast-swipe-movement-x)+150%))_translateY(var(--offset-y))]",
         "data-expanded:data-ending-style:data-[swipe-direction=up]:[transform:translateY(calc(var(--toast-swipe-movement-y)-150%))]",
+        "data-[type=success]:bg-green-950 data-[type=success]:text-green-400 data-[type=success]:border-green-900",
+        "data-[type=error]:bg-red-950 data-[type=error]:text-red-400 data-[type=error]:border-red-900",
         className
       )}
       {...props}
@@ -87,7 +89,12 @@ function ToastDescription({
   return (
     <ToastPrimitive.Description
       data-slot="toast-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn(
+        "text-sm text-muted-foreground",
+        "group-data-[type=success]/toast:text-green-500",
+        "group-data-[type=error]/toast:text-red-500",
+        className
+      )}
       {...props}
     />
   )
@@ -121,6 +128,8 @@ function ToastClose({
       render={render}
       className={cn(
         "relative shrink-0 text-muted-foreground after:absolute after:-inset-2 after:content-[''] hover:text-foreground",
+        "group-data-[type=success]/toast:text-green-500 group-data-[type=success]/toast:hover:text-green-300",
+        "group-data-[type=error]/toast:text-red-500 group-data-[type=error]/toast:hover:text-red-300",
         className
       )}
       {...props}
@@ -183,7 +192,7 @@ function ToastList() {
   const { toasts } = ToastPrimitive.useToastManager()
 
   return toasts.map((toastItem) => (
-    <Toast key={toastItem.id} toast={toastItem}>
+    <Toast key={toastItem.id} toast={toastItem} data-type={toastItem.type}>
       <ToastContent>
         <ToastIcon type={toastItem.type} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">

@@ -31,9 +31,11 @@ export async function getOrders() {
 export async function createOrder(data: {
   customerId: string
   description: string
+  notes?: string | null
   totalPrice: number
   dueDate?: Date | null
   dishes: { dishId: string; quantity: number }[]
+  ingredientOverrides?: { inventoryItemId: string; quantityUsed: number }[]
 }): Promise<ActionResult<Order>> {
   await requireAdmin() // throws AuthError — uncaught here, rejects the promise for the client
 
@@ -55,6 +57,7 @@ export async function createOrder(data: {
         data: {
           customerId: input.customerId,
           description: input.description,
+          notes: input.notes ?? null,
           totalPrice: input.totalPrice,
           dueDate: input.dueDate ?? null,
           status: 'PENDING'
@@ -85,7 +88,13 @@ export async function createOrder(data: {
       // 'INSUFFICIENT_STOCK') when stock is short; because that throw happens inside the
       // $transaction callback, Prisma rolls back everything written so far (including newOrder
       // and any earlier logs) before the error reaches the catch block below.
-      const ingredientTotals = expandDishesToIngredients(input.dishes, dishRecords)
+      //
+      // When the admin reviewed and adjusted ingredients at creation time (bulk orders), those
+      // overrides replace the auto-calculated recipe expansion entirely.
+      const ingredientTotals = (input.ingredientOverrides && input.ingredientOverrides.length > 0)
+        ? input.ingredientOverrides.filter(l => l.quantityUsed > 0)
+        : expandDishesToIngredients(input.dishes, dishRecords)
+
       for (const line of ingredientTotals) {
         if (line.quantityUsed <= 0) continue
 

@@ -12,22 +12,13 @@ const MAX_INGREDIENT_LINES = 50
 /**
  * FormData.get() returns "" (never null/undefined) for a present-but-blank field, so
  * .optional() alone is not enough to model "not provided" — an empty string would pass as a
- * supplied value. Trim first, then normalize "" (and whitespace-only) to undefined so the
- * at-least-one-contact-method refinement below can't be satisfied by "   ".
+ * supplied value. Trim first, then normalize "" (and whitespace-only) to undefined.
  */
 const optionalContactField = z
   .string()
   .trim()
   .optional()
   .transform((v) => v || undefined)
-
-const hasAtLeastOneContactMethod = (v: {
-  name?: string
-  email?: string
-  phone?: string
-}) => Boolean(v.name || v.email || v.phone)
-
-const AT_LEAST_ONE_CONTACT_MESSAGE = 'At least one contact method (name, email, or phone) is required.'
 
 export const ingredientInputSchema = z.object({
   inventoryItemId: z.uuid('Select a valid inventory item.'),
@@ -67,9 +58,19 @@ export const createOrderSchema = z.object({
   // Free-text notes, not a required description — dishes now carry the structured "what was
   // ordered" data. An empty string is a valid value for the non-nullable description column.
   description: z.string().trim(),
+  notes: z.string().trim().optional().nullable(),
   totalPrice: z.number('Enter a total price for this order.').nonnegative('Total price cannot be negative.'),
   dueDate: z.date().nullish(),
   dishes: dishSelectionArraySchema,
+  // When the admin reviews and adjusts ingredients at order creation time (bulk orders),
+  // these overrides replace the auto-calculated recipe expansion entirely.
+  ingredientOverrides: ingredientArraySchema.optional(),
+})
+
+export const updateOrderInfoSchema = z.object({
+  id: idSchema,
+  description: z.string().trim(),
+  notes: z.string().trim().optional().nullable(),
 })
 
 export const updateOrderStatusSchema = z.object({
@@ -123,11 +124,10 @@ export const updateInventoryItemSchema = z.object({
 
 export const createCustomerSchema = z
   .object({
-    name: optionalContactField,
+    name: z.string().trim().min(1, 'A contact name is required.'),
     email: optionalContactField,
     phone: optionalContactField,
   })
-  .refine(hasAtLeastOneContactMethod, { message: AT_LEAST_ONE_CONTACT_MESSAGE })
 
 /**
  * updateCustomer overwrites all three fields on every call (preserved from the existing
@@ -138,8 +138,7 @@ export const createCustomerSchema = z
 export const updateCustomerSchema = z
   .object({
     id: idSchema,
-    name: optionalContactField,
+    name: z.string().trim().min(1, 'A contact name is required.'),
     email: optionalContactField,
     phone: optionalContactField,
   })
-  .refine(hasAtLeastOneContactMethod, { message: AT_LEAST_ONE_CONTACT_MESSAGE })

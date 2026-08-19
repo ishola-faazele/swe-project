@@ -41,12 +41,12 @@ export const metadata: Metadata = {
  * `themeColor`/`colorScheme` MUST live on this separate `viewport` export, not
  * inside `metadata` — nesting them there was deprecated in Next.js 14 and now
  * silently no-ops rather than warning. Value approximates `--background`
- * (oklch(0.08 0.004 65)), so the browser chrome and the install splash match
- * the app instead of flashing white.
+ * (oklch(0.98 0.010 75) = warm cream), so the browser chrome and install
+ * splash match the Tropical Sunrise light palette instead of flashing dark.
  */
 export const viewport: Viewport = {
-  themeColor: "#0d0b0a",
-  colorScheme: "dark",
+  themeColor: "#fdf9f3",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
@@ -57,7 +57,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${syne.variable} ${dmMono.variable} dark h-full antialiased`}
+      className={`${syne.variable} ${dmMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {/* First focusable element on the page — hidden until focused, then it

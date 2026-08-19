@@ -123,9 +123,6 @@ export default async function AdminDashboardPage() {
             })}
           </p>
         </div>
-        <div className="shrink-0 rounded border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-mono-data text-primary">
-          LIVE DATA
-        </div>
       </div>
 
       {/* Stat cards — 2×3 at lg, since the due-date pair grew this from 4 to 6 */}
@@ -207,6 +204,7 @@ export default async function AdminDashboardPage() {
               ) : (
                 recentOrders.map((order, idx) => {
                   const cfg = ORDER_STATUS_CONFIG[order.status]
+                  const StatusIcon = cfg.icon
                   return (
                     <tr
                       key={order.id}
@@ -226,7 +224,8 @@ export default async function AdminDashboardPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className={cfg.className}>
-                          {cfg.emoji} {cfg.label}
+                          <StatusIcon className="h-3 w-3" aria-hidden="true" />
+                          {cfg.label}
                         </span>
                       </td>
                       <td className="px-4 py-3 meta-text">

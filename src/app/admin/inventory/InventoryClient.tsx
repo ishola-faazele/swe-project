@@ -7,6 +7,10 @@ import {
   flexRender,
   getCoreRowModel,
   useReactTable,
+  getSortedRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  SortingState,
 } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,9 +21,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive } from "./actions"
-import { Plus, AlertTriangle, PackageOpen, Archive } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive, updateInventoryItem } from "./actions"
+import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { HighlightText } from "@/components/ui/highlight"
+import { TablePagination } from "@/components/ui/table-pagination"
+import { toast } from "@/components/ui/toast"
 
 const columnHelper = createColumnHelper<InventoryItem>()
 
@@ -80,6 +97,10 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   // MenuClient shows archived dishes. Deliberate divergence: this list gets scanned for
   // stock-taking far more often than the menu gets edited, so retired items are noise by default.
   const [showArchived, setShowArchived] = useState(false)
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [globalFilter, setGlobalFilter] = useState('')
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
+  const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null)
 
   // Client-side filter over the full array the page already fetched — no second query.
   //
@@ -95,24 +116,25 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   )
   const archivedCount = data.filter(i => !i.isActive).length
 
-  async function handleDelete(item: InventoryItem) {
-    if (!confirm(`Delete "${item.name}"?`)) return
-
+  // handleDelete is now handled by the AlertDialog
+  async function performDelete(item: InventoryItem) {
     try {
       const result = await deleteInventoryItem(item.id)
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
 
       if (result.data.archived) {
         setData(prev => prev.map(i => i.id === item.id ? { ...i, isActive: false } : i))
-        alert(`"${item.name}" is still referenced by a recipe or a past order, so it was archived instead of deleted. Use "Show Archived" to restore it.`)
+        toast.add({ title: 'Item archived', description: `"${item.name}" is still referenced by a recipe or a past order, so it was archived instead of deleted. Use "Show Archived" to restore it.`, type: 'info' })
       } else {
         setData(prev => prev.filter(i => i.id !== item.id))
+        toast.add({ title: 'Item deleted', description: `"${item.name}" was deleted.`, type: 'success' })
       }
+      setDeletingItem(null)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not delete this inventory item.')
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not delete this inventory item.', type: 'error' })
     }
   }
 
@@ -122,12 +144,12 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     try {
       const result = await toggleInventoryItemActive(item.id, nextIsActive)
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
       setData(prev => prev.map(i => i.id === item.id ? { ...i, isActive: nextIsActive } : i))
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not update this inventory item.')
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not update this inventory item.', type: 'error' })
     }
   }
 
@@ -136,7 +158,9 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
       header: "ITEM NAME",
       cell: (info) => (
         <div className="flex items-center gap-2">
-          <span className="font-medium text-foreground">{info.getValue()}</span>
+          <span className="font-medium text-foreground">
+            {info.getValue() ? <HighlightText text={info.getValue()} query={globalFilter} /> : null}
+          </span>
           {/* Inline on the row rather than a dedicated STATUS column: archived rows are hidden
               by default, so a whole column would sit empty on every normal day. */}
           {!info.row.original.isActive && (
@@ -147,6 +171,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     }),
     columnHelper.accessor("category", {
       header: "CATEGORY",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => {
         const cat = info.getValue()
         return (
@@ -156,7 +181,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
               categoryBadgeClass[cat]
             )}
           >
-            {cat}
+            <HighlightText text={cat} query={globalFilter} />
           </span>
         )
       },
@@ -172,12 +197,14 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     }),
     columnHelper.accessor("unit", {
       header: "UNIT",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => (
         <span className="font-mono-data text-sm text-muted-foreground">{info.getValue()}</span>
       ),
     }),
     columnHelper.accessor("minimumThreshold", {
       header: "ALERT AT",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => (
         <span className="font-mono-data tabular-nums text-sm text-muted-foreground">
           {info.getValue() || '—'}
@@ -190,17 +217,37 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
         <div className="flex gap-2">
           <Button
             variant="ghost"
-            size="sm"
-            onClick={() => handleToggleActive(info.row.original)}
+            size="icon"
+            className="h-8 w-8"
+            title="Edit item"
+            onClick={() => setEditingItem(info.row.original)}
           >
-            {info.row.original.isActive ? 'Archive' : 'Restore'}
+            <Pencil className="h-4 w-4" />
+            <span className="sr-only">Edit</span>
           </Button>
           <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => handleDelete(info.row.original)}
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title={info.row.original.isActive ? "Archive item" : "Restore item"}
+            onClick={() => handleToggleActive(info.row.original)}
           >
-            Delete
+            {info.row.original.isActive ? (
+              <Archive className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            )}
+            <span className="sr-only">{info.row.original.isActive ? 'Archive' : 'Restore'}</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="Delete item"
+            onClick={() => setDeletingItem(info.row.original)}
+          >
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Delete</span>
           </Button>
         </div>
       ),
@@ -210,7 +257,13 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const table = useReactTable({
     data: visibleData,
     columns,
+    state: { sorting, globalFilter },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   })
 
   // Active-only, for the same reason admin/page.tsx's low-stock query filters on isActive: a
@@ -230,13 +283,37 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     try {
       const result = await createInventoryItem({ name, currentStock, unit, minimumThreshold, category })
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
       setData([...data, result.data])
       setIsOpen(false)
+      toast.add({ title: 'Item created', description: `"${name}" was added to the inventory.`, type: 'success' })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not create this inventory item.')
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not create this inventory item.', type: 'error' })
+    }
+  }
+
+  async function handleEdit(formData: FormData) {
+    if (!editingItem) return
+    const name = formData.get("name") as string
+    const category = formData.get("category") as Category
+    const currentStock = Number(formData.get("currentStock"))
+    const unit = formData.get("unit") as string
+    const thresholdStr = formData.get("minimumThreshold") as string
+    const minimumThreshold = thresholdStr ? Number(thresholdStr) : undefined
+
+    try {
+      const result = await updateInventoryItem(editingItem.id, { name, currentStock, unit, minimumThreshold, category })
+      if (!result.ok) {
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
+        return
+      }
+      setData(prev => prev.map(i => i.id === editingItem.id ? result.data : i))
+      setEditingItem(null)
+      toast.add({ title: 'Item updated', description: `"${name}" was updated.`, type: 'success' })
+    } catch (err) {
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not update this inventory item.', type: 'error' })
     }
   }
 
@@ -244,7 +321,13 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     <div className="space-y-5">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Input
+            placeholder="Search inventory..."
+            value={globalFilter ?? ''}
+            onChange={(e) => setGlobalFilter(String(e.target.value))}
+            className="w-full sm:w-64 bg-card"
+          />
           {lowStockCount > 0 && (
             <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 font-mono-data text-xs font-medium text-destructive">
               <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
@@ -311,6 +394,46 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
             </form>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Inventory Item</DialogTitle>
+            </DialogHeader>
+            {editingItem && (
+              <form action={handleEdit} className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-name">Item Name</Label>
+                  <Input id="edit-name" name="name" defaultValue={editingItem.name} required />
+                </div>
+                <div>
+                  <Label htmlFor="edit-category">Category</Label>
+                  <select id="edit-category" name="category" className="select-field" defaultValue={editingItem.category} required>
+                    <option value="INGREDIENT">Ingredient</option>
+                    <option value="DRINK">Drink</option>
+                    <option value="PACKAGING">Packaging</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="edit-currentStock">Current Stock</Label>
+                    <Input id="edit-currentStock" name="currentStock" type="number" step="any" defaultValue={editingItem.currentStock} required />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-unit">Unit</Label>
+                    <Input id="edit-unit" name="unit" placeholder="kg, pieces…" defaultValue={editingItem.unit} required />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="edit-minimumThreshold">Alert Threshold (Optional)</Label>
+                  <Input id="edit-minimumThreshold" name="minimumThreshold" type="number" step="any" defaultValue={editingItem.minimumThreshold ?? ''} />
+                </div>
+                <Button type="submit" className="w-full">Save Changes</Button>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Table */}
@@ -319,8 +442,28 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           <thead>
             <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th key={header.id} className="table-head-cell">
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                <th 
+                  key={header.id} 
+                  className={cn(
+                    "table-head-cell", 
+                    header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
+                    header.column.getIsSorted() && "text-primary hover:text-primary/80",
+                    header.column.columnDef.meta?.className
+                  )}
+                  onClick={header.column.getToggleSortingHandler()}
+                >
+                  <div className="flex items-center gap-2">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getCanSort() && (
+                      header.column.getIsSorted() === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : header.column.getIsSorted() === 'desc' ? (
+                        <ArrowDown className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                      )
+                    )}
+                  </div>
                 </th>
               )))}
             </tr>
@@ -337,7 +480,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
                   )}
                 >
                   {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className="px-4 py-3">
+                    <td key={cell.id} className={cn("px-4 py-3", cell.column.columnDef.meta?.className)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -376,6 +519,28 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           </tbody>
         </table>
       </div>
+      <TablePagination table={table} />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingItem} onOpenChange={(open) => !open && setDeletingItem(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete the inventory item &quot;{deletingItem?.name}&quot;.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deletingItem && performDelete(deletingItem)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

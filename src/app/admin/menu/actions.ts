@@ -24,6 +24,7 @@ export async function getDishes() {
 export async function createDish(data: {
   name: string
   price: number
+  servingSize?: number
   ingredients: { inventoryItemId: string; quantityPerDish: number }[]
 }) {
   await requireAdmin()
@@ -37,6 +38,7 @@ export async function createDish(data: {
       data: {
         name: data.name,
         price: data.price,
+        servingSize: data.servingSize ?? 1,
       }
     })
 
@@ -60,6 +62,7 @@ export async function createDish(data: {
 export async function updateDish(id: string, data: {
   name?: string
   price?: number
+  servingSize?: number
   ingredients?: { inventoryItemId: string; quantityPerDish: number }[]
 }) {
   await requireAdmin()
@@ -90,6 +93,7 @@ export async function updateDish(id: string, data: {
       data: {
         name: data.name,
         price: data.price,
+        servingSize: data.servingSize,
       }
     })
   })

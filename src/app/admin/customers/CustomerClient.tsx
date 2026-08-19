@@ -7,6 +7,10 @@ import {
   flexRender,
   getCoreRowModel,
   useReactTable,
+  getSortedRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  SortingState,
 } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,9 +21,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { createCustomer, deleteCustomer, updateCustomer } from "./actions"
-import { Plus, ShoppingBag, Users } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { toast } from "@/components/ui/toast"
+import { createCustomer, deleteCustomer, updateCustomer, toggleCustomerActive } from "./actions"
+import { Plus, ShoppingBag, Users, ArrowUpDown, ArrowUp, ArrowDown, Archive, RotateCcw, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useMemo } from "react"
+import { HighlightText } from "@/components/ui/highlight"
+import { TablePagination } from "@/components/ui/table-pagination"
 
 type CustomerWithCount = User & { _count: { orders: number } }
 
@@ -28,7 +46,17 @@ const columnHelper = createColumnHelper<CustomerWithCount>()
 export function CustomerClient({ initialData }: { initialData: CustomerWithCount[] }) {
   const [data, setData] = useState<CustomerWithCount[]>(initialData)
   const [isOpen, setIsOpen] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [globalFilter, setGlobalFilter] = useState('')
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithCount | null>(null)
+  const [deletingCustomer, setDeletingCustomer] = useState<CustomerWithCount | null>(null)
+
+  const visibleData = useMemo(
+    () => data.filter(c => showArchived || c.isActive),
+    [data, showArchived]
+  )
+  const archivedCount = data.filter(c => !c.isActive).length
 
   const columns = [
     columnHelper.accessor("shortId", {
@@ -42,16 +70,22 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     columnHelper.accessor("name", {
       header: "NAME",
       cell: (info) => (
-        <span className={cn('font-medium', info.getValue() ? 'text-foreground' : 'text-muted-foreground/70')}>
-          {info.getValue() || 'No name'}
+        <span className={cn('font-medium', info.row.original.isActive ? 'text-foreground' : 'text-muted-foreground/70')}>
+          {info.getValue() ? <HighlightText text={info.getValue()} query={globalFilter} /> : 'No name'}
+          {!info.row.original.isActive && (
+            <span className="ml-2 text-[10px] tracking-wide uppercase font-bold text-muted-foreground/50 border border-muted-foreground/20 px-1.5 py-0.5 rounded-sm">
+              Archived
+            </span>
+          )}
         </span>
       ),
     }),
     columnHelper.accessor("email", {
       header: "EMAIL",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => (
         <span className="font-mono-data text-xs text-muted-foreground">
-          {info.getValue() || '—'}
+          {info.getValue() ? <HighlightText text={info.getValue()} query={globalFilter} /> : '—'}
         </span>
       ),
     }),
@@ -59,12 +93,13 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
       header: "PHONE",
       cell: (info) => (
         <span className="font-mono-data text-xs text-muted-foreground">
-          {info.getValue() || '—'}
+          {info.getValue() ? <HighlightText text={info.getValue()} query={globalFilter} /> : '—'}
         </span>
       ),
     }),
     columnHelper.accessor("_count.orders", {
       header: "ORDERS",
+      meta: { className: "hidden md:table-cell" },
       cell: (info) => (
         <div className="flex items-center gap-1.5">
           <ShoppingBag className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
@@ -79,33 +114,58 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
       cell: (info) => (
         <div className="flex gap-2">
           <Button
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="Edit customer"
             onClick={() => setEditingCustomer(info.row.original)}
           >
-            Edit
+            <Pencil className="h-4 w-4" />
+            <span className="sr-only">Edit</span>
           </Button>
           <Button
-            variant="destructive"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
             onClick={async () => {
-              if (!confirm(`Delete customer #${info.row.original.shortId}?`)) return
+              const customer = info.row.original
+              const nextIsActive = !customer.isActive
               try {
-                const result = await deleteCustomer(info.row.original.id)
+                const result = await toggleCustomerActive(customer.id, nextIsActive)
                 if (!result.ok) {
-                  // The row must stay visible here: a customer with orders on file is refused
-                  // server-side, and filtering it out anyway would imply a delete that never
-                  // happened.
-                  alert(result.error)
+                  toast.add({ title: 'Error', description: result.error, type: 'error' })
                   return
                 }
-                setData(prev => prev.filter(i => i.id !== info.row.original.id))
+                setData(prev => prev.map(c => c.id === customer.id ? { ...c, isActive: nextIsActive } : c))
+                toast.add({
+                  title: nextIsActive ? 'Customer restored' : 'Customer archived',
+                  description: nextIsActive
+                    ? 'This customer is now active again.'
+                    : 'This customer has been archived and hidden from default views.',
+                  type: 'success'
+                })
               } catch (err) {
-                alert(err instanceof Error ? err.message : 'Could not delete this customer.')
+                toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not toggle archive state.', type: 'error' })
               }
             }}
+            title={info.row.original.isActive ? "Archive customer" : "Restore customer"}
           >
-            Delete
+            {info.row.original.isActive ? (
+              <Archive className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            )}
+            <span className="sr-only">{info.row.original.isActive ? "Archive" : "Restore"}</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="Delete customer"
+            onClick={() => setDeletingCustomer(info.row.original)}
+          >
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Delete</span>
           </Button>
         </div>
       ),
@@ -113,9 +173,15 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
   ]
 
   const table = useReactTable({
-    data,
+    data: visibleData,
     columns,
+    state: { sorting, globalFilter },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   })
 
   async function handleAdd(formData: FormData) {
@@ -125,13 +191,13 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     try {
       const result = await createCustomer({ name, email, phone })
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
       setData([{ ...result.data, _count: { orders: 0 } }, ...data])
       setIsOpen(false)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not create this customer.')
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not create this customer.', type: 'error' })
     }
   }
 
@@ -143,27 +209,46 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     try {
       const result = await updateCustomer(editingCustomer.id, { name, email, phone })
       if (!result.ok) {
-        alert(result.error)
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
       }
       setData(prev => prev.map(c => c.id === result.data.id ? { ...c, ...result.data } : c))
       setEditingCustomer(null)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not update this customer.')
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not update this customer.', type: 'error' })
     }
   }
 
   return (
     <div className="space-y-5">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
         <p className="meta-text text-sm">
           {data.length} customer{data.length !== 1 ? 's' : ''} registered
         </p>
-        {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
-        <Button onClick={() => setIsOpen(true)}>
-          <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Add Customer
-        </Button>
+        <div className="flex flex-1 sm:flex-none items-center gap-4">
+          <Input
+            placeholder="Search customers..."
+            value={globalFilter ?? ''}
+            onChange={(e) => setGlobalFilter(String(e.target.value))}
+            className="w-full sm:w-64 bg-card"
+          />
+          {(archivedCount > 0 || showArchived) && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={showArchived}
+              onClick={() => setShowArchived(s => !s)}
+            >
+              <Archive className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              {showArchived ? 'Hide Archived' : `Show Archived (${archivedCount})`}
+            </Button>
+          )}
+          {/* Direct onClick, not DialogTrigger render — see AGENTS.md. */}
+          <Button onClick={() => setIsOpen(true)}>
+            <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Add Customer
+          </Button>
+        </div>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogContent>
             <DialogHeader>
@@ -172,7 +257,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             <form action={handleAdd} className="space-y-4">
               <div>
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" placeholder="Optional" />
+                <Input id="name" name="name" required placeholder="e.g. Adaeze Okonkwo" />
               </div>
               <div>
                 <Label htmlFor="email">Email</Label>
@@ -182,9 +267,6 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
                 <Label htmlFor="phone">Phone Number</Label>
                 <Input id="phone" name="phone" placeholder="Optional" />
               </div>
-              <p className="text-xs text-muted-foreground">
-                At least one contact method is required.
-              </p>
               <Button type="submit" className="w-full">Save Customer</Button>
             </form>
           </DialogContent>
@@ -200,7 +282,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           <form action={handleEdit} className="space-y-4">
             <div>
               <Label htmlFor="edit-name">Name</Label>
-              <Input id="edit-name" name="name" defaultValue={editingCustomer?.name || ""} />
+              <Input id="edit-name" name="name" required defaultValue={editingCustomer?.name || ""} />
             </div>
             <div>
               <Label htmlFor="edit-email">Email</Label>
@@ -221,8 +303,28 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           <thead>
             <tr className="border-b border-border bg-popover">
               {table.getHeaderGroups().map(hg => hg.headers.map(header => (
-                <th key={header.id} className="table-head-cell">
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                <th 
+                  key={header.id} 
+                  className={cn(
+                    "table-head-cell", 
+                    header.column.getCanSort() && "cursor-pointer select-none hover:text-foreground", 
+                    header.column.getIsSorted() && "text-primary hover:text-primary/80",
+                    header.column.columnDef.meta?.className
+                  )}
+                  onClick={header.column.getToggleSortingHandler()}
+                >
+                  <div className="flex items-center gap-2">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getCanSort() && (
+                      header.column.getIsSorted() === 'asc' ? (
+                        <ArrowUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : header.column.getIsSorted() === 'desc' ? (
+                        <ArrowDown className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true" />
+                      )
+                    )}
+                  </div>
                 </th>
               )))}
             </tr>
@@ -230,9 +332,9 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           <tbody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row, idx) => (
-                <tr key={row.id} className={cn('table-row', idx % 2 === 0 && 'bg-card/40')}>
+                <tr key={row.id} className={cn('table-row', idx % 2 === 0 && 'bg-card/40', !row.original.isActive && 'opacity-60')}>
                   {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className="px-4 py-3">
+                    <td key={cell.id} className={cn("px-4 py-3", cell.column.columnDef.meta?.className)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -256,6 +358,47 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           </tbody>
         </table>
       </div>
+      <TablePagination table={table} />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingCustomer} onOpenChange={(open) => !open && setDeletingCustomer(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete customer #{deletingCustomer?.shortId} ({deletingCustomer?.name || 'No name'}).
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!deletingCustomer) return
+                try {
+                  const result = await deleteCustomer(deletingCustomer.id)
+                  if (!result.ok) {
+                    toast.add({ title: 'Error', description: result.error, type: 'error' })
+                    return
+                  }
+                  if (result.data?.archived) {
+                    setData(prev => prev.map(c => c.id === deletingCustomer.id ? { ...c, isActive: false } : c))
+                    toast.add({ title: 'Archived', description: 'This customer has past orders, so their record was archived instead of deleted.', type: 'info' })
+                  } else {
+                    setData(prev => prev.filter(i => i.id !== deletingCustomer.id))
+                  }
+                  setDeletingCustomer(null)
+                } catch (err) {
+                  toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not delete this customer.', type: 'error' })
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

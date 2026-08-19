@@ -11,9 +11,10 @@ datasource db {
 model User {
   id        String   @id @default(uuid())
   shortId   Int      @unique @default(autoincrement())
-  name      String?
+  name      String
   email     String?  @unique
   phone     String?  @unique
+  isActive  Boolean  @default(true)
   role      Role     @default(CUSTOMER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -55,6 +56,7 @@ model Order {
   customerId  String
   customer    User     @relation(fields: [customerId], references: [id])
   description String   // e.g., "40 pies, 40 bowls of jollof"
+  notes       String?  // Optional bulleted notes
   status      OrderStatus @default(PENDING)
   totalPrice  Float    @default(0)
   dueDate     DateTime?
@@ -89,6 +91,7 @@ model Dish {
   shortId     Int      @unique @default(autoincrement())
   name        String
   price       Float
+  servingSize Int      @default(1) // recipe ingredient quantities cover this many units (1 = per-unit, 10 = per-10-bowls)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

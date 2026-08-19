@@ -96,7 +96,7 @@ describe('OrderDetailsClient — read-only "Dishes Ordered" section', () => {
     render(<OrderDetailsClient order={order} inventory={[]} dishes={[jollof, meatPie]} />)
 
     expect(
-      screen.getByText(/No dishes recorded for this order — it was placed before the menu existed/)
+      screen.getByText(/No dishes recorded for this order\./)
     ).toBeInTheDocument()
   })
 
@@ -209,7 +209,7 @@ describe('OrderDetailsClient — edit mode', () => {
     expect(mockUpdateOrderItems).not.toHaveBeenCalled()
     // Back to read-only view showing the (empty) DB state.
     expect(
-      screen.getByText(/No dishes recorded for this order/)
+      screen.getByText(/No dishes recorded for this order/i)
     ).toBeInTheDocument()
   })
 })

@@ -44,9 +44,10 @@ export function expandDishesToIngredients(
 
     for (const ingredient of dish.ingredients) {
       const previous = totals.get(ingredient.inventoryItemId) ?? 0
+      const servingSize = dish.servingSize ?? 1
       totals.set(
         ingredient.inventoryItemId,
-        previous + ingredient.quantityPerDish * selection.quantity
+        previous + ingredient.quantityPerDish * (selection.quantity / servingSize)
       )
     }
   }

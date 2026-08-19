@@ -24,12 +24,13 @@ function ingredient(inventoryItemId: string, quantityPerDish: number) {
 }
 
 // Minimal Dish fixture builder — only the fields expandDishesToIngredients/computeDishSubtotal read.
-function dish(id: string, price: number, ingredients: ReturnType<typeof ingredient>[]): DishWithRecipe {
+function dish(id: string, price: number, ingredients: ReturnType<typeof ingredient>[], servingSize = 1): DishWithRecipe {
   return {
     id,
     shortId: 1,
     name: `Dish ${id}`,
     price,
+    servingSize,
     isActive: true,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
@@ -98,6 +99,29 @@ describe('expandDishesToIngredients', () => {
 
     expect(expandDishesToIngredients([{ dishId: 'jollof', quantity: 0 }], [jollof])).toEqual([])
     expect(expandDishesToIngredients([{ dishId: 'jollof', quantity: -3 }], [jollof])).toEqual([])
+  })
+
+  it('scales ingredient quantities by servingSize when servingSize > 1', () => {
+    // Recipe: 3kg rice per 10 bowls. Order: 50 bowls → 3 * (50/10) = 15kg
+    const bulkJollof = dish('bulk-jollof', 800, [ingredient(RICE, 3), ingredient(TOMATOES, 1.5)], 10)
+
+    const result = expandDishesToIngredients([{ dishId: 'bulk-jollof', quantity: 50 }], [bulkJollof])
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        { inventoryItemId: RICE, quantityUsed: 15 },     // 3 * (50/10)
+        { inventoryItemId: TOMATOES, quantityUsed: 7.5 }, // 1.5 * (50/10)
+      ])
+    )
+    expect(result).toHaveLength(2)
+  })
+
+  it('treats missing servingSize as 1 (backward compat)', () => {
+    // A dish without servingSize set should behave like servingSize=1
+    const jollof = dish('jollof', 1200, [ingredient(RICE, 0.25)])
+
+    const result = expandDishesToIngredients([{ dishId: 'jollof', quantity: 4 }], [jollof])
+    expect(result).toEqual([{ inventoryItemId: RICE, quantityUsed: 1 }]) // 0.25 * 4/1
   })
 
   it('merges extraLines into the same per-item totals as dish-derived lines', () => {
