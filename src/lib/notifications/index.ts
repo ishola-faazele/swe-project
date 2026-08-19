@@ -48,12 +48,17 @@ export async function notifyOrderStatusChange(data: {
   // is gated on the other's outcome, only on this shared phone-presence guard. A phone that
   // exists but fails E.164 normalization is a separate, per-channel concern — each sender calls
   // toGhanaE164 itself and no-ops individually.
-  // Awaited sequentially rather than via Promise.all, matching this file's existing style: both
-  // call sites in actions.ts are fire-and-forget, so neither channel's latency is ever on the
-  // admin UI's critical path.
+  // Promise.allSettled, not sequential awaits: both senders are contractually no-throw today, but
+  // that was only a convention, not something the type system enforces. Settling both regardless
+  // of either outcome makes the independence structural — a future edit that makes one sender
+  // throw can no longer silently suppress the other.
   if (data.customerPhone) {
-    results.sms = await sendOrderStatusSms(data.customerPhone, data.orderShortId, data.orderDescription, data.newStatus)
-    results.whatsapp = await sendOrderStatusWhatsApp(data.customerPhone, data.customerName, data.orderShortId, data.newStatus, data.dueDate)
+    const [smsResult, whatsappResult] = await Promise.allSettled([
+      sendOrderStatusSms(data.customerPhone, data.orderShortId, data.orderDescription, data.newStatus),
+      sendOrderStatusWhatsApp(data.customerPhone, data.customerName, data.orderShortId, data.newStatus, data.dueDate),
+    ])
+    results.sms = smsResult.status === 'fulfilled' ? smsResult.value : { success: false, error: smsResult.reason }
+    results.whatsapp = whatsappResult.status === 'fulfilled' ? whatsappResult.value : { success: false, error: whatsappResult.reason }
   }
 
   return results
@@ -76,10 +81,15 @@ export async function notifyLowStock(data: {
     results.email = await sendLowStockAlert(data.itemName, data.currentStock, data.unit, data.adminEmail)
   }
 
-  // Same "send both, always" shape as the customer path above, gated on the admin's own phone.
+  // Same "send both, always" shape as the customer path above, gated on the admin's own phone,
+  // and the same Promise.allSettled independence — see notifyOrderStatusChange for why.
   if (data.adminPhone) {
-    results.sms = await sendLowStockSms(data.adminPhone, data.itemName, data.currentStock, data.unit)
-    results.whatsapp = await sendLowStockWhatsApp(data.adminPhone, data.itemName, data.currentStock, data.unit)
+    const [smsResult, whatsappResult] = await Promise.allSettled([
+      sendLowStockSms(data.adminPhone, data.itemName, data.currentStock, data.unit),
+      sendLowStockWhatsApp(data.adminPhone, data.itemName, data.currentStock, data.unit),
+    ])
+    results.sms = smsResult.status === 'fulfilled' ? smsResult.value : { success: false, error: smsResult.reason }
+    results.whatsapp = whatsappResult.status === 'fulfilled' ? whatsappResult.value : { success: false, error: whatsappResult.reason }
   }
 
   return results

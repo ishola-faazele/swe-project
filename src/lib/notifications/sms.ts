@@ -45,6 +45,11 @@ export async function sendSms(data: SmsData) {
     // searchParams handles the escaping — the message routinely contains spaces, quotes and '#',
     // all of which would corrupt the query string if concatenated raw.
     url.searchParams.set('sms', data.message)
+    // Matches the verified check-balance call, which returned clean JSON only because it passed
+    // this param. Without it, send-sms's default response format is unconfirmed — if it's
+    // plain text, response.json() below would reject and a real logical failure returned as
+    // HTTP 200 would silently fall through to the "unknown-but-successful" branch.
+    url.searchParams.set('response', 'json')
 
     const response = await fetch(url, { method: 'GET' })
     const body = await response.json().catch(() => null)

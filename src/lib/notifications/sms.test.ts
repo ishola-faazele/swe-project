@@ -158,7 +158,7 @@ describe('sendSms', () => {
       expect(url.searchParams.get('action')).toBe('send-sms')
       expect(url.searchParams.get('to')).toBe(NORMALIZED_GHANA_PHONE)
       expect(url.searchParams.get('from')).toBe(TEST_SENDER_ID)
-      expect([...url.searchParams.keys()].sort()).toEqual(['action', 'api_key', 'from', 'sms', 'to'])
+      expect([...url.searchParams.keys()].sort()).toEqual(['action', 'api_key', 'from', 'response', 'sms', 'to'])
       // In application/x-www-form-urlencoded, a bare space legitimately encodes AS a raw '+' —
       // so the literal '+' character from the message must instead show up escaped as '%2B' in
       // the raw query string; if it appeared as a bare '+' it would be indistinguishable from an
