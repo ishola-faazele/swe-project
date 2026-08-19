@@ -28,6 +28,7 @@ export default async function AdminDashboardPage() {
     recentOrders,
     ordersByStatus,
     activeOrdersForDueCheck,
+    activeLogs,
   ] = await Promise.all([
     prisma.order.count(),
     prisma.user.count({ where: { role: 'CUSTOMER' } }),
@@ -37,7 +38,7 @@ export default async function AdminDashboardPage() {
     // and would otherwise nag the Low Stock Alerts count with a restock that will never happen.
     prisma.inventoryItem.findMany({
       where: { isActive: true },
-      select: { currentStock: true, minimumThreshold: true },
+      select: { id: true, currentStock: true, minimumThreshold: true },
     }),
     prisma.order.findMany({
       take: 8,
@@ -51,12 +52,25 @@ export default async function AdminDashboardPage() {
       where: { status: { in: ACTIVE_ORDER_STATUSES } },
       select: { dueDate: true },
     }),
+    prisma.orderIngredientLog.findMany({
+      where: {
+        order: { status: { in: ACTIVE_ORDER_STATUSES } }
+      },
+      select: { orderId: true, inventoryItemId: true }
+    })
   ])
 
-  const lowStockItems = allInventory.filter(i => i.currentStock <= i.minimumThreshold).length
+  const lowStockItems = allInventory.filter(i => i.currentStock <= i.minimumThreshold)
+  const lowStockCount = lowStockItems.length
   const statusCounts = Object.fromEntries(
     ordersByStatus.map(s => [s.status, s._count.status])
   )
+  
+  const lowStockItemIds = new Set(lowStockItems.map(i => i.id))
+  
+  const uniqueActiveOrdersWithLowStock = new Set(
+    activeLogs.filter(log => lowStockItemIds.has(log.inventoryItemId)).map(log => log.orderId)
+  ).size
 
   // Server-evaluated `now` (the default) is correct here: this is a Server
   // Component, so there is no client render to disagree with it.
@@ -147,10 +161,12 @@ export default async function AdminDashboardPage() {
     },
     {
       label: 'Low Stock Alerts',
-      value: lowStockItems,
+      value: lowStockCount,
       icon: AlertTriangle,
-      sub: 'items need restocking',
-      alert: lowStockItems > 0,
+      sub: lowStockCount > 0 && uniqueActiveOrdersWithLowStock > 0 
+        ? `needed by ${uniqueActiveOrdersWithLowStock} active order${uniqueActiveOrdersWithLowStock === 1 ? '' : 's'}`
+        : 'items need restocking',
+      alert: lowStockCount > 0,
     },
     {
       label: 'Customers',

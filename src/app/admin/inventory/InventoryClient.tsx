@@ -31,8 +31,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive, updateInventoryItem } from "./actions"
-import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw, ShoppingCart, Copy, Printer } from "lucide-react"
+import { createInventoryItem, deleteInventoryItem, toggleInventoryItemActive, updateInventoryItem, submitStockCount } from "./actions"
+import { Plus, AlertTriangle, PackageOpen, Archive, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, RotateCcw, ShoppingCart, Copy, Printer, ClipboardCheck, Save } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { HighlightText } from "@/components/ui/highlight"
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -104,6 +104,10 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   
   const [isShoppingListOpen, setIsShoppingListOpen] = useState(false)
   const [shoppingMultiplier, setShoppingMultiplier] = useState<number>(2)
+  
+  const [isCountMode, setIsCountMode] = useState(false)
+  const [stockCounts, setStockCounts] = useState<Record<string, number>>({})
+  const [isSubmittingCount, setIsSubmittingCount] = useState(false)
 
   // Client-side filter over the full array the page already fetched — no second query.
   //
@@ -156,6 +160,38 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     }
   }
 
+  const handleSaveStockCount = async () => {
+    const adjustments = Object.entries(stockCounts).map(([id, newStock]) => {
+      const item = data.find(i => i.id === id)
+      return { id, previousStock: item?.currentStock ?? 0, newStock }
+    }).filter(adj => adj.previousStock !== adj.newStock)
+
+    if (adjustments.length === 0) {
+      setIsCountMode(false)
+      return
+    }
+
+    setIsSubmittingCount(true)
+    try {
+      const result = await submitStockCount(adjustments)
+      if (!result.ok) {
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
+      } else {
+        toast.add({ title: 'Counts saved', description: `Updated ${adjustments.length} item${adjustments.length === 1 ? '' : 's'}.`, type: 'success' })
+        setData(prev => prev.map(item => {
+          const adj = adjustments.find(a => a.id === item.id)
+          return adj ? { ...item, currentStock: adj.newStock } : item
+        }))
+        setIsCountMode(false)
+        setStockCounts({})
+      }
+    } catch (err) {
+      toast.add({ title: 'Error', description: 'Failed to save counts.', type: 'error' })
+    } finally {
+      setIsSubmittingCount(false)
+    }
+  }
+
   const columns = [
     columnHelper.accessor("name", {
       header: "ITEM NAME",
@@ -191,7 +227,31 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     }),
     columnHelper.accessor("currentStock", {
       header: "STOCK LEVEL",
-      cell: (info) => (
+      cell: (info) => isCountMode ? (
+        <div className="flex items-center gap-3">
+          <Input 
+            type="number" 
+            step="any"
+            className="w-24 font-mono-data" 
+            value={stockCounts[info.row.original.id] ?? info.getValue()}
+            onChange={(e) => setStockCounts(prev => ({ ...prev, [info.row.original.id]: Number(e.target.value) }))}
+          />
+          {(() => {
+             const current = info.getValue()
+             const count = stockCounts[info.row.original.id]
+             if (count !== undefined && count !== current) {
+                const diff = count - current
+                const isPositive = diff > 0
+                return (
+                  <span className={cn("text-xs font-mono-data whitespace-nowrap", isPositive ? "text-green-500" : "text-destructive")}>
+                    {isPositive ? '+' : ''}{Number(diff.toFixed(2))}
+                  </span>
+                )
+             }
+             return null
+          })()}
+        </div>
+      ) : (
         <StockBadge
           current={info.getValue()}
           min={info.row.original.minimumThreshold}
@@ -405,6 +465,16 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
           <Button onClick={() => setIsOpen(true)}>
             <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Add Item
           </Button>
+
+          {isCountMode ? (
+            <Button variant="default" onClick={handleSaveStockCount} disabled={isSubmittingCount}>
+              <Save className="mr-1.5 h-4 w-4" aria-hidden="true" /> Save Counts
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => setIsCountMode(true)}>
+              <ClipboardCheck className="mr-1.5 h-4 w-4" aria-hidden="true" /> Count Stock
+            </Button>
+          )}
 
           <Button variant="secondary" onClick={() => setIsShoppingListOpen(true)}>
             <ShoppingCart className="mr-1.5 h-4 w-4" aria-hidden="true" /> Shopping List

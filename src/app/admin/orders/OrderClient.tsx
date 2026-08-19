@@ -42,7 +42,7 @@ import { getDueUrgency, isActiveOrderStatus } from "@/lib/dueDate"
 import { cn } from "@/lib/utils"
 import { HighlightText } from "@/components/ui/highlight"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { AlertTriangle, Clock, ClipboardList, X, Trash2, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, CalendarDays } from "lucide-react"
+import { AlertTriangle, Clock, ClipboardList, X, Trash2, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, CalendarDays, Copy, Repeat } from "lucide-react"
 
 type OrderWithRelations = Order & {
   customer: User,
@@ -79,6 +79,11 @@ export function OrderClient({
   >([])
   const [overrideCounter, setOverrideCounter] = useState(0)
 
+  const [initialFormState, setInitialFormState] = useState<{
+    customerId?: string;
+    description?: string;
+  } | null>(null)
+
   const activeDishes = dishes.filter(d => d.isActive)
 
   // no useEffect, matching the rest of this codebase. Typing in the total field overrides the
@@ -93,6 +98,20 @@ export function OrderClient({
       expanded.map((line, i) => ({ ...line, internalId: i }))
     )
     setOverrideCounter(expanded.length)
+  }
+
+  const handleRepeatOrder = (order: OrderWithRelations) => {
+    setInitialFormState({
+      customerId: order.customerId,
+      description: order.description ? `Repeat: ${order.description}` : 'Repeat order',
+    })
+    
+    const dishesToRepeat = order.dishes
+      .filter(d => d.dishId && activeDishes.some(ad => ad.id === d.dishId))
+      .map(d => ({ dishId: d.dishId!, quantity: d.quantity }))
+    
+    applyDishSelections(dishesToRepeat)
+    setIsOpen(true)
   }
 
   // Calculate grouped orders for Calendar View
@@ -144,6 +163,11 @@ export function OrderClient({
           value={info.getValue()}
           disabled={info.row.original.status === 'CANCELLED'}
           onChange={async (e) => {
+            if (!navigator.onLine) {
+              toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to update order status.', type: 'error' })
+              e.preventDefault()
+              return
+            }
             const val = e.target.value as OrderStatus
             // Cancellation is terminal — there is no un-cancel, a mistake means
             // re-creating the order from scratch. The <select> is already
@@ -211,19 +235,34 @@ export function OrderClient({
     columnHelper.display({
       id: "actions",
       cell: (info) => (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-          title="Delete order"
-          onClick={(e) => {
-            e.stopPropagation();
-            setDeletingOrder(info.row.original);
-          }}
-        >
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-          <span className="sr-only">Delete</span>
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="Repeat order"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRepeatOrder(info.row.original);
+            }}
+          >
+            <Repeat className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Repeat</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="Delete order"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeletingOrder(info.row.original);
+            }}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Delete</span>
+          </Button>
+        </div>
       ),
     })
   ]
@@ -243,6 +282,11 @@ export function OrderClient({
   const router = useRouter()
 
   async function handleAdd(formData: FormData) {
+    if (!navigator.onLine) {
+      toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to create orders.', type: 'error' })
+      return
+    }
+    
     const customerId = formData.get("customerId") as string
     const description = formData.get("description") as string
     const totalPrice = Number(formData.get("totalPrice"))
@@ -313,18 +357,25 @@ export function OrderClient({
             onChange={(e) => setGlobalFilter(String(e.target.value))}
             className="max-w-[180px] bg-card shrink-0"
           />
-          <Button onClick={() => setIsOpen(true)} className="shrink-0">Create Order</Button>
+          <Button onClick={() => {
+            setInitialFormState(null)
+            setSelectedDishes([])
+            setTotalPriceInput('')
+            setShowIngredientPreview(false)
+            setIngredientOverrides([])
+            setIsOpen(true)
+          }} className="shrink-0">Create Order</Button>
         </div>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Create New Order</DialogTitle>
+              <DialogTitle>{initialFormState ? 'Repeat Order' : 'Create New Order'}</DialogTitle>
             </DialogHeader>
-            <form action={handleAdd} className="space-y-6">
+            <form action={handleAdd} className="space-y-6" key={initialFormState ? 'repeat' : 'new'}>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="customerId">Customer</Label>
-                  <select id="customerId" name="customerId" className="select-field" required defaultValue="">
+                  <select id="customerId" name="customerId" className="select-field" required defaultValue={initialFormState?.customerId ?? ""}>
                     <option value="" disabled>Select customer</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>
@@ -354,7 +405,7 @@ export function OrderClient({
 
               <div className="space-y-2">
                 <Label htmlFor="description">Description (optional)</Label>
-                <Input id="description" name="description" placeholder="Short description (e.g. Birthday party, 40 pies)" />
+                <Input id="description" name="description" placeholder="Short description (e.g. Birthday party, 40 pies)" defaultValue={initialFormState?.description ?? ""} />
               </div>
 
               <div className="space-y-2">
@@ -662,6 +713,11 @@ export function OrderClient({
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
+                if (!navigator.onLine) {
+                  toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to delete orders.', type: 'error' })
+                  setDeletingOrder(null)
+                  return
+                }
                 if (!deletingOrder) return
                 try {
                   const result = await deleteOrder(deletingOrder.id)
@@ -697,6 +753,11 @@ export function OrderClient({
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
+                if (!navigator.onLine) {
+                  toast.add({ title: 'Offline', description: 'You are offline. Please reconnect to cancel orders.', type: 'error' })
+                  setCancellingOrder(null)
+                  return
+                }
                 if (!cancellingOrder) return
                 try {
                   const result = await updateOrderStatus(cancellingOrder.id, 'CANCELLED')

@@ -140,3 +140,32 @@ export async function toggleInventoryItemActive(id: string, isActive: boolean): 
   revalidatePath('/admin/inventory')
   return okResult(item)
 }
+
+export async function submitStockCount(adjustments: { id: string, previousStock: number, newStock: number }[]): Promise<ActionResult<void>> {
+  await requireAdmin()
+
+  try {
+    await prisma.$transaction(
+      adjustments.map(adj => {
+        return prisma.inventoryItem.update({
+          where: { id: adj.id },
+          data: {
+            currentStock: adj.newStock,
+            adjustments: {
+              create: {
+                previousStock: adj.previousStock,
+                newStock: adj.newStock,
+                reason: 'STOCK_COUNT'
+              }
+            }
+          }
+        })
+      })
+    )
+  } catch (err) {
+    return toErrorResult(err, 'Could not submit stock count. Please try again.')
+  }
+
+  revalidatePath('/admin/inventory')
+  return okResult(undefined)
+}

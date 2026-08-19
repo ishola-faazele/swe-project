@@ -6,6 +6,7 @@ import { LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MobileNavTrigger } from './MobileNavTrigger'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { OfflineIndicator } from './OfflineIndicator'
 
 // Stays an async Server Component — MobileNavTrigger is a Client Component
 // child, which does not pull this file across the boundary.
@@ -32,6 +33,7 @@ export async function Header() {
 
         {user ? (
           <div className="flex items-center gap-2 sm:gap-4">
+            <OfflineIndicator />
             <div className="hidden max-w-[220px] truncate rounded border border-border bg-muted px-3 py-1 font-mono-data text-xs text-primary sm:block">
               {user.email || user.phone}
             </div>

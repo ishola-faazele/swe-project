@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import withSerwistInit from "@serwist/next";
 
 if (!process.env.ADMIN_EMAIL && !process.env.ADMIN_PHONE) {
   throw new Error("SERVER STARTUP FAILED: You must provide either an ADMIN_EMAIL or an ADMIN_PHONE in your environment variables.");
@@ -16,4 +17,11 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
 };
 
-export default nextConfig;
+const withSerwist = withSerwistInit({
+  swSrc: "src/app/sw.ts",
+  swDest: "public/sw.js",
+  additionalPrecacheEntries: [{ url: "/~offline", revision: "1" }],
+  disable: process.env.NODE_ENV === "development",
+});
+
+export default withSerwist(nextConfig);
