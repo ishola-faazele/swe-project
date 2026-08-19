@@ -230,7 +230,9 @@ export function OrderClient({
                   <select id="customerId" name="customerId" className="select-field" required>
                     <option value="" disabled selected>Select customer</option>
                     {customers.map(c => (
-                      <option key={c.id} value={c.id}>{c.email || c.phone}</option>
+                      <option key={c.id} value={c.id}>
+                        {c.name || c.email || c.phone || `#${c.shortId}`}
+                      </option>
                     ))}
                   </select>
                 </div>
