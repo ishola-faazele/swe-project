@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Package, ShoppingCart, UtensilsCrossed } from 'lucide-react'
+import { LayoutDashboard, Users, Package, ShoppingCart, UtensilsCrossed, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -15,6 +15,7 @@ const navItems = [
     { name: 'Inventory', href: '/admin/inventory', icon: Package, exact: false },
     { name: 'Menu', href: '/admin/menu', icon: UtensilsCrossed, exact: false },
     { name: 'Customers', href: '/admin/customers', icon: Users, exact: false },
+    { name: 'Settings', href: '/admin/settings', icon: Settings, exact: false },
   ]},
 ]
 

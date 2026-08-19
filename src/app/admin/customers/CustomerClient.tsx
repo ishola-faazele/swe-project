@@ -20,10 +20,101 @@ import { createCustomer, deleteCustomer, updateCustomer } from "./actions"
 import { Plus, ShoppingBag, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ClientSafeUser } from "@/lib/user"
+import type { LoginMethod } from "@prisma/client"
 
 type CustomerWithCount = ClientSafeUser & { _count: { orders: number } }
 
 const columnHelper = createColumnHelper<CustomerWithCount>()
+
+/**
+ * The contact fields plus the preferred-login-method select, shared by the Add and Edit dialogs.
+ *
+ * Email and phone are controlled here specifically so the select can react to what is actually
+ * filled in as it is typed — the rest of the form stays uncontrolled, as it was. Controlled inputs
+ * still carry their `name`, so FormData picks them up exactly like before.
+ *
+ * The available options are derived on every render rather than synced through an effect: if the
+ * current choice stops being valid (the admin clears the email it pointed at), it falls back to
+ * whatever is still filled in. That keeps this form from ever submitting a combination the
+ * server-side refinement in validation.ts would reject.
+ */
+function CustomerFormFields({
+  customer,
+  idPrefix,
+}: {
+  customer?: CustomerWithCount | null
+  idPrefix: string
+}) {
+  const [email, setEmail] = useState(customer?.email ?? "")
+  const [phone, setPhone] = useState(customer?.phone ?? "")
+  const [method, setMethod] = useState<string>(customer?.preferredLoginMethod ?? "")
+
+  const options: LoginMethod[] = [
+    ...(email.trim() ? (["EMAIL"] as const) : []),
+    ...(phone.trim() ? (["PHONE"] as const) : []),
+  ]
+  // Never offer — or submit — a choice the current form state can't support.
+  const effectiveMethod = options.includes(method as LoginMethod) ? method : (options[0] ?? "")
+
+  return (
+    <>
+      <div>
+        <Label htmlFor={`${idPrefix}-name`}>Name</Label>
+        <Input
+          id={`${idPrefix}-name`}
+          name="name"
+          defaultValue={customer?.name ?? ""}
+          placeholder="Optional"
+        />
+      </div>
+      <div>
+        <Label htmlFor={`${idPrefix}-email`}>Email</Label>
+        <Input
+          id={`${idPrefix}-email`}
+          name="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Optional"
+        />
+      </div>
+      <div>
+        <Label htmlFor={`${idPrefix}-phone`}>Phone Number</Label>
+        <Input
+          id={`${idPrefix}-phone`}
+          name="phone"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Optional"
+        />
+      </div>
+      <div>
+        <Label htmlFor={`${idPrefix}-preferredLoginMethod`}>Preferred login method</Label>
+        <select
+          id={`${idPrefix}-preferredLoginMethod`}
+          name="preferredLoginMethod"
+          className="select-field"
+          value={effectiveMethod}
+          disabled={options.length === 0}
+          onChange={(e) => setMethod(e.target.value)}
+        >
+          {options.length === 0 && <option value="">Add an email or phone first</option>}
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option === "EMAIL" ? "Email (magic link)" : "Phone (SMS code)"}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-muted-foreground">
+          How this customer is told to sign in when their account is created.
+        </p>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        At least one contact method is required.
+      </p>
+    </>
+  )
+}
 
 export function CustomerClient({ initialData }: { initialData: CustomerWithCount[] }) {
   const [data, setData] = useState<CustomerWithCount[]>(initialData)
@@ -122,8 +213,12 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     const name = formData.get("name") as string
     const email = formData.get("email") as string
     const phone = formData.get("phone") as string
+    // "" means the select had nothing to offer (a name-only customer) — send undefined so the
+    // action computes an explicit value rather than failing the enum check on an empty string.
+    const rawMethod = formData.get("preferredLoginMethod") as string
+    const preferredLoginMethod = rawMethod ? (rawMethod as LoginMethod) : undefined
     try {
-      const result = await createCustomer({ name, email, phone })
+      const result = await createCustomer({ name, email, phone, preferredLoginMethod })
       if (!result.ok) {
         alert(result.error)
         return
@@ -140,8 +235,10 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     const name = formData.get("name") as string
     const email = formData.get("email") as string
     const phone = formData.get("phone") as string
+    const rawMethod = formData.get("preferredLoginMethod") as string
+    const preferredLoginMethod = rawMethod ? (rawMethod as LoginMethod) : undefined
     try {
-      const result = await updateCustomer(editingCustomer.id, { name, email, phone })
+      const result = await updateCustomer(editingCustomer.id, { name, email, phone, preferredLoginMethod })
       if (!result.ok) {
         alert(result.error)
         return
@@ -170,21 +267,9 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
               <DialogTitle>Add New Customer</DialogTitle>
             </DialogHeader>
             <form action={handleAdd} className="space-y-4">
-              <div>
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" placeholder="Optional" />
-              </div>
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" placeholder="Optional" />
-              </div>
-              <div>
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input id="phone" name="phone" placeholder="Optional" />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                At least one contact method is required.
-              </p>
+              {/* key resets the controlled contact/method state each time the dialog reopens, so a
+                  previous entry never bleeds into a fresh one. */}
+              <CustomerFormFields key={isOpen ? "add-open" : "add-closed"} idPrefix="add" />
               <Button type="submit" className="w-full">Save Customer</Button>
             </form>
           </DialogContent>
@@ -198,18 +283,13 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             <DialogTitle>Edit Customer #{editingCustomer?.shortId}</DialogTitle>
           </DialogHeader>
           <form action={handleEdit} className="space-y-4">
-            <div>
-              <Label htmlFor="edit-name">Name</Label>
-              <Input id="edit-name" name="name" defaultValue={editingCustomer?.name || ""} />
-            </div>
-            <div>
-              <Label htmlFor="edit-email">Email</Label>
-              <Input id="edit-email" name="email" type="email" defaultValue={editingCustomer?.email || ""} />
-            </div>
-            <div>
-              <Label htmlFor="edit-phone">Phone Number</Label>
-              <Input id="edit-phone" name="phone" defaultValue={editingCustomer?.phone || ""} />
-            </div>
+            {/* Keyed on the customer id: this one dialog is reused for every row, so without a
+                remount the previous customer's contact values would persist into the next edit. */}
+            <CustomerFormFields
+              key={editingCustomer?.id ?? "none"}
+              customer={editingCustomer}
+              idPrefix="edit"
+            />
             <Button type="submit" className="w-full">Update Customer</Button>
           </form>
         </DialogContent>
