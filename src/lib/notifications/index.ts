@@ -15,8 +15,14 @@ import { sendOrderStatusSms, sendLowStockSms, sendSms } from './sms'
 import { sendOrderStatusWhatsApp, sendLowStockWhatsApp } from './whatsapp'
 
 export async function notifyOrderStatusChange(data: {
+  // Three separate, independently-toggleable destinations — the customer's OWN alert contacts
+  // (User.alertEmail/alertPhone/alertWhatsapp), which may differ from each other and from their
+  // login email/phone (see User.alertEmail's schema comment). Callers fall back to the login
+  // contact themselves when an alert field is unset — this function only ever sends to exactly
+  // what it's given, mirroring notifyLowStock's adminEmail/adminPhone/adminWhatsapp shape.
   customerEmail?: string | null
   customerPhone?: string | null
+  customerWhatsapp?: string | null
   customerName?: string
   orderId: string
   // Required, not optional: Order.shortId is a non-null autoincrement column, so no persisted
@@ -25,6 +31,13 @@ export async function notifyOrderStatusChange(data: {
   orderDescription: string
   newStatus: string
   dueDate?: string | null
+  // The CUSTOMER's own per-channel opt-in (User.notifyByEmail/notifyBySms/notifyByWhatsapp) —
+  // independent of, and checked ALONGSIDE, the admin's global NotificationSettings toggle (which
+  // each sender checks internally). Required rather than defaulted: every call site already has
+  // the customer row in hand and must consciously pass these, not silently inherit "always on."
+  notifyByEmail: boolean
+  notifyBySms: boolean
+  notifyByWhatsapp: boolean
 }) {
   const results: {
     email?: Awaited<ReturnType<typeof sendOrderStatusEmail>>
@@ -32,34 +45,37 @@ export async function notifyOrderStatusChange(data: {
     whatsapp?: Awaited<ReturnType<typeof sendOrderStatusWhatsApp>>
   } = {}
 
-  // Send email if customer has an email
-  if (data.customerEmail) {
-    results.email = await sendOrderStatusEmail({
-      customerEmail: data.customerEmail,
-      customerName: data.customerName,
-      orderId: data.orderId,
-      orderDescription: data.orderDescription,
-      newStatus: data.newStatus,
-      dueDate: data.dueDate,
-    })
+  // Three independently-gated tasks, all settled together — SMS and WhatsApp no longer share one
+  // phone-presence guard, since a customer can point each at a different number (or opt out of
+  // one and not the other). Promise.allSettled rather than sequential awaits: each sender is
+  // contractually no-throw today, but that's only a convention, not something the type system
+  // enforces — settling everything regardless of outcome makes the independence structural.
+  const tasks: Promise<void>[] = []
+  if (data.customerEmail && data.notifyByEmail) {
+    tasks.push(
+      sendOrderStatusEmail({
+        customerEmail: data.customerEmail,
+        customerName: data.customerName,
+        orderId: data.orderId,
+        orderDescription: data.orderDescription,
+        newStatus: data.newStatus,
+        dueDate: data.dueDate,
+      }).then((r) => { results.email = r })
+    )
   }
-
-  // Send SMS and WhatsApp if customer has a phone. Independent, unconditional siblings: neither
-  // is gated on the other's outcome, only on this shared phone-presence guard. A phone that
-  // exists but fails E.164 normalization is a separate, per-channel concern — each sender calls
-  // toGhanaE164 itself and no-ops individually.
-  // Promise.allSettled, not sequential awaits: both senders are contractually no-throw today, but
-  // that was only a convention, not something the type system enforces. Settling both regardless
-  // of either outcome makes the independence structural — a future edit that makes one sender
-  // throw can no longer silently suppress the other.
-  if (data.customerPhone) {
-    const [smsResult, whatsappResult] = await Promise.allSettled([
-      sendOrderStatusSms(data.customerPhone, data.orderShortId, data.orderDescription, data.newStatus),
-      sendOrderStatusWhatsApp(data.customerPhone, data.customerName, data.orderShortId, data.newStatus, data.dueDate),
-    ])
-    results.sms = smsResult.status === 'fulfilled' ? smsResult.value : { success: false, error: smsResult.reason }
-    results.whatsapp = whatsappResult.status === 'fulfilled' ? whatsappResult.value : { success: false, error: whatsappResult.reason }
+  if (data.customerPhone && data.notifyBySms) {
+    tasks.push(
+      sendOrderStatusSms(data.customerPhone, data.orderShortId, data.orderDescription, data.newStatus)
+        .then((r) => { results.sms = r })
+    )
   }
+  if (data.customerWhatsapp && data.notifyByWhatsapp) {
+    tasks.push(
+      sendOrderStatusWhatsApp(data.customerWhatsapp, data.customerName, data.orderShortId, data.newStatus, data.dueDate)
+        .then((r) => { results.whatsapp = r })
+    )
+  }
+  await Promise.allSettled(tasks)
 
   return results
 }
@@ -68,8 +84,13 @@ export async function notifyLowStock(data: {
   itemName: string
   currentStock: number
   unit: string
-  adminEmail?: string
-  adminPhone?: string
+  // Three separate, independently-toggleable destinations — the owner's own alert contacts from
+  // NotificationSettings (alertEmail/alertPhone/alertWhatsapp), which may differ from each other
+  // (e.g. a WhatsApp number that isn't her SMS number). No shared "adminPhone" gate: sending
+  // WhatsApp no longer implies the same destination was used for SMS.
+  adminEmail?: string | null
+  adminPhone?: string | null
+  adminWhatsapp?: string | null
 }) {
   const results: {
     email?: Awaited<ReturnType<typeof sendLowStockAlert>>
@@ -77,20 +98,26 @@ export async function notifyLowStock(data: {
     whatsapp?: Awaited<ReturnType<typeof sendLowStockWhatsApp>>
   } = {}
 
+  const tasks: Promise<void>[] = []
   if (data.adminEmail) {
-    results.email = await sendLowStockAlert(data.itemName, data.currentStock, data.unit, data.adminEmail)
+    tasks.push(
+      sendLowStockAlert(data.itemName, data.currentStock, data.unit, data.adminEmail)
+        .then((r) => { results.email = r })
+    )
   }
-
-  // Same "send both, always" shape as the customer path above, gated on the admin's own phone,
-  // and the same Promise.allSettled independence — see notifyOrderStatusChange for why.
   if (data.adminPhone) {
-    const [smsResult, whatsappResult] = await Promise.allSettled([
-      sendLowStockSms(data.adminPhone, data.itemName, data.currentStock, data.unit),
-      sendLowStockWhatsApp(data.adminPhone, data.itemName, data.currentStock, data.unit),
-    ])
-    results.sms = smsResult.status === 'fulfilled' ? smsResult.value : { success: false, error: smsResult.reason }
-    results.whatsapp = whatsappResult.status === 'fulfilled' ? whatsappResult.value : { success: false, error: whatsappResult.reason }
+    tasks.push(
+      sendLowStockSms(data.adminPhone, data.itemName, data.currentStock, data.unit)
+        .then((r) => { results.sms = r })
+    )
   }
+  if (data.adminWhatsapp) {
+    tasks.push(
+      sendLowStockWhatsApp(data.adminWhatsapp, data.itemName, data.currentStock, data.unit)
+        .then((r) => { results.whatsapp = r })
+    )
+  }
+  await Promise.allSettled(tasks)
 
   return results
 }

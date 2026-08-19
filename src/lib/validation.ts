@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Category, LoginMethod, OrderStatus } from '@prisma/client'
+import { toGhanaE164 } from '@/lib/phone'
 
 /**
  * An order cannot list more than this many distinct ingredient lines. Not a real product
@@ -169,19 +170,36 @@ export const updateCustomerSchema = z.object({
 })
 
 /**
- * Settings-page schemas — toggles only. Provider credentials live in .env and are never
- * admin-editable; see src/lib/settings.ts's header for why.
+ * Settings-page schema — per-channel toggle PLUS the owner's alert-destination contact for that
+ * channel. Provider credentials still live in .env and are never admin-editable; see
+ * src/lib/settings.ts's header for why. An alert contact is optional (a channel can be toggled on
+ * before its destination is filled in — the sender simply has nothing to send to yet, the same
+ * "configured vs enabled" independence every sender already applies) but must be well-formed when
+ * present. Blank/whitespace-only clears the field back to unset, same convention as
+ * optionalContactField above.
  */
+const optionalAlertEmail = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .optional()
+  .transform((v) => v || undefined)
+  .pipe(z.email('Enter a valid email address.').optional())
+
+const optionalAlertPhone = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v ? toGhanaE164(v) : undefined))
+  .refine((v) => v !== null, { message: 'Enter a valid Ghanaian phone number.' })
+
 export const updateNotificationSettingsSchema = z.object({
   emailEnabled: z.boolean(),
+  alertEmail: optionalAlertEmail,
   smsEnabled: z.boolean(),
+  alertPhone: optionalAlertPhone,
   whatsappEnabled: z.boolean(),
-})
-
-/** Required booleans, not a partial patch — this is an explicit admin toggle write. */
-export const updateLoginSettingsSchema = z.object({
-  emailLoginEnabled: z.boolean(),
-  phoneLoginEnabled: z.boolean(),
+  alertWhatsapp: optionalAlertPhone,
 })
 
 /**
@@ -195,3 +213,19 @@ export const addEmailSchema = z
   .trim()
   .toLowerCase()
   .pipe(z.email('Enter a valid email address.'))
+
+/**
+ * The customer-dashboard notification-preferences form (src/app/dashboard/actions.ts) — same
+ * shape as updateNotificationSettingsSchema above: a toggle PLUS an alert-destination contact per
+ * channel, reusing the same optional/normalizing building blocks. A blank alert field clears it
+ * back to unset, letting the customer's login email/phone serve as the fallback destination (see
+ * User.alertEmail's schema comment).
+ */
+export const updateNotificationPreferencesSchema = z.object({
+  notifyByEmail: z.boolean(),
+  alertEmail: optionalAlertEmail,
+  notifyBySms: z.boolean(),
+  alertPhone: optionalAlertPhone,
+  notifyByWhatsapp: z.boolean(),
+  alertWhatsapp: optionalAlertPhone,
+})

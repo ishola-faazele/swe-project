@@ -4,6 +4,7 @@ import { getCurrentDbUser } from '@/lib/auth'
 import { BUSINESS_LOCALE, formatCurrency } from '@/lib/currency'
 import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus'
 import { AddContactForm } from './AddContactForm'
+import { NotificationPreferences } from './NotificationPreferences'
 import { Inbox } from 'lucide-react'
 
 export default async function CustomerDashboardPage() {
@@ -46,6 +47,19 @@ export default async function CustomerDashboardPage() {
           <AddContactForm channel={missingChannel} />
         </div>
       )}
+
+      <NotificationPreferences
+        initialPrefs={{
+          notifyByEmail: customer.notifyByEmail,
+          alertEmail: customer.alertEmail,
+          notifyBySms: customer.notifyBySms,
+          alertPhone: customer.alertPhone,
+          notifyByWhatsapp: customer.notifyByWhatsapp,
+          alertWhatsapp: customer.alertWhatsapp,
+        }}
+        loginEmail={customer.email}
+        loginPhone={customer.phone}
+      />
 
       {orders.length === 0 ? (
         <div className="rounded-xl border bg-card">

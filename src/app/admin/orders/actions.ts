@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { OrderStatus, type Order } from '@prisma/client'
 import { notifyOrderStatusChange, notifyLowStock } from '@/lib/notifications'
+import { getNotificationSettings } from '@/lib/settings'
 import { requireAdmin } from '@/lib/auth'
 import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { decrementStockOrThrow, restoreStockForOrder } from '@/lib/inventory'
@@ -116,30 +117,43 @@ export async function createOrder(data: {
   // After order created, check for low stock items and notify admin
   const customer = await prisma.user.findUnique({ where: { id: order.customerId } })
   if (customer) {
-    // Fire-and-forget: notify customer of new order
+    // Fire-and-forget: notify customer of new order. Falls back to the customer's LOGIN email/
+    // phone whenever they haven't customized a separate alert contact — see User.alertEmail's
+    // schema comment for why this fallback lives here rather than as a stored default.
     notifyOrderStatusChange({
-      customerEmail: customer.email,
-      customerPhone: customer.phone,
+      customerEmail: customer.alertEmail ?? customer.email,
+      customerPhone: customer.alertPhone ?? customer.phone,
+      customerWhatsapp: customer.alertWhatsapp ?? customer.phone,
       orderId: order.id,
       orderShortId: order.shortId,
       orderDescription: order.description,
       newStatus: 'PENDING',
+      notifyByEmail: customer.notifyByEmail,
+      notifyBySms: customer.notifyBySms,
+      notifyByWhatsapp: customer.notifyByWhatsapp,
     }).catch(console.error)
   }
 
   // Check all deducted items for low stock — driven by what was actually deducted, since the
   // deduction list is derived from the selected dishes' recipes rather than passed in directly.
-  for (const line of ingredientTotals) {
-    const item = await prisma.inventoryItem.findUnique({ where: { id: line.inventoryItemId } })
-    if (item && item.minimumThreshold > 0 && item.currentStock <= item.minimumThreshold) {
-      // Send low stock alert (fire-and-forget)
-      notifyLowStock({
-        itemName: item.name,
-        currentStock: item.currentStock,
-        unit: item.unit,
-        adminEmail: process.env.ADMIN_ALERT_EMAIL,
-        adminPhone: process.env.ADMIN_ALERT_PHONE,
-      }).catch(console.error)
+  if (ingredientTotals.length > 0) {
+    // The admin's own alert-destination contacts (Settings → Notifications), NOT her login
+    // identity — see NotificationSettings' schema comment. Each sender independently no-ops if
+    // its channel is disabled or its own contact field is blank.
+    const notifSettings = await getNotificationSettings()
+    for (const line of ingredientTotals) {
+      const item = await prisma.inventoryItem.findUnique({ where: { id: line.inventoryItemId } })
+      if (item && item.minimumThreshold > 0 && item.currentStock <= item.minimumThreshold) {
+        // Send low stock alert (fire-and-forget)
+        notifyLowStock({
+          itemName: item.name,
+          currentStock: item.currentStock,
+          unit: item.unit,
+          adminEmail: notifSettings.alertEmail,
+          adminPhone: notifSettings.alertPhone,
+          adminWhatsapp: notifSettings.alertWhatsapp,
+        }).catch(console.error)
+      }
     }
   }
 
@@ -189,15 +203,19 @@ export async function updateOrderStatus(
     return toErrorResult(err, 'Could not update this order.')
   }
 
-  // Fire-and-forget: notify customer of status change
+  // Fire-and-forget: notify customer of status change. Same alert-contact fallback as createOrder.
   notifyOrderStatusChange({
-    customerEmail: order.customer.email,
-    customerPhone: order.customer.phone,
+    customerEmail: order.customer.alertEmail ?? order.customer.email,
+    customerPhone: order.customer.alertPhone ?? order.customer.phone,
+    customerWhatsapp: order.customer.alertWhatsapp ?? order.customer.phone,
     orderId: order.id,
     orderShortId: order.shortId,
     orderDescription: order.description,
     newStatus: order.status,
     dueDate: order.dueDate?.toLocaleDateString() ?? null,
+    notifyByEmail: order.customer.notifyByEmail,
+    notifyBySms: order.customer.notifyBySms,
+    notifyByWhatsapp: order.customer.notifyByWhatsapp,
   }).catch(console.error)
 
   revalidatePath('/admin/orders')

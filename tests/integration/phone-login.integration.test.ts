@@ -17,16 +17,14 @@ vi.mock('@/utils/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/notifications/sms', () => ({ sendSms: vi.fn() }))
 vi.mock('@/lib/settings', () => ({
-  getLoginSettings: vi.fn(),
-  getNotificationSettings: vi.fn(),
-  isArkeselConfigured: vi.fn(),
+  isPhoneLoginAvailable: vi.fn(),
 }))
 
 import { prisma } from '@/lib/prisma'
 import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { resolveCustomerForPhoneLogin, syntheticEmailForPhone } from '@/lib/auth'
-import { getLoginSettings, getNotificationSettings, isArkeselConfigured } from '@/lib/settings'
+import { isPhoneLoginAvailable } from '@/lib/settings'
 import { sendSms } from '@/lib/notifications/sms'
 import {
   MAX_OTP_ATTEMPTS,
@@ -76,11 +74,7 @@ beforeEach(() => {
   reg = newRegistry()
   vi.clearAllMocks()
   vi.stubEnv('OTP_HASH_SECRET', 'integration-test-pepper')
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vi.mocked(getLoginSettings).mockResolvedValue({ phoneLoginEnabled: true, emailLoginEnabled: true } as any)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vi.mocked(getNotificationSettings).mockResolvedValue({ smsEnabled: true } as any)
-  vi.mocked(isArkeselConfigured).mockReturnValue(true)
+  vi.mocked(isPhoneLoginAvailable).mockResolvedValue(true)
   sendSmsMock.mockResolvedValue({ success: true, data: null })
   stubSupabaseSessionMinting()
 })

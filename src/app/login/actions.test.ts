@@ -1,7 +1,7 @@
 /**
  * Unit tests for requestPhoneOtp / verifyPhoneOtp in src/app/login/actions.ts.
  *
- * Everything crossing a boundary is mocked — Prisma, sendSms, the settings accessors, and both
+ * Everything crossing a boundary is mocked — Prisma, sendSms, the settings accessor, and both
  * auth helpers. No real database, no real SMS, no real Supabase call.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,9 +17,7 @@ vi.mock('@/lib/prisma', () => ({
   },
 }))
 vi.mock('@/lib/settings', () => ({
-  getLoginSettings: vi.fn(),
-  getNotificationSettings: vi.fn(),
-  isArkeselConfigured: vi.fn(),
+  isPhoneLoginAvailable: vi.fn(),
 }))
 vi.mock('@/lib/notifications/sms', () => ({ sendSms: vi.fn() }))
 vi.mock('@/lib/auth', () => ({
@@ -29,7 +27,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/utils/supabase/server', () => ({ createClient: vi.fn() }))
 
 import { prisma } from '@/lib/prisma'
-import { getLoginSettings, getNotificationSettings, isArkeselConfigured } from '@/lib/settings'
+import { isPhoneLoginAvailable } from '@/lib/settings'
 import { sendSms } from '@/lib/notifications/sms'
 import { mintSessionForAuthEmail, resolveCustomerForPhoneLogin } from '@/lib/auth'
 import { MAX_OTP_ATTEMPTS, hashOtpCode } from '@/lib/otp'
@@ -39,9 +37,7 @@ const otpFindFirst = vi.mocked(prisma.otpCode.findFirst)
 const otpCreate = vi.mocked(prisma.otpCode.create)
 const otpUpdate = vi.mocked(prisma.otpCode.update)
 const otpUpdateMany = vi.mocked(prisma.otpCode.updateMany)
-const loginSettingsMock = vi.mocked(getLoginSettings)
-const notifSettingsMock = vi.mocked(getNotificationSettings)
-const arkeselConfiguredMock = vi.mocked(isArkeselConfigured)
+const phoneLoginAvailableMock = vi.mocked(isPhoneLoginAvailable)
 const sendSmsMock = vi.mocked(sendSms)
 const resolveCustomerMock = vi.mocked(resolveCustomerForPhoneLogin)
 const mintSessionMock = vi.mocked(mintSessionForAuthEmail)
@@ -51,20 +47,9 @@ const NORMALIZED_PHONE = '233241234567'
 const TEST_SECRET = 'test-otp-pepper'
 const CORRECT_CODE = '123456'
 
-/** Phone login fully available: toggle on, SMS on, Arkesel configured in env. */
-function stubAvailable(
-  login: Record<string, unknown> = {},
-  notif: Record<string, unknown> = {},
-  arkeselConfigured = true
-) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  loginSettingsMock.mockResolvedValue({ phoneLoginEnabled: true, emailLoginEnabled: true, ...login } as any)
-  notifSettingsMock.mockResolvedValue({
-    smsEnabled: true,
-    ...notif,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any)
-  arkeselConfiguredMock.mockReturnValue(arkeselConfigured)
+/** Phone login fully available: SMS on, Arkesel configured in env. */
+function stubAvailable(available = true) {
+  phoneLoginAvailableMock.mockResolvedValue(available)
 }
 
 function otpRow(overrides: Record<string, unknown> = {}) {
@@ -138,8 +123,8 @@ describe('requestPhoneOtp', () => {
   })
 
   describe('availability re-checks — every call, not just at page render', () => {
-    it('rejects when phone login is toggled off', async () => {
-      stubAvailable({ phoneLoginEnabled: false })
+    it('rejects when phone login is unavailable (SMS disabled or Arkesel unconfigured)', async () => {
+      stubAvailable(false)
 
       const result = await requestPhoneOtp(RAW_PHONE)
 
@@ -147,39 +132,17 @@ describe('requestPhoneOtp', () => {
       expect(otpCreate).not.toHaveBeenCalled()
     })
 
-    it('rejects when the SMS channel is disabled', async () => {
-      stubAvailable({}, { smsEnabled: false })
-
-      const result = await requestPhoneOtp(RAW_PHONE)
-
-      expect(result.ok).toBe(false)
-      expect(otpCreate).not.toHaveBeenCalled()
-    })
-
-    it('rejects when Arkesel is not configured in env', async () => {
-      stubAvailable({}, {}, false)
-
-      const result = await requestPhoneOtp(RAW_PHONE)
-
-      expect(result.ok).toBe(false)
-      expect(otpCreate).not.toHaveBeenCalled()
-    })
-
-    // A caller poking at this endpoint directly must not learn which part is misconfigured.
-    it('gives the same generic message regardless of which check failed', async () => {
-      stubAvailable({ phoneLoginEnabled: false })
+    // A caller poking at this endpoint directly must not learn which part is misconfigured —
+    // isPhoneLoginAvailable collapses every reason into one boolean, so there is only one message.
+    it('gives the same generic message every time availability is false', async () => {
+      stubAvailable(false)
       const a = await requestPhoneOtp(RAW_PHONE)
-      stubAvailable({}, { smsEnabled: false })
       const b = await requestPhoneOtp(RAW_PHONE)
-      stubAvailable({}, {}, false)
-      const c = await requestPhoneOtp(RAW_PHONE)
 
       expect(a.ok).toBe(false)
       expect(b.ok).toBe(false)
-      expect(c.ok).toBe(false)
-      if (!a.ok && !b.ok && !c.ok) {
+      if (!a.ok && !b.ok) {
         expect(a.error).toBe(b.error)
-        expect(b.error).toBe(c.error)
       }
     })
   })
@@ -341,22 +304,13 @@ describe('verifyPhoneOtp', () => {
   })
 
   describe('availability re-checks', () => {
-    it('rejects when phone login is toggled off, before touching any OtpCode row', async () => {
-      stubAvailable({ phoneLoginEnabled: false })
+    it('rejects when phone login is unavailable, before touching any OtpCode row', async () => {
+      stubAvailable(false)
 
       const result = await verifyPhoneOtp(RAW_PHONE, CORRECT_CODE)
 
       expect(result.ok).toBe(false)
       expect(otpFindFirst).not.toHaveBeenCalled()
-      expect(mintSessionMock).not.toHaveBeenCalled()
-    })
-
-    it('rejects when the SMS channel is disabled', async () => {
-      stubAvailable({}, { smsEnabled: false })
-
-      const result = await verifyPhoneOtp(RAW_PHONE, CORRECT_CODE)
-
-      expect(result.ok).toBe(false)
       expect(mintSessionMock).not.toHaveBeenCalled()
     })
   })

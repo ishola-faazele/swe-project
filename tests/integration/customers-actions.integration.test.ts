@@ -10,8 +10,8 @@ vi.mock('@/utils/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 // REQUIRED, not optional. createCustomer now fires notifyAccountCreated, and without this mock
 // every test in this file would execute the real notification module against the real test
-// database — which lazily creates NotificationSettings/LoginSettings rows via the accessors'
-// find-or-create, a side effect the TestRegistry/cleanupRegistry pattern does not track or clean up.
+// database — which lazily creates a NotificationSettings row via the accessor's find-or-create,
+// a side effect the TestRegistry/cleanupRegistry pattern does not track or clean up.
 vi.mock('@/lib/notifications', () => ({ notifyAccountCreated: vi.fn().mockResolvedValue({}) }))
 // The service-role client is a network boundary — never exercised live from the integration suite.
 vi.mock('@/utils/supabase/admin', () => ({ createAdminClient: vi.fn() }))

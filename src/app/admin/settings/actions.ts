@@ -4,21 +4,34 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/auth'
 import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
-import { getLoginSettings, getNotificationSettings } from '@/lib/settings'
-import { updateLoginSettingsSchema, updateNotificationSettingsSchema } from '@/lib/validation'
-import type { LoginSettings, NotificationSettings } from '@prisma/client'
+import { getNotificationSettings } from '@/lib/settings'
+import { updateNotificationSettingsSchema } from '@/lib/validation'
+import type { NotificationSettings } from '@prisma/client'
 import { z } from 'zod'
+
+/**
+ * The Auth tab's read-only display data — the admin's own login identity (ADMIN_EMAIL/
+ * ADMIN_PHONE, set at deploy time via env, never editable here). Nothing here is a toggle: it's
+ * purely informational.
+ */
+export type AuthDisplay = {
+  adminEmail: string | null
+  adminPhone: string | null
+}
 
 export async function getSettings(): Promise<{
   notifications: NotificationSettings
-  login: LoginSettings
+  auth: AuthDisplay
 }> {
   await requireAdmin() // throws AuthError — reads have no expected-error case, so no ActionResult
-  const [notifications, login] = await Promise.all([
-    getNotificationSettings(),
-    getLoginSettings(),
-  ])
-  return { notifications, login }
+  const notifications = await getNotificationSettings()
+  return {
+    notifications,
+    auth: {
+      adminEmail: process.env.ADMIN_EMAIL || null,
+      adminPhone: process.env.ADMIN_PHONE || null,
+    },
+  }
 }
 
 export async function updateNotificationSettings(
@@ -35,8 +48,11 @@ export async function updateNotificationSettings(
       where: { id: existing.id },
       data: {
         emailEnabled: input.emailEnabled,
+        alertEmail: input.alertEmail ?? null,
         smsEnabled: input.smsEnabled,
+        alertPhone: input.alertPhone ?? null,
         whatsappEnabled: input.whatsappEnabled,
+        alertWhatsapp: input.alertWhatsapp ?? null,
       },
     })
   } catch (err) {
@@ -44,30 +60,6 @@ export async function updateNotificationSettings(
   }
 
   revalidatePath('/admin/settings')
-  return okResult(row)
-}
-
-export async function updateLoginSettings(
-  data: z.input<typeof updateLoginSettingsSchema>
-): Promise<ActionResult<LoginSettings>> {
-  await requireAdmin()
-
-  let row: LoginSettings
-  try {
-    const input = updateLoginSettingsSchema.parse(data)
-    const existing = await getLoginSettings()
-
-    row = await prisma.loginSettings.update({
-      where: { id: existing.id },
-      data: {
-        emailLoginEnabled: input.emailLoginEnabled,
-        phoneLoginEnabled: input.phoneLoginEnabled,
-      },
-    })
-  } catch (err) {
-    return toErrorResult(err, 'Could not save these login settings. Please try again.')
-  }
-
-  revalidatePath('/admin/settings')
+  revalidatePath('/login')
   return okResult(row)
 }

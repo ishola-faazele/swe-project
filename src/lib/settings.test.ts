@@ -10,24 +10,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     notificationSettings: { findFirst: vi.fn(), create: vi.fn() },
-    loginSettings: { findFirst: vi.fn(), create: vi.fn() },
   },
 }))
 
 import { prisma } from '@/lib/prisma'
-import { getLoginSettings, getNotificationSettings, isArkeselConfigured } from './settings'
+import { getNotificationSettings, isArkeselConfigured, isPhoneLoginAvailable } from './settings'
 
 const notifFindFirst = vi.mocked(prisma.notificationSettings.findFirst)
 const notifCreate = vi.mocked(prisma.notificationSettings.create)
-const loginFindFirst = vi.mocked(prisma.loginSettings.findFirst)
-const loginCreate = vi.mocked(prisma.loginSettings.create)
 
 function notificationRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'settings-1',
     emailEnabled: true,
+    alertEmail: null,
     smsEnabled: true,
+    alertPhone: null,
     whatsappEnabled: true,
+    alertWhatsapp: null,
     updatedAt: new Date(),
     ...overrides,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,31 +74,6 @@ describe('getNotificationSettings', () => {
   })
 })
 
-describe('getLoginSettings', () => {
-  it('returns the existing row without creating a second one', async () => {
-    const row = { id: 'login-1', emailLoginEnabled: true, phoneLoginEnabled: false, updatedAt: new Date() }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    loginFindFirst.mockResolvedValueOnce(row as any)
-
-    const result = await getLoginSettings()
-
-    expect(result).toEqual(row)
-    expect(loginCreate).not.toHaveBeenCalled()
-  })
-
-  it('creates a row from schema defaults when none exists yet', async () => {
-    loginFindFirst.mockResolvedValueOnce(null)
-    const created = { id: 'login-1', emailLoginEnabled: true, phoneLoginEnabled: false, updatedAt: new Date() }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    loginCreate.mockResolvedValueOnce(created as any)
-
-    const result = await getLoginSettings()
-
-    expect(loginCreate).toHaveBeenCalledWith({ data: {} })
-    expect(result).toEqual(created)
-  })
-})
-
 describe('isArkeselConfigured', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
@@ -126,5 +101,35 @@ describe('isArkeselConfigured', () => {
     vi.stubEnv('ARKESEL_API_KEY', '')
     vi.stubEnv('ARKESEL_SENDER_ID', '')
     expect(isArkeselConfigured()).toBe(false)
+  })
+})
+
+describe('isPhoneLoginAvailable', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('is true when SMS is enabled and Arkesel is configured', async () => {
+    vi.stubEnv('ARKESEL_API_KEY', 'key')
+    vi.stubEnv('ARKESEL_SENDER_ID', 'Rostty')
+    notifFindFirst.mockResolvedValueOnce(notificationRow({ smsEnabled: true }))
+
+    expect(await isPhoneLoginAvailable()).toBe(true)
+  })
+
+  it('is false when SMS is toggled off, even with Arkesel configured', async () => {
+    vi.stubEnv('ARKESEL_API_KEY', 'key')
+    vi.stubEnv('ARKESEL_SENDER_ID', 'Rostty')
+    notifFindFirst.mockResolvedValueOnce(notificationRow({ smsEnabled: false }))
+
+    expect(await isPhoneLoginAvailable()).toBe(false)
+  })
+
+  it('is false when SMS is enabled but Arkesel is not configured', async () => {
+    vi.stubEnv('ARKESEL_API_KEY', '')
+    vi.stubEnv('ARKESEL_SENDER_ID', '')
+    notifFindFirst.mockResolvedValueOnce(notificationRow({ smsEnabled: true }))
+
+    expect(await isPhoneLoginAvailable()).toBe(false)
   })
 })

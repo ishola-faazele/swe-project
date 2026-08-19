@@ -149,12 +149,13 @@ describe('orders actions (integration)', () => {
       expect(orderDishes[0].dishId).toBe(dish.id)
     })
 
-    it('passes ADMIN_ALERT_PHONE to notifyLowStock when a deduction crosses the threshold', async () => {
-      // ADMIN_ALERT_PHONE is genuinely unset for integration runs (the config loads only
-      // .env.test, which carries just the DB URLs), so it is set explicitly here and restored in
-      // the finally block — leaking it would silently change how every later test file behaves.
-      const previousAdminAlertPhone = process.env.ADMIN_ALERT_PHONE
-      process.env.ADMIN_ALERT_PHONE = '0241234567'
+    it("passes the admin's NotificationSettings.alertPhone to notifyLowStock when a deduction crosses the threshold", async () => {
+      // The alert destination is DB-backed, not env-backed (see NotificationSettings' schema
+      // comment) — no NotificationSettings row exists yet for integration runs, so one is seeded
+      // here and cleaned up in the finally block, same care the old env-var version took not to
+      // leak state into later test files.
+      await prisma.notificationSettings.deleteMany()
+      await prisma.notificationSettings.create({ data: { alertPhone: '233241234567' } })
 
       try {
         // 10 in stock, threshold 8, one dish consuming 5 → 5 <= 8 after deduction, so the
@@ -181,14 +182,10 @@ describe('orders actions (integration)', () => {
         expect(afterDeduction.currentStock).toBeLessThanOrEqual(afterDeduction.minimumThreshold)
 
         expect(notifyLowStockMock).toHaveBeenCalledWith(
-          expect.objectContaining({ itemName: rice.name, adminPhone: '0241234567' })
+          expect.objectContaining({ itemName: rice.name, adminPhone: '233241234567' })
         )
       } finally {
-        if (previousAdminAlertPhone === undefined) {
-          delete process.env.ADMIN_ALERT_PHONE
-        } else {
-          process.env.ADMIN_ALERT_PHONE = previousAdminAlertPhone
-        }
+        await prisma.notificationSettings.deleteMany()
       }
     })
 

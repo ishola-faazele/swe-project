@@ -30,7 +30,13 @@ import { getCurrentDbUser } from '@/lib/auth'
 import { sendSms } from '@/lib/notifications/sms'
 import { sendVerificationEmail } from '@/lib/notifications/email'
 import { MAX_OTP_ATTEMPTS, hashOtpCode } from '@/lib/otp'
-import { requestAddEmail, requestAddPhone, verifyAddEmail, verifyAddPhone } from './actions'
+import {
+  requestAddEmail,
+  requestAddPhone,
+  verifyAddEmail,
+  verifyAddPhone,
+  updateNotificationPreferences,
+} from './actions'
 
 const userFindUnique = vi.mocked(prisma.user.findUnique)
 const userUpdate = vi.mocked(prisma.user.update)
@@ -291,5 +297,66 @@ describe('requestAddPhone / verifyAddPhone', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.code).toBe('NOT_FOUND')
+  })
+})
+
+describe('updateNotificationPreferences', () => {
+  const PREFS = {
+    notifyByEmail: true,
+    alertEmail: 'alerts@example.com',
+    notifyBySms: true,
+    alertPhone: NORMALIZED_PHONE,
+    notifyByWhatsapp: false,
+    alertWhatsapp: '',
+  }
+
+  it('writes the toggles and alert contacts to the current user only, normalizing the phone ones', async () => {
+    const result = await updateNotificationPreferences(PREFS)
+
+    expect(result.ok).toBe(true)
+    expect(userUpdate).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        notifyByEmail: true,
+        alertEmail: 'alerts@example.com',
+        notifyBySms: true,
+        alertPhone: NORMALIZED_PHONE,
+        notifyByWhatsapp: false,
+        alertWhatsapp: null,
+      },
+      select: {
+        notifyByEmail: true,
+        alertEmail: true,
+        notifyBySms: true,
+        alertPhone: true,
+        notifyByWhatsapp: true,
+        alertWhatsapp: true,
+      },
+    })
+  })
+
+  it('rejects when not signed in, writing nothing', async () => {
+    getCurrentDbUserMock.mockResolvedValue(null)
+
+    const result = await updateNotificationPreferences(PREFS)
+
+    expect(result.ok).toBe(false)
+    expect(userUpdate).not.toHaveBeenCalled()
+  })
+
+  it('rejects a malformed alert email without writing anything', async () => {
+    const result = await updateNotificationPreferences({ ...PREFS, alertEmail: 'not-an-email' })
+
+    expect(result.ok).toBe(false)
+    expect(userUpdate).not.toHaveBeenCalled()
+  })
+
+  it('a blank alert phone clears the field to null rather than rejecting', async () => {
+    const result = await updateNotificationPreferences({ ...PREFS, alertPhone: '' })
+
+    expect(result.ok).toBe(true)
+    expect(userUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ alertPhone: null }) })
+    )
   })
 })

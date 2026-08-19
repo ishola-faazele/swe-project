@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label'
 import { LoginSubmitButton } from '@/components/layout/LoginSubmitButton'
 import { Tabs, TabsList, TabsPanel, TabsTrigger } from '@/components/ui/tabs'
 import { PhoneLoginForm } from './PhoneLoginForm'
-import { getLoginSettings, getNotificationSettings, isArkeselConfigured } from '@/lib/settings'
+import { isPhoneLoginAvailable } from '@/lib/settings'
 import { cn } from '@/lib/utils'
 
 export default async function LoginPage({
@@ -16,22 +16,13 @@ export default async function LoginPage({
   const message = resolvedSearchParams?.message
   const isPositive = message ? message.toLowerCase().includes('check') : false
 
-  // Read the settings DIRECTLY, not through getSettings() in admin/settings/actions.ts — that one
-  // is requireAdmin()-gated and would reject every visitor to this public, pre-auth page.
-  const [loginSettings, notifSettings] = await Promise.all([
-    getLoginSettings(),
-    getNotificationSettings(),
-  ])
-
-  // Gated on SMS being genuinely deliverable, not just on the login toggle: a Phone tab that can
-  // collect a number but never send a code is worse than no tab at all.
+  // Gated on SMS being genuinely deliverable, not on a manual login toggle — there isn't one. A
+  // Phone tab that can collect a number but never send a code is worse than no tab at all.
   //
   // Decided HERE, server-side, so the tab is absent from the rendered HTML entirely rather than
   // hidden by a client-side conditional — a customer with dev tools open never finds a route to
   // nowhere. The server actions re-check this independently regardless; this is the UX half.
-  const phoneLoginAvailable = Boolean(
-    loginSettings.phoneLoginEnabled && notifSettings.smsEnabled && isArkeselConfigured()
-  )
+  const phoneLoginAvailable = await isPhoneLoginAvailable()
 
   const emailForm = (
     <form className="space-y-4">

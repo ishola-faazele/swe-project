@@ -5,10 +5,11 @@ import { prisma } from '@/lib/prisma'
 import { getCurrentDbUser } from '@/lib/auth'
 import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { toGhanaE164 } from '@/lib/phone'
-import { addEmailSchema } from '@/lib/validation'
+import { addEmailSchema, updateNotificationPreferencesSchema } from '@/lib/validation'
 import { sendSms } from '@/lib/notifications/sms'
 import { sendVerificationEmail } from '@/lib/notifications/email'
 import type { User } from '@prisma/client'
+import { z } from 'zod'
 import {
   MAX_OTP_ATTEMPTS,
   OTP_COOLDOWN_MS,
@@ -209,4 +210,56 @@ export async function requestAddPhone(rawPhone: string): Promise<ActionResult<vo
 
 export async function verifyAddPhone(rawPhone: string, code: string): Promise<ActionResult<void>> {
   return verifyAddContact(PHONE_CHANNEL, rawPhone, code)
+}
+
+/**
+ * The customer's own per-channel notification setup — mirrors the admin's Notifications tab at
+ * /admin/settings exactly: a toggle PLUS an alert-destination contact per channel, scoped to the
+ * CURRENTLY authenticated customer's own row rather than a global singleton. The alert contacts
+ * are deliberately independent of this customer's login email/phone — a customer can route order
+ * alerts to a different number or address than the one they sign in with (see User.alertEmail's
+ * schema comment for the fallback-to-login-contact behavior when left blank).
+ *
+ * The toggle is checked ALONGSIDE, not instead of, the admin's global channel toggle: a channel
+ * only actually sends when both this customer's flag and NotificationSettings' matching toggle
+ * are true (see notifyOrderStatusChange in src/lib/notifications/index.ts).
+ */
+type NotificationPrefs = Pick<
+  User,
+  'notifyByEmail' | 'alertEmail' | 'notifyBySms' | 'alertPhone' | 'notifyByWhatsapp' | 'alertWhatsapp'
+>
+
+export async function updateNotificationPreferences(
+  data: z.input<typeof updateNotificationPreferencesSchema>
+): Promise<ActionResult<NotificationPrefs>> {
+  try {
+    const user = await getCurrentDbUser()
+    if (!user) return { ok: false, error: NOT_SIGNED_IN, code: 'VALIDATION' }
+
+    const input = updateNotificationPreferencesSchema.parse(data)
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        notifyByEmail: input.notifyByEmail,
+        alertEmail: input.alertEmail ?? null,
+        notifyBySms: input.notifyBySms,
+        alertPhone: input.alertPhone ?? null,
+        notifyByWhatsapp: input.notifyByWhatsapp,
+        alertWhatsapp: input.alertWhatsapp ?? null,
+      },
+      select: {
+        notifyByEmail: true,
+        alertEmail: true,
+        notifyBySms: true,
+        alertPhone: true,
+        notifyByWhatsapp: true,
+        alertWhatsapp: true,
+      },
+    })
+
+    revalidatePath('/dashboard')
+    return okResult(updated)
+  } catch (err) {
+    return toErrorResult(err, 'Could not save your notification preferences. Please try again.')
+  }
 }
