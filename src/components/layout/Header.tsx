@@ -28,10 +28,6 @@ export async function Header() {
 
       {/* Right: user + status */}
       <div className="flex shrink-0 items-center gap-3 sm:gap-5">
-        <div className="hidden items-center gap-2 sm:flex">
-          <Circle className="h-2 w-2 fill-emerald-400 text-emerald-400" aria-hidden="true" />
-          <span className="meta-text">ONLINE</span>
-        </div>
 
         {user ? (
           <div className="flex items-center gap-2 sm:gap-4">

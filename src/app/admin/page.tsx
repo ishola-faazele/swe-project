@@ -123,9 +123,6 @@ export default async function AdminDashboardPage() {
             })}
           </p>
         </div>
-        <div className="shrink-0 rounded border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-mono-data text-primary">
-          LIVE DATA
-        </div>
       </div>
 
       {/* Stat cards — 2×3 at lg, since the due-date pair grew this from 4 to 6 */}
