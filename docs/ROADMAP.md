@@ -12,10 +12,12 @@ this file is the short, update-as-you-go version).
 | Phase 1 | Quick-Win Polish Pack + enterprise UI overhaul, two rounds (see below) | `feature/polish-pack` → `../swe-project-polish-pack` | ✅ Merged into `main` — round 1 `d280d7a`, round 2 `28b98a3` |
 | Phase 2 | Menu & Recipe System | `feature/menu-recipe-system` → `../swe-project-menu-recipe-system` | ✅ Merged into `main` (`e6f2854`) |
 | Phase 3 | Real Customer Notifications (WhatsApp Business Cloud API + Arkesel SMS) | `feature/whatsapp-arkesel-notifications` → `../swe-project-notifications` | 🔄 Implemented, tested, hardened (252 unit / 90 integration tests). **Not yet merged** — held pending webhook verification and template approval. |
-| Phase 4 | Compounding features (repeat-order, stock-aware fulfillment, weekly snapshot, table search) | — | ⬜ Not started — nothing here has begun |
+| Phase 4 | High Impact, Low Effort (Daily Revenue Snapshot, Quick Shopping List, Top Revenue Dishes, Analytics, Cost Per Plate, Order Calendar) | — | ⬜ Not started |
+| Phase 5 | High Impact, Medium Effort (WhatsApp Notifications, Stock Count Mode, Smart Low-Stock Alerts, Customer Repeat Orders, Predictive Restocking) | — | ⬜ Not started |
+| Phase 6 | Medium Impact, Higher Effort (WhatsApp Order Intake, Kitchen Staff Role, Offline First) | — | ⬜ Not started |
 
-**Naming note:** the roadmap's original "Phase 3" was this compounding-features bucket, now
-renumbered **Phase 4**. Real WhatsApp/SMS notifications took the Phase 3 slot instead because the
+**Naming note:** the roadmap's original "Phase 3" was the "compounding-features" bucket, now
+split into **Phase 4, 5, and 6**. Real WhatsApp/SMS notifications took the Phase 3 slot instead because the
 user set up the Meta Business Platform + Arkesel accounts needed for it, making it the natural
 next dispatch — see `/home/ishola/.claude/plans/no-i-want-you-robust-moore.md`'s Phase 3 section
 for the full plan. If a future session sees "Phase 3" mentioned anywhere outside this file,
@@ -161,12 +163,13 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
    localization, due-date/overdue surfacing, brand asset + PWA wiring.
 3. **Phase 2 — Core value driver (the actual USP, ideally built on Phase 0's stable foundation):**
    Menu/Recipe system, paired eventually with WhatsApp-native order sharing.
-4. **Phase 3 — Compounding, once Phase 2 lands:** repeat-order, stock-aware fulfillment check,
-   weekly snapshot, table search/filter, real SMS if the WhatsApp-link approach proves
-   insufficient.
+4. **Phase 4 — High Impact, Low Effort:** Daily Revenue Snapshot, Quick Reorder Shopping List, "Which Dish Brings the Most Revenue?" Report, Curated Analytics Dashboard, Cost Per Plate Calculator, and Order Calendar View.
+5. **Phase 5 — High Impact, Medium Effort:** Stock Count Mode + Variance Tracker, Smart Low-Stock Alerts with Context, Customer Repeat Orders, and Predictive Restocking (simplified). Also involves tying in the Phase 3 WhatsApp notifications.
+6. **Phase 6 — Medium Impact, Higher Effort:** WhatsApp Order Intake, Kitchen Staff Role, and Offline First architecture.
 
 ## 7. Decisions log
 
+- **2026-08-19** — Evaluated 20 potential USPs against the reality of a small West African catering business. Kept/modified 6, deferred 8, skipped 5, and proposed 8 new practical USPs (e.g., Daily Revenue Snapshot, Customizable Shopping List, Order Calendar View). Reorganized the remaining roadmap into Phases 4, 5, and 6 based on Impact vs Effort.
 - **2026-08-17** — User chose to build Phase 2 (Menu & Recipe System) before Phase 0, against
   the PM recommendation, as an explicit accepted tradeoff (not an oversight).
 - **2026-08-17** — User then chose to run Phase 0 and Phase 1 in parallel with the already
