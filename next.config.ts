@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   // request. That breaks hot-reload, and this Next.js version's dev-mode hydrate() call is
   // wired directly to establishing that socket, so it can take client-side interactivity down
   // with it. See node_modules/next/dist/docs/.../allowedDevOrigins.md.
-  allowedDevOrigins: ["127.0.0.1"],
+  allowedDevOrigins: ["127.0.0.1", "10.205.46.41"],
   turbopack: {},
 };
 
