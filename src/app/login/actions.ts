@@ -3,7 +3,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { mintSessionForAuthEmail, resolveCustomerForPhoneLogin } from '@/lib/auth'
+import { mintSessionForAuthEmail, resolveCustomerForPhoneLogin, isAdminIdentity } from '@/lib/auth'
 import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { toGhanaE164 } from '@/lib/phone'
 import { isPhoneLoginAvailable } from '@/lib/settings'
@@ -30,6 +30,20 @@ export async function login(formData: FormData) {
   // type-casting here for convenience
   // in practice, you should validate your inputs
   const email = formData.get('email') as string
+
+  // GUARD: Only allow login if user exists in DB or is the Admin
+  const isAuthorized = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { email },
+        { authEmail: email }
+      ]
+    }
+  }) || isAdminIdentity({ email })
+
+  if (!isAuthorized) {
+    redirect(`/login?message=No account found. Please contact the business to place an order.`)
+  }
 
   const response = await supabase.auth.signInWithOtp({
     email,
@@ -63,6 +77,15 @@ export async function requestPhoneOtp(rawPhone: string): Promise<ActionResult<vo
     const phone = toGhanaE164(rawPhone)
     if (!phone) {
       return { ok: false, error: 'Enter a valid Ghanaian phone number.', code: 'VALIDATION' }
+    }
+
+    // GUARD: Only allow login if user exists in DB or is the Admin
+    const isAuthorized = await prisma.user.findFirst({
+      where: { phone }
+    }) || isAdminIdentity({ phone })
+
+    if (!isAuthorized) {
+      return { ok: false, error: 'No account found. Please contact the business to place an order.', code: 'VALIDATION' }
     }
 
     // Per-phone cooldown. Guards the business's real SMS credit balance against a repeated tap —

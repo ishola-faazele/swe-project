@@ -19,7 +19,7 @@ export class AuthError extends Error {}
  * form, which is exactly the bug this fixes: the admin's own phone login was being treated as a
  * brand-new customer because "0200480505" !== "233200480505".
  */
-function isAdminIdentity(candidate: { email?: string | null; phone?: string | null }): boolean {
+export function isAdminIdentity(candidate: { email?: string | null; phone?: string | null }): boolean {
   const adminPhone = toGhanaE164(process.env.ADMIN_PHONE)
   const candidatePhone = toGhanaE164(candidate.phone)
   return Boolean(
