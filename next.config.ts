@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
   // wired directly to establishing that socket, so it can take client-side interactivity down
   // with it. See node_modules/next/dist/docs/.../allowedDevOrigins.md.
   allowedDevOrigins: ["127.0.0.1"],
+  turbopack: {},
 };
 
 const withSerwist = withSerwistInit({

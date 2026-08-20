@@ -3,8 +3,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { LogOut, User, Settings } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { MobileNavTrigger } from './MobileNavTrigger'
+import { CustomerMobileNavTrigger } from './CustomerMobileNavTrigger'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { OfflineIndicator } from './OfflineIndicator'
 import {
@@ -17,9 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-// Stays an async Server Component — MobileNavTrigger is a Client Component
-// child, which does not pull this file across the boundary.
-export async function Header() {
+export async function CustomerHeader() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -34,7 +31,7 @@ export async function Header() {
   return (
     <header className="sticky top-0 z-10 flex h-[60px] w-full items-center justify-between gap-4 border-b border-border bg-card px-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-2">
-        <MobileNavTrigger />
+        <CustomerMobileNavTrigger />
 
         {/* Below md the sidebar is hidden, so this is the only persistently
             visible brand mark. */}
@@ -42,7 +39,7 @@ export async function Header() {
           <Image src="/rosty-logo.jpeg" alt="Chop with Rostty" fill sizes="48px" className="object-contain" />
         </div>
 
-        <span className="eyebrow truncate">Admin Portal</span>
+        <span className="eyebrow truncate">Customer Portal</span>
       </div>
 
       {/* Right: user + status */}
@@ -59,7 +56,7 @@ export async function Header() {
                   <User className="h-4 w-4" />
                 </div>
                 <div className="hidden text-left sm:block">
-                  <p className="text-sm font-medium leading-none text-foreground">{user.user_metadata?.name || 'Admin'}</p>
+                  <p className="text-sm font-medium leading-none text-foreground">{user.user_metadata?.name || 'Customer'}</p>
                 </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -74,13 +71,14 @@ export async function Header() {
                   </DropdownMenuLabel>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="p-0" render={<Link href="/admin/settings" />}>
+                <DropdownMenuItem className="p-0" render={<Link href="/dashboard/settings" />}>
                   <div className="flex w-full items-center px-2 py-1.5 cursor-pointer">
                     <Settings className="mr-2 h-4 w-4" />
                     <span>Settings</span>
                   </div>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+
                 <DropdownMenuItem className="p-0 text-destructive focus:bg-destructive/10 focus:text-destructive" render={<form action="/auth/signout" method="post" className="w-full" />}>
                   <button type="submit" className="flex w-full items-center px-2 py-1.5 cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />

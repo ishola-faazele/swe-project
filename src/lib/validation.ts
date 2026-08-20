@@ -123,50 +123,19 @@ export const updateInventoryItemSchema = z.object({
   category: z.enum(Category, 'Select a valid category.').optional(),
 })
 
-/**
- * A customer must not prefer a login channel they have no contact info for — an EMAIL preference
- * with no email on file would produce an account-creation notification with nowhere to send it,
- * and a phone-login attempt that can never resolve.
- *
- * Left optional so callers that don't supply the field at all still pass; createCustomer computes
- * an explicit value in that case rather than leaning on the column default.
- */
-const preferredLoginMethodMatchesContactField = (v: {
-  email?: string
-  phone?: string
-  preferredLoginMethod?: LoginMethod
-}) =>
-  !v.preferredLoginMethod ||
-  (v.preferredLoginMethod === 'EMAIL' ? Boolean(v.email) : Boolean(v.phone))
-
-const PREFERRED_LOGIN_METHOD_MESSAGE =
-  'Preferred login method must match a contact field that is actually filled in.'
-
-const preferredLoginMethodField = z.enum(LoginMethod, 'Select a valid preferred login method.').optional()
 
 export const createCustomerSchema = z
   .object({
     name: z.string().trim().min(1, 'A contact name is required.'),
     email: optionalContactField,
     phone: optionalContactField,
-    preferredLoginMethod: preferredLoginMethodField,
+    notes: z.string().trim().optional(),
   })
-  .refine(preferredLoginMethodMatchesContactField, { message: PREFERRED_LOGIN_METHOD_MESSAGE })
 
-/**
- * updateCustomer deliberately does NOT accept email or phone — once the admin sets a contact
- * method at creation, it's write-once. Only the customer themselves, logged in, can fill a
- * missing slot (see src/app/dashboard/actions.ts), and never change one that's already set. Only
- * `name` and `preferredLoginMethod` are genuinely editable here.
- *
- * `preferredLoginMethod` still can't be validated against "a contact field that's actually
- * filled in" at the schema level, since the payload no longer carries email/phone at all — that
- * check happens in updateCustomer itself, against the row's EXISTING stored values.
- */
 export const updateCustomerSchema = z.object({
   id: idSchema,
   name: z.string().trim().min(1, 'A contact name is required.'),
-  preferredLoginMethod: preferredLoginMethodField,
+  notes: z.string().trim().optional(),
 })
 
 /**

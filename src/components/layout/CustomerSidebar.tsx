@@ -5,30 +5,20 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
-  Users,
-  Package,
-  ShoppingCart,
   UtensilsCrossed,
-  Settings,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { label: 'OPERATIONS', items: [
-    { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, exact: true },
-    { name: 'Orders',    href: '/admin/orders', icon: ShoppingCart, exact: false },
-  ]},
-  { label: 'MANAGEMENT', items: [
-    { name: 'Inventory', href: '/admin/inventory', icon: Package, exact: false },
-    { name: 'Menu',      href: '/admin/menu', icon: UtensilsCrossed, exact: false },
-    { name: 'Customers', href: '/admin/customers', icon: Users, exact: false },
-    { name: 'Settings', href: '/admin/settings', icon: Settings, exact: false },
+  { label: 'CUSTOMER PORTAL', items: [
+    { name: 'My Orders', href: '/dashboard', icon: LayoutDashboard, exact: true },
+    { name: 'Menu',      href: '/dashboard/menu', icon: UtensilsCrossed, exact: false },
   ]},
 ]
 
-interface SidebarProps {
+interface CustomerSidebarProps {
   /** Called by the mobile drawer to close itself when a link is tapped. */
   onNavigate?: () => void
   /** Desktop collapsed state — hides labels and shows icon-only rail. */
@@ -37,7 +27,7 @@ interface SidebarProps {
   onToggleCollapse?: () => void
 }
 
-export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse }: SidebarProps) {
+export function CustomerSidebar({ onNavigate, collapsed = false, onToggleCollapse }: CustomerSidebarProps) {
   const pathname = usePathname()
 
   function isActive(href: string, exact: boolean) {
@@ -53,7 +43,7 @@ export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse }: Sid
     >
       {/* ── Logo ──────────────────────────────────────────────────────── */}
       <Link
-        href="/admin"
+        href="/dashboard"
         className={cn(
           'flex h-[60px] shrink-0 items-center border-b border-sidebar-border transition-all duration-200 hover:bg-sidebar-accent/50',
           collapsed ? 'justify-center px-0' : 'gap-3 px-5'
@@ -81,7 +71,7 @@ export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse }: Sid
 
       {/* ── Nav ───────────────────────────────────────────────────────── */}
       <nav
-        aria-label="Admin navigation"
+        aria-label="Customer navigation"
         className={cn(
           'flex-1 space-y-6 py-6',
           collapsed ? 'px-2' : 'px-3'

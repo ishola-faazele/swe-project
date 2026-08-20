@@ -8,6 +8,7 @@ export function LogoLoader() {
           src="/rosty-logo.jpeg"
           alt="Chop with Rostty"
           fill
+          sizes="48px"
           className="object-cover animate-[pulse_3s_ease-in-out_infinite]"
           priority
         />

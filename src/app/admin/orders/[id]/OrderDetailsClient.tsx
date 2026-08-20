@@ -159,32 +159,7 @@ export function OrderDetailsClient({
     }
   }
 
-  const handleShareReceipt = () => {
-    if (!order.customer.phone) {
-      toast.add({ title: 'No Phone Number', description: 'This customer has no phone number recorded.', type: 'error' })
-      return
-    }
 
-    const lines = [
-      `*Receipt for Order #${order.shortId}*`,
-      `Customer: ${order.customer.name || 'N/A'}`,
-      `Status: ${order.status}`,
-      ``,
-      `*Items:*`,
-      ...order.dishes.map(d => `- ${d.quantity}x ${d.dishName} (${formatCurrency(d.unitPrice)})`),
-      ``,
-      `*Total: ${formatCurrency(order.totalPrice)}*`,
-    ]
-
-    if (order.dueDate) {
-      lines.push(`Due Date: ${order.dueDate.toLocaleDateString(BUSINESS_LOCALE)}`)
-    }
-
-    const text = encodeURIComponent(lines.join('\n'))
-    const phone = order.customer.phone.replace(/[^\d]/g, '')
-    
-    window.open(`https://wa.me/${phone}?text=${text}`, '_blank')
-  }
 
   return (
     <div className="space-y-6">
@@ -195,10 +170,6 @@ export function OrderDetailsClient({
           </Button>
           <h2 className="page-title">Order #{order.shortId}</h2>
         </div>
-        
-        <Button variant="outline" onClick={handleShareReceipt} disabled={!order.customer.phone} className={!order.customer.phone ? 'opacity-50' : ''} title={!order.customer.phone ? 'Customer must have a phone number to share receipt' : 'Share on WhatsApp'}>
-          <Share2 className="mr-1.5 h-4 w-4 text-green-600" aria-hidden="true" /> Share Receipt
-        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -208,6 +179,12 @@ export function OrderDetailsClient({
             <p><span className="font-medium text-muted-foreground">Name:</span> {order.customer.name || "N/A"}</p>
             <p><span className="font-medium text-muted-foreground">Email:</span> {order.customer.email || "N/A"}</p>
             <p><span className="font-medium text-muted-foreground">Phone:</span> {order.customer.phone || "N/A"}</p>
+            {order.customer.notes && (
+              <div className="mt-2 p-2 bg-muted/50 rounded-md text-sm border">
+                <span className="font-medium text-muted-foreground block mb-1 text-xs uppercase tracking-wider">Customer Notes</span>
+                {order.customer.notes}
+              </div>
+            )}
           </div>
         </div>
 

@@ -3,15 +3,11 @@ import { redirect } from 'next/navigation'
 import { getCurrentDbUser } from '@/lib/auth'
 import { BUSINESS_LOCALE, formatCurrency } from '@/lib/currency'
 import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus'
-import { AddContactForm } from './AddContactForm'
 import { NotificationPreferences } from './NotificationPreferences'
-import { Inbox } from 'lucide-react'
+import { Inbox, Package, ShoppingBag, TrendingUp, Clock } from 'lucide-react'
+import { OrderActions } from './OrderActions'
 
 export default async function CustomerDashboardPage() {
-  // The canonical id → authEmail → email resolver (src/lib/auth.ts) — replaces this page's own
-  // former ad-hoc OR-lookup, which predates that resolver and duplicated its logic incompletely
-  // (it never checked authEmail, so a phone-only customer's synthetic identity email would never
-  // match anything here).
   const customer = await getCurrentDbUser()
 
   if (!customer) {
@@ -21,45 +17,56 @@ export default async function CustomerDashboardPage() {
   const orders = await prisma.order.findMany({
     where: { customerId: customer.id },
     orderBy: { createdAt: 'desc' },
+    include: { dishes: true }
   })
 
-  // Never both — createCustomerSchema requires at least one contact method, so a customer can be
-  // missing at most one of the two. Nothing renders once both are set; there's nothing left to add.
   const missingChannel = !customer.email ? 'email' : !customer.phone ? 'phone' : null
+
+  // Calculate quick stats
+  const validOrders = orders.filter(o => o.status !== 'CANCELLED')
+  const totalSpent = validOrders.reduce((sum, o) => sum + o.totalPrice, 0)
+  const totalOrders = validOrders.length
+  const activeOrders = validOrders.filter(o => !['COMPLETED', 'CANCELLED'].includes(o.status)).length
 
   return (
     <div className="flex-1 space-y-6">
       <div>
-        <h1 className="page-title">Your Orders</h1>
-        <p className="text-muted-foreground mt-1">Track the status of all your orders below.</p>
+        <h1 className="page-title">Dashboard</h1>
+        <p className="text-muted-foreground mt-1">Welcome back, {customer.name || 'Customer'}. Track your orders and manage your account.</p>
       </div>
 
-      {missingChannel && (
-        <div className="rounded-xl border bg-card p-6">
-          <h2 className="text-sm font-bold text-foreground">
-            Add your {missingChannel === 'email' ? 'email' : 'phone number'}
-          </h2>
-          <p className="meta-text mt-0.5 mb-4">
-            {missingChannel === 'email'
-              ? "You signed up with a phone number. Add an email so you can also sign in that way."
-              : "You signed up with an email. Add a phone number so you can also sign in that way."}
-          </p>
-          <AddContactForm channel={missingChannel} />
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-xl border bg-card p-6 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-primary/10 text-primary rounded-lg">
+            <TrendingUp className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Total Spent</p>
+            <p className="text-2xl font-bold font-mono-data">{formatCurrency(totalSpent)}</p>
+          </div>
         </div>
-      )}
+        <div className="rounded-xl border bg-card p-6 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-primary/10 text-primary rounded-lg">
+            <ShoppingBag className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Total Orders</p>
+            <p className="text-2xl font-bold font-mono-data">{totalOrders}</p>
+          </div>
+        </div>
+        <div className="rounded-xl border bg-card p-6 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-primary/10 text-primary rounded-lg">
+            <Clock className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Active Orders</p>
+            <p className="text-2xl font-bold font-mono-data">{activeOrders}</p>
+          </div>
+        </div>
+      </div>
 
-      <NotificationPreferences
-        initialPrefs={{
-          notifyByEmail: customer.notifyByEmail,
-          alertEmail: customer.alertEmail,
-          notifyBySms: customer.notifyBySms,
-          alertPhone: customer.alertPhone,
-          notifyByWhatsapp: customer.notifyByWhatsapp,
-          alertWhatsapp: customer.alertWhatsapp,
-        }}
-        loginEmail={customer.email}
-        loginPhone={customer.phone}
-      />
+      <h2 className="text-xl font-bold tracking-tight mb-4">Your Orders</h2>
+
 
       {orders.length === 0 ? (
         <div className="rounded-xl border bg-card">
@@ -74,45 +81,81 @@ export default async function CustomerDashboardPage() {
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
-          {orders.map((order) => (
-            <div key={order.id} className="rounded-xl border bg-card p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 space-y-1">
-                  <p className="font-semibold text-lg">Order #{order.shortId} - {order.description}</p>
-                  <p className="text-sm text-muted-foreground">
-                    Placed on {order.createdAt.toLocaleDateString(BUSINESS_LOCALE, { 
-                      weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
-                    })}
-                  </p>
-                  {order.dueDate && (
-                    <p className="text-sm text-muted-foreground">
-                      Due: {order.dueDate.toLocaleDateString(BUSINESS_LOCALE, { 
-                        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
-                      })}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  {/* The same badge the admin sees — previously a lookalike
-                      built from light-mode pastels on an otherwise-dark app. */}
-                  {(() => {
-                    const cfg = ORDER_STATUS_CONFIG[order.status]
-                    const StatusIcon = cfg.icon
-                    return (
+        <div className="space-y-6">
+          {orders.map((order) => {
+            const cfg = ORDER_STATUS_CONFIG[order.status]
+            const StatusIcon = cfg.icon
+
+            return (
+              <div key={order.id} className="rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col">
+                <div className="p-6 border-b bg-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-semibold text-lg">Order #{order.shortId}</h3>
                       <span className={cfg.className}>
                         <StatusIcon className="h-3 w-3" aria-hidden="true" />
                         {cfg.label}
                       </span>
-                    )
-                  })()}
-                  {order.totalPrice > 0 && (
-                    <span className="table-cell-num text-sm font-medium">{formatCurrency(order.totalPrice)}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Placed on {order.createdAt.toLocaleDateString(BUSINESS_LOCALE, { 
+                        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
+                      })}
+                    </p>
+                    {order.dueDate && (
+                      <p className="text-sm text-muted-foreground">
+                        Due: {order.dueDate.toLocaleDateString(BUSINESS_LOCALE, { 
+                          weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' 
+                        })}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-start sm:items-end gap-3 w-full sm:w-auto mt-2 sm:mt-0">
+                    <OrderActions order={{
+                      shortId: order.shortId,
+                      customerName: customer.name,
+                      status: order.status,
+                      dishes: order.dishes.map(d => ({ quantity: d.quantity, dishName: d.dishName, unitPrice: d.unitPrice })),
+                      totalPrice: order.totalPrice,
+                      dueDate: order.dueDate
+                    }} />
+                  </div>
+                </div>
+                
+                <div className="p-6">
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground">
+                    <Package className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    Order Details
+                  </h4>
+                  {order.description && (
+                    <p className="text-sm text-muted-foreground mb-4 pb-4 border-b">
+                      {order.description}
+                    </p>
                   )}
+                  
+                  {order.dishes.length > 0 ? (
+                    <div className="space-y-2">
+                      {order.dishes.map((dish) => (
+                        <div key={dish.id} className="flex justify-between items-center text-sm">
+                          <span className="text-muted-foreground">
+                            <span className="font-medium text-foreground">{dish.quantity}x</span> {dish.dishName}
+                          </span>
+                          <span className="table-cell-num">{formatCurrency(dish.unitPrice * dish.quantity)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">No specific dishes recorded.</p>
+                  )}
+                  
+                  <div className="mt-4 pt-4 border-t flex justify-between items-center">
+                    <span className="font-semibold">Total</span>
+                    <span className="font-semibold text-lg table-cell-num">{formatCurrency(order.totalPrice)}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

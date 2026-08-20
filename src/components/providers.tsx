@@ -16,7 +16,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
         {/* Toaster wraps the tree so the shared `toast` manager exported from ui/toast renders
             notifications on every route. It renders no DOM of its own beyond the portal. */}
         <Toaster>{children}</Toaster>

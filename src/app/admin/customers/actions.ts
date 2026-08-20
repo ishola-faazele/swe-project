@@ -70,7 +70,7 @@ async function buildAccountMagicLink(email: string): Promise<string | null> {
 }
 
 export async function createCustomer(
-  data: { name: string, email?: string, phone?: string, preferredLoginMethod?: LoginMethod }
+  data: { name: string, email?: string, phone?: string, notes?: string }
 ): Promise<ActionResult<ClientSafeUser>> {
   await requireAdmin()
 
@@ -82,10 +82,9 @@ export async function createCustomer(
 
     // Always computed explicitly. The schema's EMAIL column default is a safe fallback for the
     // name-only customer only — never the source of truth for someone who does have contact info.
-    preferredLoginMethod =
-      input.preferredLoginMethod ?? (input.email ? 'EMAIL' : input.phone ? 'PHONE' : 'EMAIL')
+    preferredLoginMethod = input.email ? 'EMAIL' : input.phone ? 'PHONE' : 'EMAIL'
 
-    if (preferredLoginMethod === 'EMAIL' && input.email) {
+    if (input.email) {
       magicLink = await buildAccountMagicLink(input.email)
     }
 
@@ -97,6 +96,7 @@ export async function createCustomer(
         preferredLoginMethod,
         role: 'CUSTOMER',
         isActive: true,
+        notes: input.notes,
       },
       omit: OMIT_AUTH_EMAIL,
     })
@@ -111,7 +111,6 @@ export async function createCustomer(
     customerName: item.name,
     customerEmail: item.email,
     customerPhone: item.phone,
-    preferredLoginMethod,
     magicLink,
   })
 
@@ -156,7 +155,7 @@ export async function deleteCustomer(id: string): Promise<ActionResult<{ archive
  */
 export async function updateCustomer(
   id: string,
-  data: { name: string, preferredLoginMethod?: LoginMethod }
+  data: { name: string, notes?: string }
 ): Promise<ActionResult<ClientSafeUser>> {
   await requireAdmin()
 
@@ -164,30 +163,11 @@ export async function updateCustomer(
   try {
     const input = updateCustomerSchema.parse({ id, ...data })
 
-    if (input.preferredLoginMethod) {
-      // The schema can't validate this against "a contact field that's actually filled in" —
-      // the payload no longer carries email/phone, only the row's EXISTING stored values do.
-      const current = await prisma.user.findUnique({
-        where: { id: input.id },
-        select: { email: true, phone: true },
-      })
-      if (!current) {
-        throw new ActionError('Customer not found.', 'NOT_FOUND')
-      }
-      const hasChannel = input.preferredLoginMethod === 'EMAIL' ? Boolean(current.email) : Boolean(current.phone)
-      if (!hasChannel) {
-        throw new ActionError(
-          'Preferred login method must match a contact field this customer actually has.',
-          'VALIDATION'
-        )
-      }
-    }
-
     item = await prisma.user.update({
       where: { id: input.id },
       data: {
         name: input.name,
-        ...(input.preferredLoginMethod ? { preferredLoginMethod: input.preferredLoginMethod } : {}),
+        notes: input.notes,
       },
       omit: OMIT_AUTH_EMAIL,
     })

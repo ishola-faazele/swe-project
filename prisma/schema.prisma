@@ -46,6 +46,7 @@ model User {
   alertEmail    String?
   alertPhone    String?
   alertWhatsapp String?
+  notes         String?
   role      Role     @default(CUSTOMER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

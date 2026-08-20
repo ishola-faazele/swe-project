@@ -263,3 +263,23 @@ export async function updateNotificationPreferences(
     return toErrorResult(err, 'Could not save your notification preferences. Please try again.')
   }
 }
+
+export async function updateCustomerNotes(
+  notes: string
+): Promise<ActionResult<{ notes: string | null }>> {
+  try {
+    const user = await getCurrentDbUser()
+    if (!user) return { ok: false, error: NOT_SIGNED_IN, code: 'VALIDATION' }
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { notes: notes.trim() || null },
+      select: { notes: true },
+    })
+
+    revalidatePath('/dashboard')
+    return okResult(updated)
+  } catch (err) {
+    return toErrorResult(err, 'Could not save your notes. Please try again.')
+  }
+}

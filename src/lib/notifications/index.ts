@@ -157,15 +157,14 @@ export async function notifyAccountCreated(data: {
   customerName?: string | null
   customerEmail?: string | null
   customerPhone?: string | null
-  preferredLoginMethod: 'EMAIL' | 'PHONE'
-  magicLink?: string | null // only meaningful when preferredLoginMethod === 'EMAIL'
+  magicLink?: string | null // only meaningful when customerEmail is present
 }) {
   const results: {
     email?: Awaited<ReturnType<typeof sendAccountCreatedEmail>>
     sms?: Awaited<ReturnType<typeof sendSms>>
   } = {}
 
-  if (data.preferredLoginMethod === 'EMAIL' && data.customerEmail && data.magicLink) {
+  if (data.customerEmail && data.magicLink) {
     results.email = await sendAccountCreatedEmail({
       to: data.customerEmail,
       name: data.customerName,
@@ -173,7 +172,7 @@ export async function notifyAccountCreated(data: {
     })
   }
 
-  if (data.preferredLoginMethod === 'PHONE' && data.customerPhone) {
+  if (data.customerPhone) {
     results.sms = await sendSms({
       to: data.customerPhone,
       message: accountCreatedSmsMessage(),

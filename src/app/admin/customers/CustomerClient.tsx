@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -73,14 +74,6 @@ function CustomerFormFields({
   const isEdit = Boolean(customer)
   const [email, setEmail] = useState(customer?.email ?? "")
   const [phone, setPhone] = useState(customer?.phone ?? "")
-  const [method, setMethod] = useState<string>(customer?.preferredLoginMethod ?? "")
-
-  const options: LoginMethod[] = [
-    ...(email.trim() ? (["EMAIL"] as const) : []),
-    ...(phone.trim() ? (["PHONE"] as const) : []),
-  ]
-  // Never offer — or submit — a choice the current form state can't support.
-  const effectiveMethod = options.includes(method as LoginMethod) ? method : (options[0] ?? "")
 
   return (
     <>
@@ -131,33 +124,27 @@ function CustomerFormFields({
           </p>
         )}
       </div>
-      <div>
-        <Label htmlFor={`${idPrefix}-preferredLoginMethod`}>Preferred login method</Label>
-        <select
-          id={`${idPrefix}-preferredLoginMethod`}
-          name="preferredLoginMethod"
-          className="select-field"
-          value={effectiveMethod}
-          disabled={options.length === 0}
-          onChange={(e) => setMethod(e.target.value)}
-        >
-          {options.length === 0 && <option value="">Add an email or phone first</option>}
-          {options.map((option) => (
-            <option key={option} value={option}>
-              {option === "EMAIL" ? "Email (magic link)" : "Phone (SMS code)"}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-xs text-muted-foreground">
-          How this customer is told to sign in when their account is created.
-        </p>
-      </div>
+
       {!isEdit && (
         <p className="text-xs text-muted-foreground">
           Email and phone are both optional. Once saved, contact info can&apos;t be changed here —
           only the customer can add a missing one later.
         </p>
       )}
+
+      <div>
+        <Label htmlFor={`${idPrefix}-notes`}>Customer Notes</Label>
+        <Textarea
+          id={`${idPrefix}-notes`}
+          name="notes"
+          defaultValue={customer?.notes ?? ""}
+          placeholder="e.g. Dietary preferences, delivery instructions..."
+          className="min-h-[80px]"
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          These notes are shared with the customer, who can also edit them from their dashboard.
+        </p>
+      </div>
     </>
   )
 }
@@ -307,12 +294,9 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     const name = formData.get("name") as string
     const email = formData.get("email") as string
     const phone = formData.get("phone") as string
-    // "" means the select had nothing to offer (a name-only customer) — send undefined so the
-    // action computes an explicit value rather than failing the enum check on an empty string.
-    const rawMethod = formData.get("preferredLoginMethod") as string
-    const preferredLoginMethod = rawMethod ? (rawMethod as LoginMethod) : undefined
+    const notes = (formData.get("notes") as string) || undefined
     try {
-      const result = await createCustomer({ name, email, phone, preferredLoginMethod })
+      const result = await createCustomer({ name, email, phone, notes })
       if (!result.ok) {
         toast.add({ title: 'Error', description: result.error, type: 'error' })
         return
@@ -327,12 +311,11 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
   async function handleEdit(formData: FormData) {
     if (!editingCustomer) return
     const name = formData.get("name") as string
+    const notes = (formData.get("notes") as string) || undefined
     // email/phone are deliberately NOT read here — updateCustomer doesn't accept them, and the
     // disabled inputs they'd come from aren't submitted by the browser anyway.
-    const rawMethod = formData.get("preferredLoginMethod") as string
-    const preferredLoginMethod = rawMethod ? (rawMethod as LoginMethod) : undefined
     try {
-      const result = await updateCustomer(editingCustomer.id, { name, preferredLoginMethod })
+      const result = await updateCustomer(editingCustomer.id, { name, notes })
       if (!result.ok) {
         toast.add({ title: 'Error', description: result.error, type: 'error' })
         return

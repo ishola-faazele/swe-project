@@ -34,8 +34,12 @@ settings (channel toggles + independently-editable alert-destination contacts, s
 login identity), and write-once customer contact info (only the customer can add a missing
 email/phone, admin-set values can never be changed afterward — closes a real
 edit-any-customer's-contact-with-no-verification gap). WhatsApp template messages
-(`order_status_update`, `low_stock_alert`) remain pending Meta's approval — everything else is
-live.
+(`order_status_update`, `low_stock_alert`) were approved by Meta 2026-08-19 — the whole channel is
+now fully live, sending with a non-expiring Meta System User access token (not a 24h temporary
+token, so no rotation burden). The webhook route (`src/app/api/webhooks/whatsapp/route.ts`) is
+implemented but deliberately **not subscribed** in Meta's dashboard — it only exists to receive
+delivery-status callbacks, which this business has no use for, so `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+is left as a placeholder in `.env` on purpose.
 
 **Phase 3 / Phase 4-6 merge reconciliation (2026-08-19):** both branches diverged from the same
 pre-Phase-456 commit and were developed independently and concurrently, so merging Phase 3 into
@@ -312,3 +316,6 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
   `feature/whatsapp-arkesel-notifications`. Full technical plan (verified against Meta's Cloud
   API + webhook docs and Arkesel's API docs, fetched live) lives in the Phase 3 section of
   `/home/ishola/.claude/plans/no-i-want-you-robust-moore.md`.
+- **2026-08-20** — Consolidated Customer Notification settings into a unified `/dashboard/settings` page, matching the Admin interface. Removed the required "primary channel" selection (`preferredLoginMethod`) when creating new users; login alerts now broadcast to both email and SMS simultaneously if both are provided.
+- **2026-08-20** — Avatar crash bug fixed by updating the rendering strategy in Radix/Base UI dropdowns to use `render` instead of standard `asChild` composition, side-stepping strict DOM nesting errors in Next.js 14.
+- **2026-08-20** — Added a "Customer Notes" field accessible to both the Admin and Customer. Allows customers to specify dietary preferences or delivery instructions, and the admin to save relevant notes on the user profile. Visible in the Order Details view for kitchen/delivery staff.
