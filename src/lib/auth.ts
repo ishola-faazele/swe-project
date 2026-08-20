@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { prisma } from '@/lib/prisma'
+import { toGhanaE164 } from '@/lib/phone'
 import { Prisma, Role, type User } from '@prisma/client'
 
 export class AuthError extends Error {}
@@ -9,11 +10,21 @@ export class AuthError extends Error {}
  * Shared by both sync paths so there is ONE admin-check implementation rather than the three
  * independently-drifting inline copies this codebase had before (auth/callback/route.ts,
  * page.tsx, and this file).
+ *
+ * Both phone values are normalized to E.164 before comparing. `ADMIN_PHONE` is set in .env in
+ * whatever format a human typed it (e.g. "0200480505"), while every phone value that actually
+ * reaches this function — resolveCustomerForPhoneLogin's `phone` param, a Supabase authUser's
+ * `.phone` — has already been through toGhanaE164 upstream. A raw string comparison between the
+ * two therefore silently NEVER matches unless the env var happens to already be in bare E.164
+ * form, which is exactly the bug this fixes: the admin's own phone login was being treated as a
+ * brand-new customer because "0200480505" !== "233200480505".
  */
 function isAdminIdentity(candidate: { email?: string | null; phone?: string | null }): boolean {
+  const adminPhone = toGhanaE164(process.env.ADMIN_PHONE)
+  const candidatePhone = toGhanaE164(candidate.phone)
   return Boolean(
     (process.env.ADMIN_EMAIL && candidate.email === process.env.ADMIN_EMAIL) ||
-    (process.env.ADMIN_PHONE && candidate.phone === process.env.ADMIN_PHONE)
+    (adminPhone && candidatePhone && adminPhone === candidatePhone)
   )
 }
 

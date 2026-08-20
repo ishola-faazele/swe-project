@@ -339,6 +339,31 @@ describe('resolveCustomerForPhoneLogin', () => {
     })
   })
 
+  // Regression: ADMIN_PHONE is set in .env in whatever local format a human typed
+  // ("0241234567"), while every phone value that reaches isAdminIdentity has already been
+  // through toGhanaE164 ("233241234567") by the time it gets here. A raw string comparison
+  // between the two never matches, so the real owner's phone login was silently resolving to a
+  // brand-new CUSTOMER row instead of being recognized and promoted. Both sides must be
+  // normalized before comparing.
+  test('(g) promotes to ADMIN even when ADMIN_PHONE is in local format and the login phone is E.164', async () => {
+    vi.stubEnv('ADMIN_PHONE', '0241234567') // local format, as a human would actually type it
+    const existing = dbUser({
+      id: 'existing-id',
+      phone: PHONE, // '233241234567' — already E.164, as toGhanaE164 always normalizes it
+      authEmail: syntheticEmailForPhone(PHONE),
+      role: 'CUSTOMER',
+    })
+    findUniqueMock.mockResolvedValueOnce(existing)
+    updateMock.mockResolvedValueOnce({ ...existing, role: 'ADMIN' })
+
+    await resolveCustomerForPhoneLogin(PHONE)
+
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: 'existing-id' },
+      data: { role: 'ADMIN' },
+    })
+  })
+
   // PROACTIVE-002: a double-submit on a slow connection races two first-login requests through the
   // create branch. User.phone is @unique, so one gets P2002 — which must NOT surface to a customer
   // who just entered a correct code as "a customer with that phone already exists".
