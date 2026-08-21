@@ -83,6 +83,7 @@ const MenuBar = ({ editor }: { editor: any }) => {
 
 export function RichTextEditor({ value, onChange, placeholder, minHeight = "min-h-[120px]" }: RichTextEditorProps) {
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit,
       TaskList,
