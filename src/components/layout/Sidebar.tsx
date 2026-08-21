@@ -169,7 +169,6 @@ export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse, userR
             collapsed ? 'max-w-0 opacity-0' : 'max-w-xs opacity-100'
           )}
         >
-          <p className="meta-text whitespace-nowrap">v1.0.0 — local</p>
         </div>
 
         {/* Collapse / expand toggle button — only renders on desktop (parent is hidden md:block) */}

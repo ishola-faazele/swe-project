@@ -97,6 +97,7 @@ export function OrderClient({
   
   const [notesInput, setNotesInput] = useState('')
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('')
+  const [deliveryAddressInput, setDeliveryAddressInput] = useState<string>('')
   const [deliveryPhoneInput, setDeliveryPhoneInput] = useState<string>('')
 
   const activeDishes = dishes.filter(d => d.isActive)
@@ -459,45 +460,36 @@ export function OrderClient({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="deliveryAddress">Delivery Address (Optional)</Label>
-                  <Input id="deliveryAddress" name="deliveryAddress" placeholder="123 Example St" onChange={e => {
-                    const el = document.getElementById('map-address-preview')
-                    if (el) el.dataset.address = e.target.value
-                    // Force a re-render for the map component
-                    const btn = document.getElementById('address-updater-btn')
-                    if (btn) btn.click()
-                  }} />
-                  {/* Local state hack to update the map component since we are using a FormData approach for submission */}
-                  <input type="hidden" id="map-address-preview" data-address="" />
-                  <button id="address-updater-btn" type="button" className="hidden" onClick={(e) => {
-                    const address = document.getElementById('map-address-preview')?.dataset.address || ''
-                    // A simple inline state update
-                    setDeliveryPhoneInput(prev => prev)
-                  }} />
-                  {(() => {
-                    const address = typeof document !== 'undefined' ? document.getElementById('map-address-preview')?.dataset.address || '' : ''
-                    if (!address) return null
-                    return (
-                      <div className="h-48 w-full mt-2">
-                        <MapComponent address={address} />
-                      </div>
-                    )
-                  })()}
+                  <Input 
+                    id="deliveryAddress" 
+                    name="deliveryAddress" 
+                    placeholder="123 Example St" 
+                    value={deliveryAddressInput}
+                    onChange={e => setDeliveryAddressInput(e.target.value)} 
+                  />
+                  {deliveryAddressInput && (
+                    <div className="h-48 w-full mt-2">
+                      <MapComponent address={deliveryAddressInput} />
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="deliveryPhone">Delivery Phone (Optional)</Label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 items-start">
                     <Input 
                       id="deliveryPhone" 
                       name="deliveryPhone" 
                       placeholder="+234..." 
                       value={deliveryPhoneInput}
                       onChange={e => setDeliveryPhoneInput(e.target.value)}
+                      className="w-full"
                     />
                     {customers.find(c => c.id === (selectedCustomerId || initialFormState?.customerId))?.phone && (
                       <Button 
                         type="button" 
                         variant="outline" 
                         size="sm"
+                        className="w-full sm:w-auto h-10 px-3 whitespace-nowrap"
                         onClick={() => {
                           const phone = customers.find(c => c.id === (selectedCustomerId || initialFormState?.customerId))?.phone
                           if (phone) setDeliveryPhoneInput(phone)

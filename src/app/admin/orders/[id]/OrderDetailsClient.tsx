@@ -289,17 +289,19 @@ export function OrderDetailsClient({
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="edit-phone">Delivery Phone (Optional)</Label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2 items-start">
                       <Input 
                         id="edit-phone" 
                         value={deliveryPhoneInput} 
                         onChange={e => setDeliveryPhoneInput(e.target.value)} 
+                        className="w-full"
                       />
                       {order.customer.phone && (
                         <Button 
                           type="button" 
                           variant="outline" 
                           size="sm"
+                          className="w-full sm:w-auto h-10 px-3 whitespace-nowrap"
                           onClick={() => setDeliveryPhoneInput(order.customer.phone || '')}
                         >
                           Same as contact phone
