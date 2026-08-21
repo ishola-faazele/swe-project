@@ -48,8 +48,6 @@ export default async function AdminDashboardPage() {
     activeOrdersForDueCheck,
     activeLogs,
     upcomingOrders,
-    todayTotalOrders,
-    todayCompletedOrders,
   ] = await Promise.all([
     prisma.order.count(),
     prisma.user.count({ where: { role: 'CUSTOMER' } }),
@@ -87,12 +85,6 @@ export default async function AdminDashboardPage() {
       take: 5,
       orderBy: { dueDate: 'asc' },
       include: { customer: { select: { name: true, email: true, shortId: true } } },
-    }),
-    prisma.order.count({
-      where: { createdAt: { gte: startOfToday } }
-    }),
-    prisma.order.count({
-      where: { status: 'COMPLETED', updatedAt: { gte: startOfToday } }
     })
   ])
 
@@ -113,7 +105,8 @@ export default async function AdminDashboardPage() {
   const dueTodayCount = activeOrdersForDueCheck.filter(o => getDueUrgency(o.dueDate) === 'due-today').length
   const overdueCount = activeOrdersForDueCheck.filter(o => getDueUrgency(o.dueDate) === 'overdue').length
 
-  const completionRate = todayTotalOrders > 0 ? Math.round((todayCompletedOrders / todayTotalOrders) * 100) : 0
+  const readyCount = statusCounts['READY'] || 0
+  const completionRate = activeOrders > 0 ? Math.round((readyCount / activeOrders) * 100) : 0
 
   // Revenue Calculations
   const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000)
@@ -319,12 +312,12 @@ export default async function AdminDashboardPage() {
           <div>
             <h2 className="eyebrow mb-1">Kitchen Load & Pipeline</h2>
             <p className="text-sm text-muted-foreground font-medium">
-              {todayTotalOrders > 0 ? (
+              {activeOrders > 0 ? (
                 <>
-                  <span className="text-foreground font-bold">{todayCompletedOrders}</span> of <span className="text-foreground font-bold">{todayTotalOrders}</span> today's orders completed
+                  <span className="text-foreground font-bold">{readyCount}</span> of <span className="text-foreground font-bold">{activeOrders}</span> active orders are ready
                 </>
               ) : (
-                "No orders yet today"
+                "No active orders in kitchen"
               )}
             </p>
           </div>

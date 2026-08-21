@@ -344,9 +344,8 @@ export function OrderClient({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-        <h2 className="page-title">Orders</h2>
-        <div className="flex flex-1 sm:flex-none flex-wrap items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end mb-6 gap-4">
+        <div className="flex flex-1 sm:flex-none flex-wrap items-center justify-end gap-4">
           <div className="flex bg-muted/50 p-1 rounded-md border border-border shrink-0">
             <button 
               onClick={() => setViewMode('list')} 
