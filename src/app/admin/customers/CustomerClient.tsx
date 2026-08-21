@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import {
   Dialog,
   DialogContent,
@@ -78,6 +78,7 @@ function CustomerFormFields({
   const isEdit = Boolean(customer)
   const [email, setEmail] = useState(customer?.email ?? "")
   const [phone, setPhone] = useState(customer?.phone ?? "")
+  const [notes, setNotes] = useState(customer?.notes ?? "")
 
   return (
     <>
@@ -137,14 +138,13 @@ function CustomerFormFields({
       )}
 
       <div>
-        <Label htmlFor={`${idPrefix}-notes`}>Customer Notes</Label>
-        <Textarea
-          id={`${idPrefix}-notes`}
-          name="notes"
-          defaultValue={customer?.notes ?? ""}
+        <Label htmlFor={`${idPrefix}-notes`} className="mb-2 block">Customer Notes</Label>
+        <RichTextEditor
+          content={notes}
+          onChange={setNotes}
           placeholder="e.g. Dietary preferences, delivery instructions..."
-          className="min-h-[80px]"
         />
+        <input type="hidden" name="notes" value={notes} />
         <p className="mt-1 text-xs text-muted-foreground">
           These notes are shared with the customer, who can also edit them from their dashboard.
         </p>
@@ -255,7 +255,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
     columnHelper.display({
       id: "actions",
       cell: (info) => (
-        <div className="flex gap-2">
+        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
           <Button
             variant="ghost"
             size="icon"
@@ -466,7 +466,11 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           <tbody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row, idx) => (
-                <tr key={row.id} className={cn('table-row', idx % 2 === 0 && 'bg-card/40', !row.original.isActive && 'opacity-60')}>
+                <tr 
+                  key={row.id} 
+                  className={cn('table-row cursor-pointer transition-colors hover:bg-muted/50', idx % 2 === 0 && 'bg-card/40', !row.original.isActive && 'opacity-60')}
+                  onClick={() => openEdit(row.original)}
+                >
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id} className={cn("px-4 py-3", cell.column.columnDef.meta?.className)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

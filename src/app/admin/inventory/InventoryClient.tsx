@@ -104,6 +104,10 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   
   const [isShoppingListOpen, setIsShoppingListOpen] = useState(false)
   const [shoppingMultiplier, setShoppingMultiplier] = useState<number>(2)
+  const [customShoppingItems, setCustomShoppingItems] = useState<{id: string, name: string, quantity: string, isCustom: boolean}[]>([])
+  const [removedItemIds, setRemovedItemIds] = useState<string[]>([])
+  const [newCustomItemId, setNewCustomItemId] = useState('')
+  const [newCustomItemQty, setNewCustomItemQty] = useState('')
   
   const [isCountMode, setIsCountMode] = useState(false)
   const [stockCounts, setStockCounts] = useState<Record<string, number>>({})
@@ -235,6 +239,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
             className="w-24 font-mono-data" 
             value={stockCounts[info.row.original.id] ?? info.getValue()}
             onChange={(e) => setStockCounts(prev => ({ ...prev, [info.row.original.id]: Number(e.target.value) }))}
+            onClick={(e) => e.stopPropagation()}
           />
           {(() => {
              const current = info.getValue()
@@ -277,7 +282,7 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
     columnHelper.display({
       id: "actions",
       cell: (info) => (
-        <div className="flex gap-2">
+        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
           <Button
             variant="ghost"
             size="icon"
@@ -336,8 +341,27 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const lowStockItems = data.filter(i => i.isActive && i.minimumThreshold > 0 && i.currentStock <= i.minimumThreshold)
   const lowStockCount = lowStockItems.length
 
+  const combinedShoppingItems = useMemo(() => {
+    const generated = lowStockItems.map(item => {
+      const target = item.minimumThreshold * shoppingMultiplier
+      const needed = Math.max(0, target - item.currentStock)
+      const formattedNeeded = Number(needed.toFixed(1))
+      return {
+        id: item.id,
+        name: item.name,
+        quantity: `${formattedNeeded} ${item.unit}`,
+        isCustom: false
+      }
+    })
+    return [...generated, ...customShoppingItems].filter(item => !removedItemIds.includes(item.id))
+  }, [lowStockItems, shoppingMultiplier, customShoppingItems, removedItemIds])
+
+  const availableInventoryItems = useMemo(() => {
+    return data.filter(item => item.isActive && !combinedShoppingItems.some(shoppingItem => shoppingItem.id === item.id))
+  }, [data, combinedShoppingItems])
+
   const getShoppingListText = () => {
-    if (lowStockItems.length === 0) return "No items are currently below their minimum threshold."
+    if (combinedShoppingItems.length === 0) return "No items are currently below their minimum threshold."
     
     const targetLabel = shoppingMultiplier === 1 
       ? 'Just enough (Minimum)' 
@@ -347,15 +371,9 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
       ? 'Double stock' 
       : 'Heavy restock'
 
-    const header = `📋 Shopping List\nRestock Target: ${targetLabel}\n\n`
-    const items = lowStockItems.map(item => {
-      const target = item.minimumThreshold * shoppingMultiplier
-      // Use ceil to avoid fractional restocking for items that usually come in whole units, 
-      // though this caters to any unit so toFixed(1) might be better.
-      const needed = Math.max(0, target - item.currentStock)
-      // Format number to drop trailing .0
-      const formattedNeeded = Number(needed.toFixed(1))
-      return `- ${item.name}: ${formattedNeeded} ${item.unit}`
+    const header = `📋 Chop with Rostty - Shopping List\nRestock Target: ${targetLabel}\n\n`
+    const items = combinedShoppingItems.map(item => {
+      return `[ ] ${item.name.padEnd(25)} ${item.quantity.padStart(10)}`
     }).join("\n")
     return header + items
   }
@@ -368,17 +386,28 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
   const handlePrintShoppingList = () => {
     const printWindow = window.open('', '', 'height=600,width=800')
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Shopping List</title>')
-      printWindow.document.write('<style>body { font-family: sans-serif; padding: 20px; } pre { font-family: monospace; font-size: 14px; white-space: pre-wrap; }</style>')
-      printWindow.document.write('</head><body >')
-      printWindow.document.write('<pre>' + getShoppingListText() + '</pre>')
+      printWindow.document.write('<html><head><title>Shopping List - Chop with Rostty</title>')
+      printWindow.document.write('<style>body { font-family: system-ui, sans-serif; padding: 40px; color: #111; max-width: 800px; margin: 0 auto; } h1 { font-size: 24px; border-bottom: 2px solid #ea580c; padding-bottom: 10px; margin-bottom: 20px; } table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; } th { font-weight: 600; color: #555; text-transform: uppercase; font-size: 12px; letter-spacing: 0.05em; } td.qty { font-family: monospace; font-size: 14px; font-weight: 600; } .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eee; padding-top: 20px; }</style>')
+      printWindow.document.write('</head><body>')
+      printWindow.document.write('<h1>Shopping List</h1>')
+      
+      if (combinedShoppingItems.length === 0) {
+        printWindow.document.write('<p>No items to restock.</p>')
+      } else {
+        printWindow.document.write('<style>@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } } body::before { content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-image: url("/rosty-logo.jpeg"); background-repeat: no-repeat; background-position: center; background-size: 50%; opacity: 0.05; z-index: -1; pointer-events: none; } .checkbox { width: 16px; height: 16px; border: 1px solid #999; border-radius: 3px; display: inline-block; vertical-align: middle; }</style>')
+        printWindow.document.write('<table><thead><tr><th style="width: 40px"></th><th>Item Name</th><th>Quantity to Buy</th></tr></thead><tbody>')
+        combinedShoppingItems.forEach(item => {
+          printWindow.document.write(`<tr><td><div class="checkbox"></div></td><td>${item.name}</td><td class="qty">${item.quantity}</td></tr>`)
+        })
+        printWindow.document.write('</tbody></table>')
+      }
+      
+      printWindow.document.write(`<div class="footer">Generated on ${new Date().toLocaleDateString()} &bull; Chop with Rostty</div>`)
+      printWindow.document.write('<script>window.onload = function() { window.print(); }</script>')
       printWindow.document.write('</body></html>')
       printWindow.document.close()
       printWindow.focus()
-      // Give it a tiny bit of time to render before invoking print
-      setTimeout(() => {
-        printWindow.print()
-      }, 100)
+      printWindow.focus()
     }
   }
 
@@ -487,31 +516,108 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
               <DialogTitle>Quick Reorder Shopping List</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Label htmlFor="multiplier" className="font-semibold text-foreground">Restock Target:</Label>
+              <div className="flex items-center justify-between gap-3 bg-muted/30 p-3 rounded-lg border border-border">
+                <Label htmlFor="multiplier" className="font-medium text-sm text-foreground m-0">Restock Target:</Label>
                 <select 
                   id="multiplier" 
-                  className="select-field w-32 bg-card" 
+                  className="select-field h-8 py-1 px-2 text-sm w-auto bg-card" 
                   value={shoppingMultiplier} 
                   onChange={(e) => setShoppingMultiplier(Number(e.target.value))}
                 >
-                  <option value={1}>Just enough (Minimum)</option>
-                  <option value={1.5}>A bit extra</option>
-                  <option value={2}>Double stock</option>
-                  <option value={3}>Stock up heavily</option>
+                  <option value={1}>Minimum (Just enough)</option>
+                  <option value={1.5}>Medium (A bit extra)</option>
+                  <option value={2}>Double (Recommended)</option>
+                  <option value={3}>Heavy (Stock up)</option>
                 </select>
               </div>
-              <div className="rounded-md bg-muted/50 p-4 max-h-[300px] overflow-y-auto border border-border">
-                <pre className="text-sm font-mono-data whitespace-pre-wrap text-foreground">
-                  {getShoppingListText()}
-                </pre>
+              <div className="rounded-xl bg-card p-4 max-h-[350px] overflow-y-auto border border-border shadow-sm">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4" />
+                  Shopping List
+                </h4>
+                {combinedShoppingItems.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    <ShoppingCart className="h-8 w-8 mx-auto mb-3 opacity-20" />
+                    No items in shopping list.
+                  </div>
+                ) : (
+                  <ul className="space-y-2.5">
+                    {combinedShoppingItems.map(item => (
+                      <li key={item.id} className="flex justify-between items-center text-sm group">
+                        <span className="font-medium text-foreground flex items-center gap-2 group-hover:text-primary transition-colors">
+                          {item.name}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono-data text-muted-foreground bg-muted/50 px-2 py-0.5 rounded">
+                            {item.quantity}
+                          </span>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                            onClick={() => {
+                              if (item.isCustom) {
+                                setCustomShoppingItems(prev => prev.filter(i => i.id !== item.id))
+                              } else {
+                                setRemovedItemIds(prev => [...prev, item.id])
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-4 pt-4 border-t border-border flex gap-2">
+                  <select 
+                    className="select-field h-8 text-sm flex-1 bg-card border-input"
+                    value={newCustomItemId}
+                    onChange={(e) => setNewCustomItemId(e.target.value)}
+                  >
+                    <option value="" disabled>Select item from inventory...</option>
+                    {availableInventoryItems.map(item => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                  <Input 
+                    placeholder="Qty" 
+                    value={newCustomItemQty}
+                    onChange={(e) => setNewCustomItemQty(e.target.value)}
+                    className="h-8 text-sm w-20"
+                  />
+                  <Button 
+                    size="sm"
+                    variant="secondary"
+                    className="h-8"
+                    disabled={!newCustomItemId}
+                    onClick={() => {
+                      if (newCustomItemId) {
+                        const selectedItem = data.find(i => i.id === newCustomItemId)
+                        if (selectedItem) {
+                          setCustomShoppingItems(prev => [...prev, {
+                            id: `custom-${Date.now()}`,
+                            name: selectedItem.name,
+                            quantity: `${newCustomItemQty.trim() || '1'} ${selectedItem.unit}`,
+                            isCustom: true
+                          }])
+                          setNewCustomItemId('')
+                          setNewCustomItemQty('')
+                        }
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button className="w-full" onClick={handleCopyShoppingList} disabled={lowStockItems.length === 0}>
-                  <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" /> Copy
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Button variant="outline" onClick={handlePrintShoppingList} disabled={combinedShoppingItems.length === 0}>
+                  <Printer className="mr-2 h-4 w-4" aria-hidden="true" /> Print PDF
                 </Button>
-                <Button variant="outline" className="w-full" onClick={handlePrintShoppingList} disabled={lowStockItems.length === 0}>
-                  <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Print (PDF)
+                <Button onClick={handleCopyShoppingList} disabled={combinedShoppingItems.length === 0}>
+                  <Copy className="mr-2 h-4 w-4" aria-hidden="true" /> Copy List
                 </Button>
               </div>
             </div>
@@ -635,10 +741,11 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
                 <tr
                   key={row.id}
                   className={cn(
-                    'table-row',
+                    'table-row cursor-pointer transition-colors hover:bg-muted/50',
                     idx % 2 === 0 && 'bg-card/40',
                     !row.original.isActive && 'opacity-60'
                   )}
+                  onClick={() => setEditingItem(row.original)}
                 >
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id} className={cn("px-4 py-3", cell.column.columnDef.meta?.className)}>

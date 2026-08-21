@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { updateCustomerNotes } from "./actions"
 import { NotebookPen } from "lucide-react"
 
@@ -55,14 +55,13 @@ export function CustomerNotes({ initialNotes }: { initialNotes: string | null })
         </div>
         
         <div className="md:col-span-2 space-y-4 max-w-md">
-          <Textarea
-            id="customerNotes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            disabled={isPending}
-            placeholder="e.g. Allergic to nuts, call when outside the gate..."
-            className="min-h-[120px] resize-y"
-          />
+          <div className={isPending ? "opacity-50 pointer-events-none" : ""}>
+            <RichTextEditor
+              content={notes}
+              onChange={setNotes}
+              placeholder="e.g. Allergic to nuts, call when outside the gate..."
+            />
+          </div>
           <div className="flex justify-end">
             <Button type="button" onClick={handleSave} disabled={isPending || notes === (initialNotes || "")}>
               {isPending ? "Saving…" : "Save notes"}
