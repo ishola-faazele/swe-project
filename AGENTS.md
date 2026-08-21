@@ -139,7 +139,7 @@ swe-project/
 
 ```
 User            id (UUID = Supabase auth UUID), shortId (auto-increment), name?, email?, phone?,
-                role (ADMIN | CUSTOMER)
+                role (ADMIN | STAFF | CUSTOMER)
 
 InventoryItem   id, name, category (INGREDIENT | DRINK | PACKAGING | OTHER),
                 currentStock, minimumThreshold, unit
@@ -250,14 +250,9 @@ Without `RESEND_API_KEY`, emails fall back to `console.log`.
 
 ---
 
-## Known Gaps (Do Not Assume These Work)
+## Known Gaps
 
-| Gap | Reality |
-|---|---|
-| Order cancellation reverts stock | **Not implemented.** `updateOrderStatus(CANCELLED)` only updates the status field. |
-| SMS notifications | **Stub only.** `sms.ts` logs to console; no real provider is connected. |
-| Role gating on `/admin/*` | **Not enforced server-side.** Any authenticated user can reach admin routes. |
-| WhatsApp alerts | **Planned, not built.** Meta Business API integration is on the roadmap. |
+*All previously documented known gaps (WhatsApp/SMS notifications, Server-side role gating, and Order cancellation stock reversion) have been fully implemented and resolved across Roadmap Phases 0-6.*
 
 ---
 

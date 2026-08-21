@@ -14,7 +14,7 @@ this file is the short, update-as-you-go version).
 | Phase 3 | Real Customer Notifications (WhatsApp Business Cloud API + Arkesel SMS) + phone-OTP login, unified account notifications, and an admin Settings page | `feature/whatsapp-arkesel-notifications` → `../swe-project-notifications` | ✅ Merged into `main` — 412 unit / 128 integration tests |
 | Phase 4 | High Impact, Low Effort (Daily Revenue Snapshot, Quick Shopping List, Top Revenue Dishes, Analytics, Cost Per Plate, Order Calendar) | `feature/phase-456` | ✅ Completed |
 | Phase 5 | High Impact, Medium Effort (WhatsApp Notifications, Stock Count Mode, Smart Low-Stock Alerts, Customer Repeat Orders) | `feature/phase-456` | ✅ Completed |
-| Phase 6 | Medium Impact, Higher Effort (Offline First, WhatsApp Order Intake, Kitchen Staff Role) | `feature/phase-456` | ✅ Offline First Completed. Others skipped/deferred. |
+| Phase 6 | Medium Impact, Higher Effort (Offline First, WhatsApp Order Intake, Kitchen Staff Role) | `feature/phase-456` | ✅ Offline First & Kitchen Staff Role completed. WhatsApp Order Intake deferred. |
 
 **Naming note:** the roadmap's original "Phase 3" was the "compounding-features" bucket, now
 split into **Phase 4, 5, and 6**. Real WhatsApp/SMS notifications took the Phase 3 slot instead because the
@@ -319,3 +319,4 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
 - **2026-08-20** — Consolidated Customer Notification settings into a unified `/dashboard/settings` page, matching the Admin interface. Removed the required "primary channel" selection (`preferredLoginMethod`) when creating new users; login alerts now broadcast to both email and SMS simultaneously if both are provided.
 - **2026-08-20** — Avatar crash bug fixed by updating the rendering strategy in Radix/Base UI dropdowns to use `render` instead of standard `asChild` composition, side-stepping strict DOM nesting errors in Next.js 14.
 - **2026-08-20** — Added a "Customer Notes" field accessible to both the Admin and Customer. Allows customers to specify dietary preferences or delivery instructions, and the admin to save relevant notes on the user profile. Visible in the Order Details view for kitchen/delivery staff.
+- **2026-08-21** — Implemented the "Kitchen Staff Role" from Phase 6, adding a full Team management interface, a dedicated STAFF role, and an Audit Logs system to track critical inventory and order actions. Resolved a persistent Turbopack PWA caching bug.
