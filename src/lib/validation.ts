@@ -229,6 +229,10 @@ export const createDishSchema = z.object({
     .positive('Serving size must be greater than zero.')
     .optional(),
   ingredients: dishIngredientArraySchema.optional(),
+  media: z.array(z.object({
+    url: z.url('Media URL is invalid.'),
+    type: z.enum(['IMAGE', 'VIDEO'])
+  })).optional(),
 })
 
 /** Mirrors createDishSchema with every field optional except `id`. */
@@ -247,8 +251,8 @@ export const updateDishSchema = z.object({
 export const createCustomerSchema = z
   .object({
     name: z.string().trim().min(1, 'A contact name is required.'),
-    email: optionalContactField,
-    phone: optionalContactField,
+    email: optionalContactField.pipe(z.email('Enter a valid email address.').optional()),
+    phone: z.string().trim().optional().transform((v) => (v ? toGhanaE164(v) : undefined)).refine((v) => v !== null, { message: 'Enter a valid Ghanaian phone number.' }),
     notes: z.string().trim().optional(),
   })
 

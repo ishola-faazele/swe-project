@@ -15,6 +15,24 @@ function getResendClient(): Resend | null {
   return apiKey ? new Resend(apiKey) : null
 }
 
+function getEmailTemplate(content: string) {
+  const logoUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/rosty-logo.jpeg`
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
+      <div style="background-color: #0a0a0a; padding: 32px 20px; text-align: center; border-radius: 12px 12px 0 0; border-bottom: 3px solid #f59e0b;">
+        <img src="${logoUrl}" alt="Chop with Rostty" width="80" height="80" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 16px; border: 2px solid #27272a;" />
+        <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Chop with Rostty</h1>
+      </div>
+      <div style="background-color: #ffffff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+        ${content}
+      </div>
+      <div style="text-align: center; padding: 24px; color: #9ca3af; font-size: 12px;">
+        <p style="margin: 0;">© ${new Date().getFullYear()} Chop with Rostty. All rights reserved.</p>
+      </div>
+    </div>
+  `
+}
+
 export type OrderStatusEmailData = {
   customerEmail: string
   customerName?: string
@@ -53,28 +71,21 @@ export async function sendOrderStatusEmail(data: OrderStatusEmailData) {
       from: fromEmail,
       to: data.customerEmail,
       subject: `Order Update: ${data.newStatus} — ${data.orderDescription}`,
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">🍽️ Chop with Rostty</h1>
-          </div>
-          <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
-            <p style="font-size: 16px; color: #374151;">Hi ${data.customerName || 'there'},</p>
-            <p style="font-size: 16px; color: #374151;">${statusMessage}</p>
-            
-            <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin: 20px 0;">
-              <p style="margin: 0 0 8px 0; font-weight: 600; color: #111827;">Order Details:</p>
-              <p style="margin: 0 0 4px 0; color: #6b7280;">Order: <strong style="color: #111827;">${data.orderDescription}</strong></p>
-              <p style="margin: 0 0 4px 0; color: #6b7280;">Status: <strong style="color: #111827;">${data.newStatus}</strong></p>
-              ${data.dueDate ? `<p style="margin: 0; color: #6b7280;">Due Date: <strong style="color: #111827;">${data.dueDate}</strong></p>` : ''}
-            </div>
-
-            <p style="font-size: 14px; color: #9ca3af; margin-top: 24px;">
-              Thank you for choosing us! If you have any questions, please reply to this email.
-            </p>
-          </div>
+      html: getEmailTemplate(`
+        <p style="font-size: 16px; color: #374151; margin-top: 0;">Hi ${data.customerName || 'there'},</p>
+        <p style="font-size: 16px; color: #374151;">${statusMessage}</p>
+        
+        <div style="background: #fdf6e3; border: 1px solid #fde68a; border-radius: 8px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0 0 12px 0; font-weight: 600; color: #92400e; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Order Details</p>
+          <p style="margin: 0 0 8px 0; color: #451a03; font-size: 16px;"><strong>${data.orderDescription}</strong></p>
+          <p style="margin: 0 0 4px 0; color: #78350f;">Status: <strong>${data.newStatus}</strong></p>
+          ${data.dueDate ? `<p style="margin: 0; color: #78350f;">Due Date: <strong>${data.dueDate}</strong></p>` : ''}
         </div>
-      `,
+
+        <p style="font-size: 14px; color: #6b7280; margin-top: 32px; margin-bottom: 0;">
+          Thank you for choosing us! If you have any questions, please reply to this email.
+        </p>
+      `),
     })
 
     console.log('[Email] Sent successfully:', result)
@@ -102,18 +113,14 @@ export async function sendLowStockAlert(itemName: string, currentStock: number, 
       from: process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL,
       to: adminEmail,
       subject: `⚠️ Low Stock Alert: ${itemName}`,
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: #ef4444; padding: 20px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0;">⚠️ Low Stock Alert</h1>
-          </div>
-          <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
-            <p style="font-size: 16px; color: #374151;"><strong>${itemName}</strong> is running low!</p>
-            <p style="font-size: 16px; color: #374151;">Current stock: <strong>${currentStock} ${unit}</strong></p>
-            <p style="font-size: 14px; color: #9ca3af;">Please restock as soon as possible to avoid disrupting orders.</p>
-          </div>
+      html: getEmailTemplate(`
+        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+          <h2 style="color: #991b1b; margin: 0 0 12px 0; font-size: 18px;">⚠️ Low Stock Alert</h2>
+          <p style="font-size: 16px; color: #7f1d1d; margin: 0 0 8px 0;"><strong>${itemName}</strong> is running low!</p>
+          <p style="font-size: 16px; color: #7f1d1d; margin: 0;">Current stock: <strong>${currentStock} ${unit}</strong></p>
         </div>
-      `,
+        <p style="font-size: 14px; color: #4b5563; margin: 0;">Please restock as soon as possible to avoid disrupting orders.</p>
+      `),
     })
 
     return { success: true, data: result }
@@ -156,36 +163,28 @@ export async function sendAccountCreatedEmail(data: {
       from: process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL,
       to: data.to,
       subject: 'Your Chop with Rostty account is ready',
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">🍽️ Chop with Rostty</h1>
-          </div>
-          <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
-            <p style="font-size: 16px; color: #374151;">Hi ${data.name || 'there'},</p>
-            <p style="font-size: 16px; color: #374151;">
-              Your account is ready. Tap the button below to sign in and track your orders — no
-              password needed.
-            </p>
+      html: getEmailTemplate(`
+        <p style="font-size: 16px; color: #374151; margin-top: 0;">Hi ${data.name || 'there'},</p>
+        <p style="font-size: 16px; color: #374151; line-height: 1.5;">
+          Your account is ready. Tap the button below to sign in and track your orders — no password needed.
+        </p>
 
-            <div style="margin: 28px 0; text-align: center;">
-              <a href="${data.magicLink}"
-                 style="display: inline-block; background: #111827; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 16px; font-weight: 600;">
-                Sign in to my account
-              </a>
-            </div>
-
-            <p style="font-size: 14px; color: #6b7280;">
-              If the button doesn't work, copy and paste this link into your browser:<br />
-              <span style="word-break: break-all; color: #4b5563;">${data.magicLink}</span>
-            </p>
-
-            <p style="font-size: 14px; color: #9ca3af; margin-top: 24px;">
-              If you weren't expecting this email, you can safely ignore it.
-            </p>
-          </div>
+        <div style="margin: 32px 0; text-align: center;">
+          <a href="${data.magicLink}"
+             style="display: inline-block; background-color: #f59e0b; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+            Sign in to my account
+          </a>
         </div>
-      `,
+
+        <p style="font-size: 14px; color: #6b7280; line-height: 1.5;">
+          If the button doesn't work, copy and paste this link into your browser:<br />
+          <span style="word-break: break-all; color: #4b5563; display: inline-block; margin-top: 8px;">${data.magicLink}</span>
+        </p>
+
+        <p style="font-size: 14px; color: #9ca3af; margin-top: 32px; margin-bottom: 0;">
+          If you weren't expecting this email, you can safely ignore it.
+        </p>
+      `),
     })
 
     console.log('[Email] Account-created email sent successfully')
@@ -221,18 +220,16 @@ export async function sendVerificationEmail(to: string, code: string) {
       from: process.env.FROM_EMAIL || DEFAULT_FROM_EMAIL,
       to,
       subject: 'Your Chop with Rostty verification code',
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">🍽️ Chop with Rostty</h1>
-          </div>
-          <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
-            <p style="font-size: 16px; color: #374151;">Your verification code is:</p>
-            <p style="font-size: 32px; font-weight: 700; letter-spacing: 4px; color: #111827; margin: 16px 0;">${code}</p>
-            <p style="font-size: 14px; color: #9ca3af;">It expires in 10 minutes. If you didn't request this, you can safely ignore it.</p>
-          </div>
+      html: getEmailTemplate(`
+        <p style="font-size: 16px; color: #374151; margin-top: 0; text-align: center;">Your verification code is:</p>
+        <div style="background: #f3f4f6; border-radius: 8px; padding: 24px; text-align: center; margin: 24px 0;">
+          <p style="font-size: 40px; font-weight: 700; letter-spacing: 8px; color: #111827; margin: 0;">${code}</p>
         </div>
-      `,
+        <p style="font-size: 14px; color: #6b7280; text-align: center; margin-bottom: 0;">
+          It expires in 10 minutes.<br />
+          If you didn't request this, you can safely ignore it.
+        </p>
+      `),
     })
 
     console.log('[Email] Verification email sent successfully')

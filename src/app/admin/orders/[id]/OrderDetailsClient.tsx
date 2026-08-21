@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { computeDishSubtotal, type DishWithRecipe } from "@/lib/recipe"
+import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { updateOrderItems, updateOrderDueDate, updateOrderInfo } from "./actions"
 import { updateOrderStatus } from "../actions"
 import { formatCurrency, getCurrencySymbol, BUSINESS_LOCALE } from "@/lib/currency"
@@ -569,21 +570,19 @@ export function OrderDetailsClient({
           {!isEditingNotes ? (
             <div>
               {order.notes ? (
-                <ul className="list-disc list-inside mt-1 space-y-1">
-                  {order.notes.split('\n').filter(line => line.trim() !== '').map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                </ul>
+                <div 
+                  className="prose prose-sm dark:prose-invert max-w-none text-sm text-foreground" 
+                  dangerouslySetInnerHTML={{ __html: order.notes }} 
+                />
               ) : (
                 <p className="text-muted-foreground">—</p>
               )}
             </div>
           ) : (
-            <div className="space-y-1">
-              <textarea 
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+             <div className="space-y-1">
+              <RichTextEditor
                 value={notesInput}
-                onChange={e => setNotesInput(e.target.value)}
+                onChange={setNotesInput}
               />
             </div>
           )}

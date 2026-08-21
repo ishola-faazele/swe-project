@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils'
 
 const navItems = [
   { label: 'CUSTOMER PORTAL', items: [
-    { name: 'My Orders', href: '/dashboard', icon: LayoutDashboard, exact: true },
     { name: 'Menu',      href: '/dashboard/menu', icon: UtensilsCrossed, exact: false },
+    { name: 'My Orders', href: '/dashboard/orders', icon: LayoutDashboard, exact: true },
   ]},
 ]
 

@@ -125,10 +125,99 @@ export function DishDetailsClient({
         </div>
       </div>
 
+      {/* Hero Gallery Section */}
+      <section className="space-y-4">
+        {/* Cover Media */}
+        <div className="relative aspect-video sm:aspect-[21/9] w-full overflow-hidden rounded-xl border border-border bg-muted shadow-sm">
+          {media.length > 0 ? (
+            media[0].type === 'VIDEO' ? (
+              <video controls className="h-full w-full object-cover" src={media[0].url} />
+            ) : (
+              <img src={media[0].url} alt="Cover" className="h-full w-full object-cover" />
+            )
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground bg-muted/30">
+              <ImageIcon className="h-12 w-12 opacity-50 mb-2" aria-hidden="true" />
+              <p className="text-sm font-medium">No media added</p>
+            </div>
+          )}
+
+          {media.length > 0 && (
+            <div className="absolute top-4 right-4 flex items-center gap-2">
+              <span className="bg-background/90 text-foreground px-2 py-1 rounded text-xs font-semibold shadow">Cover</span>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-7 shadow"
+                onClick={() => handleRemove(media[0].id)}
+              >
+                Remove
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Thumbnails & Add Media */}
+        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
+          {media.slice(1).map((item, index) => {
+            const actualIndex = index + 1;
+            return (
+              <div key={item.id} className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted">
+                {item.type === 'VIDEO' ? (
+                  <video className="h-full w-full object-cover" src={item.url} muted playsInline />
+                ) : (
+                  <img src={item.url} alt="" className="h-full w-full object-cover" />
+                )}
+
+                <div className="absolute inset-0 bg-background/50 opacity-0 transition-opacity group-hover:opacity-100 flex flex-col items-center justify-center gap-2">
+                  <div className="flex gap-1">
+                    <Button
+                      variant="secondary"
+                      size="icon-xs"
+                      className="h-6 w-6 rounded-full"
+                      onClick={() => handleReorder(item.id, 'up')}
+                    >
+                      <ChevronLeft className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="icon-xs"
+                      className="h-6 w-6 rounded-full"
+                      disabled={actualIndex === media.length - 1}
+                      onClick={() => handleReorder(item.id, 'down')}
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    size="icon-xs"
+                    className="h-6 w-6 rounded-full"
+                    onClick={() => handleRemove(item.id)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+
+          <div className="col-span-3 sm:col-span-2">
+            <MediaUpload
+              key={mediaUploadKey}
+              value={null}
+              onChange={handleMediaUploaded}
+              entityType="dish"
+              label="Add photo / video"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* Details — a straight relocation of the old edit dialog's fields onto a full page. */}
-      <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-sm font-bold text-foreground">Details</h2>
-        <p className="meta-text mt-0.5 mb-4">Name, price, and the recipe deducted per dish.</p>
+      <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-foreground">Recipe & Pricing</h2>
+        <p className="meta-text mt-1 mb-6">Manage how this dish is priced and what inventory it consumes.</p>
 
         <form action={handleSave} className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -162,83 +251,6 @@ export function DishDetailsClient({
 
           <Button type="submit" className="w-full">Update Dish</Button>
         </form>
-      </section>
-
-      {/* Photos & Video — each item is added, reordered, and removed on its own. There is no Save
-          button here: every action below persists the moment it succeeds. */}
-      <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-sm font-bold text-foreground">Photos &amp; Video</h2>
-        <p className="meta-text mt-0.5 mb-4">
-          The first photo is this dish&apos;s cover on the menu gallery. Changes save immediately.
-        </p>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {media.map((item, index) => (
-            <div key={item.id} className="space-y-2">
-              <div className="relative aspect-square overflow-hidden rounded-lg border border-border bg-muted">
-                {item.type === 'VIDEO' ? (
-                  // Plain <video controls>, no player library — the same restraint as this repo's
-                  // zero-next/image convention.
-                  <video controls className="h-full w-full object-cover" src={item.url} />
-                ) : (
-                  <img src={item.url} alt="" className="h-full w-full object-cover" />
-                )}
-
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="absolute top-1 right-1 bg-background/80 text-destructive hover:bg-destructive/20 hover:text-destructive"
-                  title="Remove"
-                  aria-label={`Remove media ${index + 1}`}
-                  onClick={() => handleRemove(item.id)}
-                >
-                  <X className="h-3 w-3" aria-hidden="true" />
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-between gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  title="Move earlier"
-                  aria-label={`Move media ${index + 1} earlier`}
-                  disabled={index === 0}
-                  onClick={() => handleReorder(item.id, 'up')}
-                >
-                  <ChevronLeft className="h-3 w-3" aria-hidden="true" />
-                </Button>
-                <span className="meta-text text-[10px] uppercase">{item.type}</span>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  title="Move later"
-                  aria-label={`Move media ${index + 1} later`}
-                  disabled={index === media.length - 1}
-                  onClick={() => handleReorder(item.id, 'down')}
-                >
-                  <ChevronRight className="h-3 w-3" aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
-          ))}
-
-          {media.length === 0 && (
-            <div className="col-span-full flex items-center gap-2 rounded-lg border border-dashed border-border p-4 text-muted-foreground">
-              <ImageIcon className="h-4 w-4" aria-hidden="true" />
-              <p className="text-xs">No photos or video yet.</p>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-4 border-t border-border pt-4">
-          <MediaUpload
-            key={mediaUploadKey}
-            value={null}
-            onChange={handleMediaUploaded}
-            entityType="dish"
-            label="Add photo or video"
-          />
-        </div>
       </section>
     </div>
   )

@@ -57,7 +57,7 @@ export function CustomerNotes({ initialNotes }: { initialNotes: string | null })
         <div className="md:col-span-2 space-y-4 max-w-md">
           <div className={isPending ? "opacity-50 pointer-events-none" : ""}>
             <RichTextEditor
-              content={notes}
+              value={notes}
               onChange={setNotes}
               placeholder="e.g. Allergic to nuts, call when outside the gate..."
             />

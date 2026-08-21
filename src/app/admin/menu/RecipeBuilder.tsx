@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { mergeDuplicateIngredients } from "@/lib/recipe"
-import { X } from "lucide-react"
+import { X, Search, ChevronDown, Check } from "lucide-react"
+import { useState, useRef, useEffect } from "react"
+import { cn } from "@/lib/utils"
 
 /**
  * Extracted verbatim out of MenuClient.tsx — two screens need this now, not one: the gallery's
@@ -143,20 +145,15 @@ export function RecipeBuilder({
           const selected = options.find(option => option.id === row.inventoryItemId)
           return (
             <div key={row.internalId} className="flex gap-4 items-center">
-              <select
-                className="select-field"
+              <SearchableSelect
+                options={options}
                 value={row.inventoryItemId}
-                onChange={(e) => {
+                onChange={(val) => {
                   const newRows = [...rows]
-                  newRows[index] = { ...newRows[index], inventoryItemId: e.target.value }
+                  newRows[index] = { ...newRows[index], inventoryItemId: val }
                   setRows(newRows)
                 }}
-              >
-                <option value="" disabled>Select item…</option>
-                {options.map(option => (
-                  <option key={option.id} value={option.id}>{option.name} ({option.unit})</option>
-                ))}
-              </select>
+              />
               <Input
                 type="number"
                 step="any"
@@ -187,3 +184,78 @@ export function RecipeBuilder({
     </div>
   )
 }
+
+function SearchableSelect({ options, value, onChange }: { options: IngredientOption[], value: string, onChange: (val: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const selected = options.find(o => o.id === value)
+  const filteredOptions = options.filter(o => o.name.toLowerCase().includes(search.toLowerCase()))
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  return (
+    <div className="relative flex-1" ref={containerRef}>
+      <div
+        className={cn(
+          "flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors cursor-pointer hover:bg-muted/50",
+          !selected && "text-muted-foreground"
+        )}
+        onClick={() => {
+          setOpen(!open)
+          if (!open) setSearch('')
+        }}
+      >
+        <span className="truncate">
+          {selected ? `${selected.name} (${selected.unit})` : "Select item..."}
+        </span>
+        <ChevronDown className="h-4 w-4 opacity-50" />
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-full min-w-[250px] max-w-[400px] z-50 rounded-md border border-border bg-popover text-popover-foreground shadow-md outline-none animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center border-b border-border px-3">
+            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+            <input
+              autoFocus
+              className="flex h-9 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+              placeholder="Search ingredient..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="max-h-[200px] overflow-y-auto p-1">
+            {filteredOptions.length === 0 ? (
+              <p className="p-2 text-center text-sm text-muted-foreground">No items found.</p>
+            ) : (
+              filteredOptions.map((option) => (
+                <div
+                  key={option.id}
+                  className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 whitespace-nowrap overflow-hidden"
+                  onClick={() => {
+                    onChange(option.id)
+                    setOpen(false)
+                  }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", selected?.id === option.id ? "opacity-100" : "opacity-0")} />
+                  <span className="truncate">{option.name}</span>
+                  <span className="ml-1 text-xs text-muted-foreground">({option.unit})</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+

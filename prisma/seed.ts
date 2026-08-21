@@ -10,6 +10,7 @@ async function main() {
   await prisma.orderIngredientLog.deleteMany()
   await prisma.orderDish.deleteMany()
   await prisma.dishIngredient.deleteMany()
+  await prisma.dishMedia.deleteMany()
   await prisma.order.deleteMany()
   await prisma.dish.deleteMany()
   await prisma.user.deleteMany()
@@ -86,6 +87,10 @@ async function main() {
         recipeLine('Stock Cubes', 1),
         recipeLine('Food Packs', 1),
       ],
+      media: [
+        { url: 'https://images.unsplash.com/photo-1598514982205-f36b96d1e8d4?w=800&q=80', type: 'IMAGE' as const, position: 0 },
+        { url: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=800&q=80', type: 'IMAGE' as const, position: 1 },
+      ]
     },
     {
       name: 'Fried Rice',
@@ -98,6 +103,9 @@ async function main() {
         recipeLine('Maggi Seasoning', 1),
         recipeLine('Food Packs', 1),
       ],
+      media: [
+        { url: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800&q=80', type: 'IMAGE' as const, position: 0 }
+      ]
     },
     {
       name: 'Meat Pie',
@@ -108,6 +116,9 @@ async function main() {
         recipeLine('Groundnut Oil', 0.02),
         recipeLine('Takeaway Bags', 1),
       ],
+      media: [
+        { url: 'https://images.unsplash.com/photo-1626200419111-39589d89776d?w=800&q=80', type: 'IMAGE' as const, position: 0 }
+      ]
     },
     {
       name: 'Waakye',
@@ -119,6 +130,9 @@ async function main() {
         recipeLine('Stock Cubes', 1),
         recipeLine('Food Packs', 1),
       ],
+      media: [
+        { url: 'https://images.unsplash.com/photo-1623859763838-a304cbfd4901?w=800&q=80', type: 'IMAGE' as const, position: 0 }
+      ]
     },
     {
       name: 'Egusi Soup & Pounded Yam',
@@ -130,6 +144,9 @@ async function main() {
         recipeLine('Scotch Bonnet', 0.01),
         recipeLine('Foil Trays', 1),
       ],
+      media: [
+        { url: 'https://images.unsplash.com/photo-1547592180-85f173990554?w=800&q=80', type: 'IMAGE' as const, position: 0 }
+      ]
     },
     {
       name: 'Grilled Chicken',
@@ -140,6 +157,9 @@ async function main() {
         recipeLine('Groundnut Oil', 0.03),
         recipeLine('Maggi Seasoning', 1),
       ],
+      media: [
+        { url: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=800&q=80', type: 'IMAGE' as const, position: 0 }
+      ]
     },
   ]
 
@@ -150,6 +170,7 @@ async function main() {
         name: data.name,
         price: data.price,
         ingredients: { create: data.ingredients },
+        media: { create: data.media }
       },
       include: { ingredients: true },
     })

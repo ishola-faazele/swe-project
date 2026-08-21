@@ -741,10 +741,11 @@ export function InventoryClient({ initialData }: { initialData: InventoryItem[] 
                 <tr
                   key={row.id}
                   className={cn(
-                    'table-row cursor-pointer transition-colors hover:bg-muted/50',
+                    'table-row cursor-pointer transition-colors hover:bg-muted/50 animate-fade-in-up',
                     idx % 2 === 0 && 'bg-card/40',
                     !row.original.isActive && 'opacity-60'
                   )}
+                  style={{ animationDelay: `${idx * 40}ms`, animationFillMode: 'both' }}
                   onClick={() => setEditingItem(row.original)}
                 >
                   {row.getVisibleCells().map(cell => (

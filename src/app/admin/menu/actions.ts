@@ -48,6 +48,7 @@ export async function createDish(data: {
   price: number
   servingSize?: number
   ingredients: { inventoryItemId: string; quantityPerDish: number }[]
+  media?: { url: string; type: 'IMAGE' | 'VIDEO' }[]
 }): Promise<ActionResult<Dish>> {
   await requireAdmin()
 
@@ -73,6 +74,17 @@ export async function createDish(data: {
             dishId: newDish.id,
             inventoryItemId: line.inventoryItemId,
             quantityPerDish: line.quantityPerDish,
+          }))
+        })
+      }
+
+      if (input.media && input.media.length > 0) {
+        await tx.dishMedia.createMany({
+          data: input.media.map((m, index) => ({
+            dishId: newDish.id,
+            url: m.url,
+            type: m.type,
+            position: index
           }))
         })
       }

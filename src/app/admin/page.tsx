@@ -17,6 +17,7 @@ import {
 import { ACTIVE_ORDER_STATUSES, getDueUrgency } from '@/lib/dueDate'
 import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus'
 import { BUSINESS_LOCALE, formatCurrency } from '@/lib/currency'
+import { cn } from '@/lib/utils'
 
 export default async function AdminDashboardPage() {
   // Fetch real data from DB
@@ -29,6 +30,7 @@ export default async function AdminDashboardPage() {
     ordersByStatus,
     activeOrdersForDueCheck,
     activeLogs,
+    upcomingOrders,
   ] = await Promise.all([
     prisma.order.count(),
     prisma.user.count({ where: { role: 'CUSTOMER' } }),
@@ -57,6 +59,15 @@ export default async function AdminDashboardPage() {
         order: { status: { in: ACTIVE_ORDER_STATUSES } }
       },
       select: { orderId: true, inventoryItemId: true }
+    }),
+    prisma.order.findMany({
+      where: { 
+        status: { in: ACTIVE_ORDER_STATUSES },
+        dueDate: { not: null }
+      },
+      take: 5,
+      orderBy: { dueDate: 'asc' },
+      include: { customer: { select: { name: true, email: true, shortId: true } } },
     })
   ])
 
@@ -325,49 +336,107 @@ export default async function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Top Revenue Dishes */}
-        <div>
-          <h2 className="eyebrow mb-3">Top Dishes by Revenue (This Month)</h2>
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-popover">
-                  {['Dish', 'Times Ordered', 'Revenue'].map(col => (
-                    <th key={col} className={col === 'Revenue' || col === 'Times Ordered' ? "table-head-cell text-right" : "table-head-cell"}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {topRevenueDishes.length === 0 ? (
-                  <tr>
-                    <td colSpan={3}>
-                      <div className="empty-state py-8">
-                        <p className="empty-state-title text-sm">No completed orders this month</p>
-                      </div>
-                    </td>
+        <div className="space-y-8">
+          {/* Top Revenue Dishes */}
+          <div>
+            <h2 className="eyebrow mb-3">Top Dishes by Revenue (This Month)</h2>
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-popover">
+                    {['Dish', 'Times Ordered', 'Revenue'].map(col => (
+                      <th key={col} className={col === 'Revenue' || col === 'Times Ordered' ? "table-head-cell text-right" : "table-head-cell"}>
+                        {col}
+                      </th>
+                    ))}
                   </tr>
-                ) : (
-                  topRevenueDishes.map((dish, idx) => (
-                    <tr
-                      key={dish.name}
-                      className={`table-row ${idx % 2 === 0 ? 'bg-card/40' : ''}`}
-                    >
-                      <td className="px-4 py-3 text-foreground/90 font-medium">
-                        {dish.name}
-                      </td>
-                      <td className="px-4 py-3 font-mono-data tabular-nums text-muted-foreground text-right">
-                        {dish.timesOrdered}
-                      </td>
-                      <td className="px-4 py-3 font-mono-data tabular-nums font-bold text-primary text-right">
-                        {formatCurrency(dish.totalRevenue)}
+                </thead>
+                <tbody>
+                  {topRevenueDishes.length === 0 ? (
+                    <tr>
+                      <td colSpan={3}>
+                        <div className="empty-state py-8">
+                          <p className="empty-state-title text-sm">No completed orders this month</p>
+                        </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    topRevenueDishes.map((dish, idx) => (
+                      <tr
+                        key={dish.name}
+                        className={`table-row ${idx % 2 === 0 ? 'bg-card/40' : ''}`}
+                      >
+                        <td className="px-4 py-3 text-foreground/90 font-medium">
+                          {dish.name}
+                        </td>
+                        <td className="px-4 py-3 font-mono-data tabular-nums text-muted-foreground text-right">
+                          {dish.timesOrdered}
+                        </td>
+                        <td className="px-4 py-3 font-mono-data tabular-nums font-bold text-primary text-right">
+                          {formatCurrency(dish.totalRevenue)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Upcoming Due Orders */}
+          <div>
+            <h2 className="eyebrow mb-3">Upcoming Due Orders</h2>
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-popover">
+                    {['Order', 'Customer', 'Due Date'].map(col => (
+                      <th key={col} className="table-head-cell">
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {upcomingOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={3}>
+                        <div className="empty-state py-8">
+                          <p className="empty-state-title text-sm">No upcoming due orders</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    upcomingOrders.map((order, idx) => {
+                      const dueText = order.dueDate ? new Date(order.dueDate).toLocaleString(BUSINESS_LOCALE, {
+                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                      }) : '—'
+                      const urgency = order.dueDate ? getDueUrgency(order.dueDate) : 'none'
+                      const isDueSoon = urgency === 'due-today' || urgency === 'overdue'
+
+                      return (
+                        <tr
+                          key={order.id}
+                          className={`table-row ${idx % 2 === 0 ? 'bg-card/40' : ''}`}
+                        >
+                          <td className="px-4 py-3 font-bold font-mono-data tabular-nums text-primary">
+                            #{order.shortId}
+                          </td>
+                          <td className="px-4 py-3 text-foreground/90">
+                            {order.customer.name || order.customer.email || `#${order.customer.shortId}`}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={cn("font-medium", isDueSoon ? 'text-destructive' : 'text-muted-foreground')}>
+                              {dueText}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

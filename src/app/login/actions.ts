@@ -103,6 +103,13 @@ export async function requestPhoneOtp(rawPhone: string): Promise<ActionResult<vo
     }
 
     const code = generateOtpCode()
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`\n========================================`)
+      console.log(`[DEV ONLY] OTP CODE FOR ${phone}: ${code}`)
+      console.log(`========================================\n`)
+    }
+
     await prisma.otpCode.create({
       data: {
         identifier: phone,
@@ -116,12 +123,16 @@ export async function requestPhoneOtp(rawPhone: string): Promise<ActionResult<vo
       message: `Your Chop with Rostty login code is ${code}. It expires in 10 minutes.`,
     })
     if (!result.success) {
-      // The row stays behind, unusable. Harmless: it simply expires, and verifyPhoneOtp's
-      // consumedAt/expiresAt filter never considers it a candidate. No cleanup job needed for v1.
-      return {
-        ok: false,
-        error: 'Could not send the login code. Please try again.',
-        code: 'UNKNOWN',
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`[DEV ONLY] SMS sending failed (${result.reason || 'network error'}), but bypassing error to allow local login.`)
+      } else {
+        // The row stays behind, unusable. Harmless: it simply expires, and verifyPhoneOtp's
+        // consumedAt/expiresAt filter never considers it a candidate. No cleanup job needed for v1.
+        return {
+          ok: false,
+          error: 'Could not send the login code. Please try again.',
+          code: 'UNKNOWN',
+        }
       }
     }
 

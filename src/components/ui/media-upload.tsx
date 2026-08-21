@@ -249,7 +249,7 @@ export function MediaUpload({
         disabled={disabled || isUploading}
       />
 
-      <div className="flex items-start gap-4">
+      <div className="flex flex-col items-center justify-center">
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -277,10 +277,7 @@ export function MediaUpload({
           )}
         </button>
 
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="text-xs text-muted-foreground">
-            {config.hint} Uploads as soon as you pick a file.
-          </p>
+        <div className="min-w-0 w-full mt-3 flex flex-col items-center text-center space-y-1.5">
 
           {isUploading && (
             <p className="text-xs text-muted-foreground">Uploading…</p>

@@ -80,7 +80,16 @@ export async function sendSms(data: SmsData) {
     // HTTP 200 would silently fall through to the "unknown-but-successful" branch.
     url.searchParams.set('response', 'json')
 
-    const response = await fetch(url, { method: 'GET' })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+
+    let response: Response
+    try {
+      response = await fetch(url, { method: 'GET', signal: controller.signal })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+    
     const body = await response.json().catch(() => null)
 
     // Success mapping checks BOTH signals and REQUIRES NEITHER field, deliberately:

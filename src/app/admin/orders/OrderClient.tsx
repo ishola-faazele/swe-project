@@ -42,6 +42,7 @@ import { getDueUrgency, isActiveOrderStatus } from "@/lib/dueDate"
 import { cn } from "@/lib/utils"
 import { HighlightText } from "@/components/ui/highlight"
 import { TablePagination } from "@/components/ui/table-pagination"
+import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { AlertTriangle, Clock, ClipboardList, X, Trash2, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, CalendarDays, Copy, Repeat } from "lucide-react"
 import type { ClientSafeUser } from "@/lib/user"
 
@@ -85,7 +86,10 @@ export function OrderClient({
   const [initialFormState, setInitialFormState] = useState<{
     customerId?: string;
     description?: string;
+    notes?: string;
   } | null>(null)
+  
+  const [notesInput, setNotesInput] = useState('')
 
   const activeDishes = dishes.filter(d => d.isActive)
 
@@ -114,6 +118,7 @@ export function OrderClient({
       .map(d => ({ dishId: d.dishId!, quantity: d.quantity }))
     
     applyDishSelections(dishesToRepeat)
+    setNotesInput(order.notes || '')
     setIsOpen(true)
   }
 
@@ -292,6 +297,7 @@ export function OrderClient({
     
     const customerId = formData.get("customerId") as string
     const description = formData.get("description") as string
+    const notes = formData.get("notes") as string
     const totalPrice = Number(formData.get("totalPrice"))
 
     // A bare "YYYY-MM-DD" parses as UTC midnight per spec. Lagos is UTC+1, so
@@ -312,7 +318,7 @@ export function OrderClient({
 
     try {
       const result = await createOrder({
-        customerId, description, totalPrice, dueDate,
+        customerId, description, notes, totalPrice, dueDate,
         dishes: orderedDishes,
         ingredientOverrides: overrides,
       })
@@ -327,6 +333,7 @@ export function OrderClient({
       setIsOpen(false)
       setSelectedDishes([])
       setTotalPriceInput('')
+      setNotesInput('')
       setShowIngredientPreview(false)
       setIngredientOverrides([])
       toast.add({ title: 'Order created', description: `Order #${result.data.shortId} added to the queue.`, type: 'success' })
@@ -364,6 +371,7 @@ export function OrderClient({
             setInitialFormState(null)
             setSelectedDishes([])
             setTotalPriceInput('')
+            setNotesInput('')
             setShowIngredientPreview(false)
             setIngredientOverrides([])
             setIsOpen(true)
@@ -413,12 +421,12 @@ export function OrderClient({
 
               <div className="space-y-2">
                 <Label htmlFor="notes">Additional Notes (optional)</Label>
-                <textarea 
-                  id="notes" 
-                  name="notes" 
-                  placeholder="Dietary requirements, delivery instructions...&#10;Press Enter for bullet points."
-                  className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                <RichTextEditor
+                  value={notesInput}
+                  onChange={setNotesInput}
+                  placeholder="Dietary requirements, delivery instructions..."
                 />
+                <input type="hidden" name="notes" value={notesInput} />
               </div>
 
               <div className="space-y-4 border-t pt-4">
@@ -572,7 +580,7 @@ export function OrderClient({
                    <CalendarDays className="h-5 w-5 text-primary" /> {group.displayDate}
                 </h3>
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {group.orders.map(order => {
+                  {group.orders.map((order, orderIndex) => {
                     const cfg = ORDER_STATUS_CONFIG[order.status] || { className: 'badge-neutral', label: order.status, icon: Clock }
                     const StatusIcon = cfg.icon
                     const isOverdue = isActiveOrderStatus(order.status) && getDueUrgency(order.dueDate) === 'overdue'
@@ -580,9 +588,10 @@ export function OrderClient({
                       <div 
                         key={order.id} 
                         className={cn(
-                          "border rounded-lg p-4 bg-card cursor-pointer hover:shadow-md transition-all",
+                          "border rounded-lg p-4 bg-card cursor-pointer hover:-translate-y-1 hover:shadow-md transition-all duration-300 animate-fade-in-up",
                           isOverdue ? "border-destructive/30 bg-destructive/5" : "border-border hover:border-primary/40"
                         )}
+                        style={{ animationDelay: `${orderIndex * 50}ms`, animationFillMode: 'both' }}
                         onClick={() => router.push(`/admin/orders/${order.id}`)}
                       >
                         <div className="flex justify-between items-start mb-3">
@@ -661,11 +670,12 @@ export function OrderClient({
                     <tr
                       key={row.id}
                       className={cn(
-                        "table-row cursor-pointer",
+                        "table-row cursor-pointer animate-fade-in-up",
                         urgency === 'overdue' && 'bg-destructive/8 hover:bg-destructive/12',
                         urgency === 'due-today' && 'bg-primary/6 hover:bg-primary/10',
                         urgency !== 'overdue' && urgency !== 'due-today' && (idx % 2 === 0 ? 'bg-card/40' : ''),
                       )}
+                      style={{ animationDelay: `${idx * 40}ms`, animationFillMode: 'both' }}
                       onClick={(e) => {
                         if ((e.target as HTMLElement).tagName !== 'SELECT' && (e.target as HTMLElement).tagName !== 'BUTTON') {
                           router.push(`/admin/orders/${row.original.id}`)

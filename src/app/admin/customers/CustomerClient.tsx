@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/toast"
 import { createCustomer, deleteCustomer, updateCustomer, toggleCustomerActive } from "./actions"
-import { Plus, ShoppingBag, User, Users, ArrowUpDown, ArrowUp, ArrowDown, Archive, RotateCcw, Pencil, Trash2 } from "lucide-react"
+import { Plus, ShoppingBag, User, Users, ArrowUpDown, ArrowUp, ArrowDown, Archive, RotateCcw, Pencil, Trash2, LayoutGrid, List } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMemo } from "react"
 import { HighlightText } from "@/components/ui/highlight"
@@ -140,7 +140,7 @@ function CustomerFormFields({
       <div>
         <Label htmlFor={`${idPrefix}-notes`} className="mb-2 block">Customer Notes</Label>
         <RichTextEditor
-          content={notes}
+          value={notes}
           onChange={setNotes}
           placeholder="e.g. Dietary preferences, delivery instructions..."
         />
@@ -161,9 +161,31 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
   const [globalFilter, setGlobalFilter] = useState('')
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithCount | null>(null)
   const [deletingCustomer, setDeletingCustomer] = useState<CustomerWithCount | null>(null)
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid')
 
   function openEdit(customer: CustomerWithCount) {
     setEditingCustomer(customer)
+  }
+
+  async function handleToggleActive(customer: CustomerWithCount) {
+    const nextIsActive = !customer.isActive
+    try {
+      const result = await toggleCustomerActive(customer.id, nextIsActive)
+      if (!result.ok) {
+        toast.add({ title: 'Error', description: result.error, type: 'error' })
+        return
+      }
+      setData(prev => prev.map(c => c.id === customer.id ? { ...c, isActive: nextIsActive } : c))
+      toast.add({
+        title: nextIsActive ? 'Customer restored' : 'Customer archived',
+        description: nextIsActive
+          ? 'This customer is now active again.'
+          : 'This customer has been archived and hidden from default views.',
+        type: 'success'
+      })
+    } catch (err) {
+      toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not toggle archive state.', type: 'error' })
+    }
   }
 
   const visibleData = useMemo(
@@ -270,27 +292,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            onClick={async () => {
-              const customer = info.row.original
-              const nextIsActive = !customer.isActive
-              try {
-                const result = await toggleCustomerActive(customer.id, nextIsActive)
-                if (!result.ok) {
-                  toast.add({ title: 'Error', description: result.error, type: 'error' })
-                  return
-                }
-                setData(prev => prev.map(c => c.id === customer.id ? { ...c, isActive: nextIsActive } : c))
-                toast.add({
-                  title: nextIsActive ? 'Customer restored' : 'Customer archived',
-                  description: nextIsActive
-                    ? 'This customer is now active again.'
-                    : 'This customer has been archived and hidden from default views.',
-                  type: 'success'
-                })
-              } catch (err) {
-                toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not toggle archive state.', type: 'error' })
-              }
-            }}
+            onClick={() => handleToggleActive(info.row.original)}
             title={info.row.original.isActive ? "Archive customer" : "Restore customer"}
           >
             {info.row.original.isActive ? (
@@ -371,13 +373,44 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
         <p className="meta-text text-sm">
           {data.length} customer{data.length !== 1 ? 's' : ''} registered
         </p>
-        <div className="flex flex-1 sm:flex-none items-center gap-4">
+        <div className="flex flex-1 sm:flex-none flex-wrap items-center gap-4">
           <Input
             placeholder="Search customers..."
             value={globalFilter ?? ''}
             onChange={(e) => setGlobalFilter(String(e.target.value))}
             className="w-full sm:w-64 bg-card"
           />
+          <div className="flex bg-muted/50 p-1 rounded-md">
+            <button
+              onClick={() => setViewMode('list')}
+              className={cn("p-1.5 rounded-sm transition-colors", viewMode === 'list' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}
+              aria-label="List view"
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={cn("p-1.5 rounded-sm transition-colors", viewMode === 'grid' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}
+              aria-label="Grid view"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
+          {viewMode === 'grid' && (
+            <select
+              className="select-field h-9 text-sm w-[160px]"
+              value={`${sorting[0]?.id || 'name'}-${sorting[0]?.desc ? 'desc' : 'asc'}`}
+              onChange={(e) => {
+                const [id, dir] = e.target.value.split('-')
+                setSorting([{ id, desc: dir === 'desc' }])
+              }}
+            >
+              <option value="name-asc">Name (A-Z)</option>
+              <option value="name-desc">Name (Z-A)</option>
+              <option value="_count.orders-desc">Orders (High to Low)</option>
+              <option value="_count.orders-asc">Orders (Low to High)</option>
+            </select>
+          )}
           {(archivedCount > 0 || showArchived) && (
             <Button
               variant="outline"
@@ -431,8 +464,10 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
         </DialogContent>
       </Dialog>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* Table or Grid */}
+      {viewMode === 'list' ? (
+        <>
+      <div className="overflow-x-auto rounded-lg border border-border animate-fade-in-up">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-popover">
@@ -468,7 +503,8 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
               table.getRowModel().rows.map((row, idx) => (
                 <tr 
                   key={row.id} 
-                  className={cn('table-row cursor-pointer transition-colors hover:bg-muted/50', idx % 2 === 0 && 'bg-card/40', !row.original.isActive && 'opacity-60')}
+                  className={cn('table-row cursor-pointer transition-colors hover:bg-muted/50 animate-fade-in-up', idx % 2 === 0 && 'bg-card/40', !row.original.isActive && 'opacity-60')}
+                  style={{ animationDelay: `${idx * 40}ms`, animationFillMode: 'both' }}
                   onClick={() => openEdit(row.original)}
                 >
                   {row.getVisibleCells().map(cell => (
@@ -497,6 +533,111 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
         </table>
       </div>
       <TablePagination table={table} />
+      </>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {table.getRowModel().rows.length ? (
+            table.getRowModel().rows.map((row, idx) => {
+              const customer = row.original
+              return (
+                <div 
+                  key={customer.id}
+                  className="group relative flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:shadow-md hover:border-primary/50 cursor-pointer animate-fade-in-up"
+                  style={{ animationDelay: `${idx * 50}ms`, animationFillMode: 'both' }}
+                  onClick={() => openEdit(customer)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex gap-4">
+                      {customer.imageUrl ? (
+                        <img src={customer.imageUrl} alt="" className="h-12 w-12 rounded-full object-cover ring-2 ring-background group-hover:ring-primary/20 transition-all" />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-lg font-semibold text-muted-foreground ring-2 ring-background group-hover:ring-primary/20 transition-all">
+                          {customer.name?.trim().charAt(0).toUpperCase() || <User className="h-5 w-5" />}
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="font-semibold text-foreground truncate max-w-[140px]" title={customer.name || 'No name'}>
+                          {customer.name ? <HighlightText text={customer.name} query={globalFilter} /> : <span className="text-muted-foreground italic">No name</span>}
+                        </h3>
+                        <p className="font-mono-data text-xs text-muted-foreground mt-0.5">#{customer.shortId}</p>
+                      </div>
+                    </div>
+                    {!customer.isActive && (
+                      <span className="text-[10px] tracking-wide uppercase font-bold text-muted-foreground/50 border border-muted-foreground/20 px-1.5 py-0.5 rounded-sm">
+                        Archived
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="mt-6 space-y-2 text-sm">
+                    <div className="flex justify-between border-b border-border/50 pb-2">
+                      <span className="text-muted-foreground">Email</span>
+                      <span className="font-mono-data text-xs truncate max-w-[150px] text-right" title={customer.email || '—'}>{customer.email || '—'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-border/50 pb-2">
+                      <span className="text-muted-foreground">Phone</span>
+                      <span className="font-mono-data text-xs">{customer.phone || '—'}</span>
+                    </div>
+                    <div className="flex justify-between pt-1">
+                      <span className="text-muted-foreground flex items-center gap-1.5"><ShoppingBag className="h-3.5 w-3.5" /> Orders</span>
+                      <span className="font-mono-data font-bold text-primary">{customer._count.orders}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 flex gap-2 border-t border-border/50 pt-4" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title="Edit customer"
+                      onClick={() => openEdit(customer)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      <span className="sr-only">Edit</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title={customer.isActive ? "Archive customer" : "Restore customer"}
+                      onClick={() => handleToggleActive(customer)}
+                    >
+                      {customer.isActive ? (
+                        <Archive className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      <span className="sr-only">{customer.isActive ? "Archive customer" : "Restore customer"}</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      title="Delete customer"
+                      onClick={() => setDeletingCustomer(customer)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete customer</span>
+                    </Button>
+                  </div>
+                </div>
+              )
+            })
+          ) : (
+            <div className="col-span-full">
+              <div className="empty-state">
+                <div className="empty-state-icon">
+                  <Users className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <p className="empty-state-title">No customers yet</p>
+                <p className="empty-state-hint">
+                  Add a customer to start booking orders against their record.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deletingCustomer} onOpenChange={(open) => !open && setDeletingCustomer(null)}>
