@@ -152,6 +152,11 @@ export async function deleteCustomer(id: string): Promise<ActionResult<{ archive
 /**
  * Deliberately does NOT accept email or phone — see validation.ts's updateCustomerSchema for why
  * contact info is write-once by the admin. Only `name` and `preferredLoginMethod` are editable.
+ *
+ * `imageUrl` is deliberately NOT writable here either, for a different reason: a customer's photo
+ * is self-service only. The admin keeps read access (the customer table's avatar column) but has
+ * no write path to it at all — see the PRD's Non-Goals. dashboard/actions.ts's updateProfilePhoto
+ * is the column's sole writer.
  */
 export async function updateCustomer(
   id: string,

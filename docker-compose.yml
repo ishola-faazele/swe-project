@@ -1,0 +1,58 @@
+# Local object storage for dish/customer photo uploads (see docs/tdd-minio-image-uploads.md).
+#
+# Fully STANDALONE from the Supabase-CLI-managed containers — its own lifecycle
+# (`docker compose up -d` / `docker compose down`), deliberately NOT folded into
+# `supabase start`/`stop`. Like this project's single local Postgres, this MinIO instance is
+# shared across parallel git worktrees rather than namespaced per-worktree, matching existing
+# practice instead of introducing a second convention for infra sharing.
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: chop-with-rostty-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # S3 API — this is the port both the app's server AND the browser hit
+      - "9001:9001"   # Web console (http://127.0.0.1:9001)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      # Local-dev-only, well-known credential — same "safe to share, never used in production"
+      # precedent as Supabase's local demo service-role key in .env.example.
+      MINIO_API_CORS_ALLOW_ORIGIN: "http://127.0.0.1:3000"
+      # Needed for the browser's direct cross-origin PUT (127.0.0.1:3000 → 127.0.0.1:9000) to
+      # pass a CORS preflight. Pinned to this repo's hard-required dev origin (AGENTS.md's
+      # 127.0.0.1-not-localhost rule). If dev is ever run on a different port, this must be
+      # updated too, or the presigned PUT preflight fails.
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      # NOT curl — curl was removed from the minio/minio image in recent releases (confirmed via
+      # minio/minio#18378/#18389). `mc` ships inside the same image; `mc ready local` is MinIO's
+      # own maintainer-recommended healthcheck replacement.
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    # Runs INSIDE the compose network, so it correctly uses the Docker-internal service name
+    # `minio`, NOT 127.0.0.1 — do not "fix" this to match the app's own MINIO_ENDPOINT in .env,
+    # they are two different consumers on two different networks. One-shot: creates the bucket and
+    # sets it to anonymous-download (public GET by key, no public LIST) so buildPublicUrl()'s
+    # stable links work without ever needing a presigned GET.
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/chop-uploads &&
+      mc anonymous set download local/chop-uploads &&
+      exit 0
+      "
+
+volumes:
+  minio-data:

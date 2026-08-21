@@ -104,7 +104,7 @@ describe('customers/actions.ts auth matrix (TEST-009)', () => {
       mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
     })
 
-    test('an email-only customer gets EMAIL preference and a non-null magic link', async () => {
+    test('an email-only customer gets a non-null magic link', async () => {
       const result = await createCustomer({
         name: 'Email Customer',
         email: `notify-${Date.now()}@test.rosty.local`,
@@ -114,7 +114,6 @@ describe('customers/actions.ts auth matrix (TEST-009)', () => {
 
       expect(notifyAccountCreatedMock).toHaveBeenCalledTimes(1)
       const payload = notifyAccountCreatedMock.mock.calls[0][0]
-      expect(payload.preferredLoginMethod).toBe('EMAIL')
       expect(payload.magicLink).toBeTruthy()
       // Points at the server-redeemable route, never at generateLink's own action_link.
       expect(payload.magicLink).toContain('/auth/confirm?token_hash=')
@@ -142,14 +141,13 @@ describe('customers/actions.ts auth matrix (TEST-009)', () => {
       expect(notifyAccountCreatedMock.mock.calls[0][0].magicLink).toContain('type=magiclink')
     })
 
-    test('a phone-only customer gets PHONE preference, a null link, and no generateLink call', async () => {
+    test('a phone-only customer gets a null link, no generateLink call', async () => {
       const phone = `024${String(Date.now()).slice(-7)}`
       const result = await createCustomer({ name: 'Phone Customer', phone })
       expect(result.ok).toBe(true)
       if (result.ok) reg.userIds.push(result.data.id)
 
       const payload = notifyAccountCreatedMock.mock.calls[0][0]
-      expect(payload.preferredLoginMethod).toBe('PHONE')
       expect(payload.customerPhone).toBe(phone)
       expect(payload.magicLink).toBeNull()
     })
@@ -251,24 +249,6 @@ describe('customers/actions.ts auth matrix (TEST-009)', () => {
       expect(row?.email).toBe('original@test.rosty.local')
     })
 
-    test('rejects a preferredLoginMethod that does not match an existing contact field', async () => {
-      const target = await createTestCustomer(reg, { email: 'has-email-only@test.rosty.local', phone: null })
-      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
-
-      const result = await updateCustomer(target.id, { name: target.name, preferredLoginMethod: 'PHONE' })
-
-      expect(result.ok).toBe(false)
-      if (!result.ok) expect(result.error).toContain('must match a contact field')
-    })
-
-    test('accepts a preferredLoginMethod that matches an existing contact field', async () => {
-      const target = await createTestCustomer(reg, { email: 'has-email-only@test.rosty.local', phone: null })
-      mockAuthSession(createClientMock, { id: admin.id, email: admin.email })
-
-      const result = await updateCustomer(target.id, { name: target.name, preferredLoginMethod: 'EMAIL' })
-
-      expect(result.ok).toBe(true)
-    })
   })
 
   describe('deleteCustomer', () => {

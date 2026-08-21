@@ -37,7 +37,7 @@ export function CustomerNotes({ initialNotes }: { initialNotes: string | null })
       <div className="border-b pb-4 mb-6">
         <h2 className="text-xl font-semibold">Customer Notes</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Add any dietary preferences, delivery instructions, or general notes you'd like us to know for all your orders.
+          Add any dietary preferences, delivery instructions, or general notes you&apos;d like us to know for all your orders.
         </p>
       </div>
 

@@ -3,6 +3,7 @@ import { getCurrentDbUser } from '@/lib/auth'
 import { NotificationPreferences } from '../NotificationPreferences'
 import { AddContactForm } from '../AddContactForm'
 import { CustomerNotes } from '../CustomerNotes'
+import { ProfilePhoto } from '../ProfilePhoto'
 
 export const metadata = {
   title: 'Settings | Chop with Rostty',
@@ -25,6 +26,12 @@ export default async function SettingsPage() {
       </div>
 
       <div className="space-y-12 mt-8">
+        <section>
+          {/* Unconditional, deliberately NOT gated the way "add a missing contact" below is — a
+              photo is always optional and always changeable, never a one-time fill-in-the-blank. */}
+          <ProfilePhoto initialImageUrl={customer.imageUrl} />
+        </section>
+
         <section>
           <div className="border-b pb-4 mb-6">
             <h2 className="text-xl font-semibold">Account Security</h2>

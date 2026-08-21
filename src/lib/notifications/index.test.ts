@@ -366,19 +366,19 @@ describe('notifyLowStock', () => {
 /**
  * notifyAccountCreated — EMAIL + SMS only, never WhatsApp.
  *
- * The two branches are mutually exclusive and neither is a fallback for the other: each is gated
- * purely on preferredLoginMethod plus its own contact field. Note this describe block asserts
- * against ./email and ./sms only — ./whatsapp is deliberately never involved.
+ * Both channels fire independently whenever their own contact info is present — no
+ * preferredLoginMethod branching, no "only one channel" exclusivity. A customer with both an
+ * email and a phone on file gets both. Note this describe block asserts against ./email and
+ * ./sms only — ./whatsapp is deliberately never involved.
  */
 describe('notifyAccountCreated', () => {
   const MAGIC_LINK = 'https://rostty.example.com/auth/confirm?token_hash=abc123&type=signup'
 
-  it('EMAIL-preferred with an email and a link sends the email once and never an SMS', async () => {
+  it('sends the email once when an email and a link are present, no phone on file', async () => {
     await notifyAccountCreated({
       customerName: 'Ama',
       customerEmail: 'ama@example.com',
       customerPhone: null,
-      preferredLoginMethod: 'EMAIL',
       magicLink: MAGIC_LINK,
     })
 
@@ -391,12 +391,11 @@ describe('notifyAccountCreated', () => {
     expect(genericSmsMock).not.toHaveBeenCalled()
   })
 
-  it('PHONE-preferred with a phone sends one SMS and never an email', async () => {
+  it('sends one SMS when a phone is present, no email on file', async () => {
     await notifyAccountCreated({
       customerName: 'Kofi',
       customerEmail: null,
       customerPhone: '0241234567',
-      preferredLoginMethod: 'PHONE',
       magicLink: null,
     })
 
@@ -411,7 +410,6 @@ describe('notifyAccountCreated', () => {
     await notifyAccountCreated({
       customerName: 'Kofi',
       customerPhone: '0241234567',
-      preferredLoginMethod: 'PHONE',
     })
 
     const { message } = genericSmsMock.mock.calls[0][0]
@@ -427,7 +425,6 @@ describe('notifyAccountCreated', () => {
       customerName: 'Nameless',
       customerEmail: null,
       customerPhone: null,
-      preferredLoginMethod: 'EMAIL',
       magicLink: null,
     })
 
@@ -436,10 +433,9 @@ describe('notifyAccountCreated', () => {
     expect(genericSmsMock).not.toHaveBeenCalled()
   })
 
-  it('no-ops when EMAIL-preferred but the magic link could not be generated', async () => {
+  it('no-ops on the email channel when the magic link could not be generated', async () => {
     const results = await notifyAccountCreated({
       customerEmail: 'ama@example.com',
-      preferredLoginMethod: 'EMAIL',
       magicLink: null,
     })
 
@@ -447,16 +443,15 @@ describe('notifyAccountCreated', () => {
     expect(accountCreatedEmailMock).not.toHaveBeenCalled()
   })
 
-  it('does not fall back to email when a PHONE-preferred customer also has one on file', async () => {
+  it('sends BOTH email and SMS when a customer has both contact methods on file — no exclusivity', async () => {
     await notifyAccountCreated({
       customerEmail: 'both@example.com',
       customerPhone: '0241234567',
-      preferredLoginMethod: 'PHONE',
       magicLink: MAGIC_LINK,
     })
 
     expect(genericSmsMock).toHaveBeenCalledTimes(1)
-    expect(accountCreatedEmailMock).not.toHaveBeenCalled()
+    expect(accountCreatedEmailMock).toHaveBeenCalledTimes(1)
   })
 
   // Fire-and-forget: a disabled channel is a resolved no-op result, not a rejection.
@@ -465,7 +460,6 @@ describe('notifyAccountCreated', () => {
 
     const results = await notifyAccountCreated({
       customerPhone: '0241234567',
-      preferredLoginMethod: 'PHONE',
     })
 
     expect(results.sms).toEqual({ success: false, reason: 'sms_disabled' })

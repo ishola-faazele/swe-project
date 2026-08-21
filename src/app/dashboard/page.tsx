@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import { getCurrentDbUser } from '@/lib/auth'
 import { BUSINESS_LOCALE, formatCurrency } from '@/lib/currency'
 import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus'
-import { NotificationPreferences } from './NotificationPreferences'
 import { Inbox, Package, ShoppingBag, TrendingUp, Clock } from 'lucide-react'
 import { OrderActions } from './OrderActions'
 
@@ -19,8 +18,6 @@ export default async function CustomerDashboardPage() {
     orderBy: { createdAt: 'desc' },
     include: { dishes: true }
   })
-
-  const missingChannel = !customer.email ? 'email' : !customer.phone ? 'phone' : null
 
   // Calculate quick stats
   const validOrders = orders.filter(o => o.status !== 'CANCELLED')

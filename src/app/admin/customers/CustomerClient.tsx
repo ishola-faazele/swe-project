@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/toast"
 import { createCustomer, deleteCustomer, updateCustomer, toggleCustomerActive } from "./actions"
-import { Plus, ShoppingBag, Users, ArrowUpDown, ArrowUp, ArrowDown, Archive, RotateCcw, Pencil, Trash2 } from "lucide-react"
+import { Plus, ShoppingBag, User, Users, ArrowUpDown, ArrowUp, ArrowDown, Archive, RotateCcw, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useMemo } from "react"
 import { HighlightText } from "@/components/ui/highlight"
@@ -63,6 +63,10 @@ const columnHelper = createColumnHelper<CustomerWithCount>()
  * current choice stops being valid (the admin clears the email it pointed at, add-mode only),
  * it falls back to whatever is still filled in. That keeps this form from ever submitting a
  * combination the server-side check would reject.
+ *
+ * There is deliberately no photo field here. A customer's photo is self-service only — they set
+ * it themselves from /dashboard (see ProfilePhoto.tsx). The admin keeps read access via the
+ * table's avatar column but has no write path to it at all; see the PRD's Non-Goals.
  */
 function CustomerFormFields({
   customer,
@@ -158,6 +162,10 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
   const [editingCustomer, setEditingCustomer] = useState<CustomerWithCount | null>(null)
   const [deletingCustomer, setDeletingCustomer] = useState<CustomerWithCount | null>(null)
 
+  function openEdit(customer: CustomerWithCount) {
+    setEditingCustomer(customer)
+  }
+
   const visibleData = useMemo(
     () => data.filter(c => showArchived || c.isActive),
     [data, showArchived]
@@ -172,6 +180,35 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
           #{info.getValue()}
         </span>
       ),
+    }),
+    // Read-only avatar, paired visually with the name. Deliberately NOT the same placeholder as
+    // the dish table's: an initials badge answers "which customer is this" far better than a
+    // generic icon would, which is the whole point of showing a photo column here. The icon is
+    // only the last resort, for a row with no name at all.
+    columnHelper.display({
+      id: "thumbnail",
+      header: "",
+      cell: (info) => {
+        const customer = info.row.original
+        if (customer.imageUrl) {
+          return (
+            <img
+              src={customer.imageUrl}
+              alt=""
+              className="h-9 w-9 rounded-full object-cover"
+            />
+          )
+        }
+        const initial = customer.name?.trim().charAt(0).toUpperCase()
+        return (
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground"
+            aria-hidden="true"
+          >
+            {initial || <User className="h-4 w-4" />}
+          </div>
+        )
+      },
     }),
     columnHelper.accessor("name", {
       header: "NAME",
@@ -224,7 +261,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             size="icon"
             className="h-8 w-8"
             title="Edit customer"
-            onClick={() => setEditingCustomer(info.row.original)}
+            onClick={() => openEdit(info.row.original)}
           >
             <Pencil className="h-4 w-4" />
             <span className="sr-only">Edit</span>
@@ -261,7 +298,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             ) : (
               <RotateCcw className="h-4 w-4" aria-hidden="true" />
             )}
-            <span className="sr-only">{info.row.original.isActive ? "Archive" : "Restore"}</span>
+            <span className="sr-only">{info.row.original.isActive ? "Archive customer" : "Restore customer"}</span>
           </Button>
           <Button
             variant="ghost"
@@ -271,7 +308,7 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             onClick={() => setDeletingCustomer(info.row.original)}
           >
             <Trash2 className="h-4 w-4" />
-            <span className="sr-only">Delete</span>
+            <span className="sr-only">Delete customer</span>
           </Button>
         </div>
       ),
@@ -365,7 +402,10 @@ export function CustomerClient({ initialData }: { initialData: CustomerWithCount
             <form action={handleAdd} className="space-y-4">
               {/* key resets the controlled contact/method state each time the dialog reopens, so a
                   previous entry never bleeds into a fresh one. */}
-              <CustomerFormFields key={isOpen ? "add-open" : "add-closed"} idPrefix="add" />
+              <CustomerFormFields
+                key={isOpen ? "add-open" : "add-closed"}
+                idPrefix="add"
+              />
               <Button type="submit" className="w-full">Save Customer</Button>
             </form>
           </DialogContent>

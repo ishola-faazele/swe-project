@@ -1,33 +1,33 @@
 /**
- * Component tests for MenuClient — the dish catalog table, create/edit dialogs, and the recipe
- * builder. `createDish`/`updateDish`/`deleteDish`/`toggleDishActive` are mocked (this is the
- * component layer, not integration — the real Server Actions are covered by actions.test.ts).
+ * Component tests for MenuClient — the dish card gallery and its create modal.
+ *
+ * Editing (name/price/recipe) and media management (photos/video) both moved to the dedicated
+ * `/admin/menu/[id]` detail page (see DishDetailsClient.tsx) — this file no longer covers an edit
+ * dialog at all, only the gallery + create flow. `createDish`/`deleteDish`/`toggleDishActive` are
+ * mocked (component layer, not integration — the real Server Actions are covered by actions.test.ts).
  *
  * The "+ Add Dish" trigger uses the codebase's correct `onClick={() => setIsOpen(true)}` pattern
  * (see AGENTS.md's Dialog Triggers section), not the broken `DialogTrigger render={<Button />}`
- * pattern used elsewhere — this suite's dialog-opens assertions double as a permanent regression
+ * pattern used elsewhere — this suite's dialog-opens assertion doubles as a permanent regression
  * check that the correct pattern keeps working.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Dish, DishIngredient, InventoryItem } from '@prisma/client'
+import type { Dish, DishIngredient, DishMedia, InventoryItem } from '@prisma/client'
 import { MenuClient } from './MenuClient'
-import { createDish, updateDish, deleteDish, toggleDishActive } from './actions'
+import { createDish, deleteDish, toggleDishActive } from './actions'
+import type { DishWithMedia } from './RecipeBuilder'
 
 vi.mock('./actions', () => ({
   createDish: vi.fn(),
-  updateDish: vi.fn(),
   deleteDish: vi.fn(),
   toggleDishActive: vi.fn(),
 }))
 
 const mockCreateDish = vi.mocked(createDish)
-const mockUpdateDish = vi.mocked(updateDish)
 const mockDeleteDish = vi.mocked(deleteDish)
 const mockToggleDishActive = vi.mocked(toggleDishActive)
-
-type DishWithIngredients = Dish & { ingredients: (DishIngredient & { inventoryItem: InventoryItem })[] }
 
 const rice: InventoryItem = {
   id: 'inv-rice',
@@ -53,7 +53,17 @@ const chicken: InventoryItem = {
   updatedAt: new Date('2026-01-01'),
 }
 
-function makeDish(overrides: Partial<DishWithIngredients> & { id: string; shortId: number }): DishWithIngredients {
+function media(overrides: Partial<DishMedia> & { id: string; dishId: string }): DishMedia {
+  return {
+    url: 'https://cdn.example.com/x.jpg',
+    type: 'IMAGE',
+    position: 0,
+    createdAt: new Date('2026-01-01'),
+    ...overrides,
+  }
+}
+
+function makeDish(overrides: Partial<DishWithMedia> & { id: string; shortId: number }): DishWithMedia {
   return {
     name: 'Jollof Rice',
     price: 1200,
@@ -62,6 +72,7 @@ function makeDish(overrides: Partial<DishWithIngredients> & { id: string; shortI
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     ingredients: [],
+    media: [],
     ...overrides,
   }
 }
@@ -71,8 +82,9 @@ const activeDish = makeDish({
   shortId: 1,
   name: 'Jollof Rice',
   price: 1200,
+  servingSize: 2,
   ingredients: [
-    { id: 'di-1', dishId: 'dish-active', inventoryItemId: rice.id, quantityPerDish: 0.25, createdAt: new Date('2026-01-01'), inventoryItem: rice },
+    { id: 'di-1', dishId: 'dish-active', inventoryItemId: rice.id, quantityPerDish: 0.25, createdAt: new Date('2026-01-01'), inventoryItem: rice } as DishIngredient & { inventoryItem: InventoryItem },
   ],
 })
 
@@ -88,25 +100,79 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('MenuClient — table', () => {
-  it('renders a row per dish with shortId, name, price, recipe summary, and status badge', () => {
+describe('MenuClient — card gallery', () => {
+  it('renders a card per dish with shortId, name, price, serving size, and status badge', () => {
     render(<MenuClient initialData={[activeDish, archivedDish]} inventory={[rice, chicken]} />)
 
     expect(screen.getByText('#1')).toBeInTheDocument()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()
     expect(screen.getByText('GH₵1,200.00')).toBeInTheDocument()
-    expect(screen.getByText(/Long Grain Rice 0.25kg/)).toBeInTheDocument()
+    expect(screen.getByText('Recipe serves 2')).toBeInTheDocument()
     expect(screen.getByText('ACTIVE')).toBeInTheDocument()
 
     expect(screen.getByText('#2')).toBeInTheDocument()
     expect(screen.getByText('Discontinued Special')).toBeInTheDocument()
     expect(screen.getByText('ARCHIVED')).toBeInTheDocument()
-    expect(screen.getByText('No recipe')).toBeInTheDocument()
   })
 
   it('renders the empty state when initialData is empty', () => {
     render(<MenuClient initialData={[]} inventory={[]} />)
     expect(screen.getByText('No dishes yet')).toBeInTheDocument()
+  })
+
+  it('renders the cover image when the dish has a media item of type IMAGE', () => {
+    const withPhoto = makeDish({
+      id: 'dish-photo',
+      shortId: 9,
+      name: 'Photographed Dish',
+      media: [media({ id: 'm1', dishId: 'dish-photo', url: 'https://cdn.example.com/dishes/photo.jpg', type: 'IMAGE' })],
+    })
+    const { container } = render(<MenuClient initialData={[withPhoto]} inventory={[]} />)
+
+    const img = container.querySelector('img[src="https://cdn.example.com/dishes/photo.jpg"]')
+    expect(img).not.toBeNull()
+  })
+
+  it('renders the muted placeholder (not a broken <img>) when the dish has no media', () => {
+    const noPhoto = makeDish({ id: 'dish-no-photo', shortId: 10, name: 'Plain Dish', media: [] })
+    const { container } = render(<MenuClient initialData={[noPhoto]} inventory={[]} />)
+
+    expect(container.querySelector('img')).not.toBeInTheDocument()
+    expect(container.querySelector('.lucide-utensils-crossed')).not.toBeNull()
+  })
+
+  it('shows a video badge when the dish has a VIDEO media item, even with no IMAGE cover', () => {
+    const videoOnly = makeDish({
+      id: 'dish-video',
+      shortId: 12,
+      name: 'Video Only Dish',
+      media: [media({ id: 'm2', dishId: 'dish-video', url: 'https://cdn.example.com/dishes/clip.mp4', type: 'VIDEO' })],
+    })
+    const { container } = render(<MenuClient initialData={[videoOnly]} inventory={[]} />)
+
+    expect(screen.getByText('Video')).toBeInTheDocument()
+    // No cover — a video has no poster frame here, so the placeholder still renders.
+    expect(container.querySelector('img')).not.toBeInTheDocument()
+  })
+
+  it('search filters the grid down to matching dish names', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<MenuClient initialData={[activeDish, archivedDish]} inventory={[]} />)
+
+    await user.type(screen.getByPlaceholderText('Search menu...'), 'Discontinued')
+
+    // HighlightText splits the matched substring into its own <mark>, so the name is no longer a
+    // single text node — assert on the container's full text content instead of a single getByText.
+    expect(container.textContent).toContain('Discontinued Special')
+    expect(container.textContent).not.toContain('Jollof Rice')
+  })
+
+  it('links "Edit" to the dish detail page instead of opening a dialog', () => {
+    render(<MenuClient initialData={[activeDish]} inventory={[]} />)
+
+    const editLink = screen.getByTitle('Edit dish')
+    expect(editLink.tagName).toBe('A')
+    expect(editLink).toHaveAttribute('href', '/admin/menu/dish-active')
   })
 })
 
@@ -120,6 +186,18 @@ describe('MenuClient — create dialog', () => {
     await user.click(screen.getByRole('button', { name: /add dish/i }))
 
     expect(screen.getByRole('heading', { name: 'Add Dish' })).toBeInTheDocument()
+  })
+
+  it('has name/price/servingSize/recipe fields, and no media upload control — media is added from the dish\'s own page', async () => {
+    const user = userEvent.setup()
+    render(<MenuClient initialData={[]} inventory={[rice]} />)
+    await user.click(screen.getByRole('button', { name: /add dish/i }))
+
+    expect(screen.getByLabelText('Dish Name')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Price/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Recipe Serves')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Photo')).not.toBeInTheDocument()
+    expect(screen.queryByText(/uploading/i)).not.toBeInTheDocument()
   })
 
   it('recipe builder: "Add Ingredient" adds a row, remove button removes it', async () => {
@@ -139,24 +217,38 @@ describe('MenuClient — create dialog', () => {
     expect(screen.getAllByPlaceholderText('Qty')).toHaveLength(1)
   })
 
-  it('submitting calls createDish with deduped ingredients and optimistically appends the result', async () => {
+  it('does not offer an archived ingredient on a brand-new recipe row', async () => {
+    const user = userEvent.setup()
+    render(<MenuClient initialData={[]} inventory={[chicken]} />)
+
+    await user.click(screen.getByRole('button', { name: /add dish/i }))
+    await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
+
+    expect(screen.getByRole('option', { name: 'Chicken (kg)' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /archived/ })).not.toBeInTheDocument()
+  })
+
+  it('submitting calls createDish with deduped ingredients and NO imageUrl, then optimistically appends the result with an empty media array', async () => {
     const user = userEvent.setup()
     mockCreateDish.mockResolvedValue({
-      id: 'dish-new',
-      shortId: 3,
-      name: 'Fried Rice',
-      price: 1300,
-      servingSize: 1,
-      isActive: true,
-      createdAt: new Date('2026-01-01'),
-      updatedAt: new Date('2026-01-01'),
+      ok: true,
+      data: {
+        id: 'dish-new',
+        shortId: 3,
+        name: 'Fried Rice',
+        price: 1300,
+        servingSize: 1,
+        isActive: true,
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-01'),
+      } as Dish,
     })
 
     render(<MenuClient initialData={[]} inventory={[rice]} />)
     await user.click(screen.getByRole('button', { name: /add dish/i }))
 
     await user.type(screen.getByLabelText('Dish Name'), 'Fried Rice')
-    await user.type(screen.getByLabelText('Price (GH₵)'), '1300')
+    await user.type(screen.getByLabelText(/Price/), '1300')
     await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
     await user.selectOptions(screen.getByRole('combobox'), rice.id)
     await user.type(screen.getByPlaceholderText('Qty'), '0.25')
@@ -169,118 +261,10 @@ describe('MenuClient — create dialog', () => {
       servingSize: 1,
       ingredients: [{ inventoryItemId: rice.id, quantityPerDish: 0.25 }],
     })
-    // Dialog closes and the new row appears optimistically.
+    expect(mockCreateDish.mock.calls[0][0]).not.toHaveProperty('imageUrl')
     expect(screen.queryByRole('heading', { name: 'Add Dish' })).not.toBeInTheDocument()
     expect(await screen.findByText('Fried Rice')).toBeInTheDocument()
     expect(screen.getByText('#3')).toBeInTheDocument()
-  })
-})
-
-describe('MenuClient — edit dialog', () => {
-  it('opens pre-filled with the selected dish\'s current name/price/recipe', async () => {
-    const user = userEvent.setup()
-    render(<MenuClient initialData={[activeDish]} inventory={[rice, chicken]} />)
-
-    await user.click(screen.getByRole('button', { name: 'Edit' }))
-
-    expect(screen.getByRole('heading', { name: 'Edit Dish #1' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Dish Name')).toHaveValue('Jollof Rice')
-    expect(screen.getByLabelText('Price (GH₵)')).toHaveValue(1200)
-    expect(screen.getByRole('combobox')).toHaveValue(rice.id)
-    expect(screen.getByPlaceholderText('Qty')).toHaveValue(0.25)
-  })
-
-  it('saving calls updateDish and updates the row in local table state without a full reload', async () => {
-    const user = userEvent.setup()
-    mockUpdateDish.mockResolvedValue({ ...activeDish, name: 'Jollof Rice (Large)', price: 1500 })
-    render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
-
-    await user.click(screen.getByRole('button', { name: 'Edit' }))
-    const nameInput = screen.getByLabelText('Dish Name')
-    await user.clear(nameInput)
-    await user.type(nameInput, 'Jollof Rice (Large)')
-    const priceInput = screen.getByLabelText('Price (GH₵)')
-    await user.clear(priceInput)
-    await user.type(priceInput, '1500')
-
-    await user.click(screen.getByRole('button', { name: 'Update Dish' }))
-
-    expect(mockUpdateDish).toHaveBeenCalledWith(
-      'dish-active',
-      expect.objectContaining({ name: 'Jollof Rice (Large)', price: 1500 })
-    )
-    expect(await screen.findByText('Jollof Rice (Large)')).toBeInTheDocument()
-    expect(screen.getByText('GH₵1,500.00')).toBeInTheDocument()
-  })
-})
-
-/**
- * FE-022. getInventoryItems() is active-only by default, so an archived ingredient is absent
- * from the `inventory` prop. A recipe row that already references one must still resolve its
- * real name and unit — reinjected from the dish's own ingredients join.
- */
-describe('MenuClient — archived ingredient reinjection (recipe builder)', () => {
-  // Rice is deliberately NOT in the `inventory` prop below, standing in for an item archived
-  // after this dish's recipe was written.
-  const dishWithArchivedIngredient = makeDish({
-    id: 'dish-legacy',
-    shortId: 7,
-    name: 'Legacy Jollof',
-    price: 1000,
-    ingredients: [
-      {
-        id: 'di-legacy',
-        dishId: 'dish-legacy',
-        inventoryItemId: rice.id,
-        quantityPerDish: 0.3,
-        createdAt: new Date('2026-01-01'),
-        inventoryItem: { ...rice, isActive: false },
-      },
-    ],
-  })
-
-  it('keeps the archived ingredient selectable, named, and unit-labelled when editing', async () => {
-    const user = userEvent.setup()
-    render(<MenuClient initialData={[dishWithArchivedIngredient]} inventory={[chicken]} />)
-
-    await user.click(screen.getByRole('button', { name: 'Edit' }))
-
-    const select = screen.getByRole('combobox')
-    // Without reinjection the <select> would hold an unmatched value and fall back to the
-    // first option (chicken), silently rewriting the recipe on the next save.
-    expect(select).toHaveValue(rice.id)
-    expect(screen.getByRole('option', { name: 'Long Grain Rice (archived) (kg)' })).toBeInTheDocument()
-    // The unit label beside the row reads through the same reinjected option.
-    expect(screen.getByText('kg')).toBeInTheDocument()
-  })
-
-  it('does not offer archived items on a brand-new recipe row', async () => {
-    const user = userEvent.setup()
-    render(<MenuClient initialData={[dishWithArchivedIngredient]} inventory={[chicken]} />)
-
-    await user.click(screen.getByRole('button', { name: /add dish/i }))
-    await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
-
-    expect(screen.getByRole('option', { name: 'Chicken (kg)' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: /archived/ })).not.toBeInTheDocument()
-  })
-
-  it('does not crash the recipe column when saving a dish that keeps an archived ingredient', async () => {
-    const user = userEvent.setup()
-    mockUpdateDish.mockResolvedValue({ ...dishWithArchivedIngredient, name: 'Legacy Jollof II' })
-    render(<MenuClient initialData={[dishWithArchivedIngredient]} inventory={[chicken]} />)
-
-    await user.click(screen.getByRole('button', { name: 'Edit' }))
-    const nameInput = screen.getByLabelText('Dish Name')
-    await user.clear(nameInput)
-    await user.type(nameInput, 'Legacy Jollof II')
-
-    await user.click(screen.getByRole('button', { name: 'Update Dish' }))
-
-    // buildIngredients used to resolve this row via `inventory.find(...)!` and hand the RECIPE
-    // column an undefined inventoryItem, throwing on `.name` during the optimistic re-render.
-    expect(await screen.findByText('Legacy Jollof II')).toBeInTheDocument()
-    expect(screen.getByText(/Long Grain Rice 0.3kg/)).toBeInTheDocument()
   })
 })
 
@@ -290,7 +274,7 @@ describe('MenuClient — archive/restore', () => {
     mockToggleDishActive.mockResolvedValue({ ...activeDish, isActive: false })
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: 'Archive' }))
+    await user.click(screen.getByTitle('Archive dish'))
 
     expect(mockToggleDishActive).toHaveBeenCalledWith('dish-active', false)
     expect(await screen.findByText('ARCHIVED')).toBeInTheDocument()
@@ -301,7 +285,7 @@ describe('MenuClient — archive/restore', () => {
     mockToggleDishActive.mockResolvedValue({ ...archivedDish, isActive: true })
     render(<MenuClient initialData={[archivedDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: 'Restore' }))
+    await user.click(screen.getByTitle('Restore dish'))
 
     expect(mockToggleDishActive).toHaveBeenCalledWith('dish-archived', true)
     expect(await screen.findByText('ACTIVE')).toBeInTheDocument()
@@ -313,31 +297,31 @@ describe('MenuClient — delete', () => {
     const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: /delete/i }))
+    await user.click(screen.getByTitle('Delete dish'))
     await user.click(await screen.findByRole('button', { name: 'Cancel' }))
 
     expect(mockDeleteDish).not.toHaveBeenCalled()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()
   })
 
-  it('{ archived: false } removes the row from the table entirely', async () => {
+  it('{ archived: false } removes the card from the gallery entirely', async () => {
     mockDeleteDish.mockResolvedValue({ archived: false })
     const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: /delete/i }))
+    await user.click(screen.getByTitle('Delete dish'))
     const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
     await user.click(confirmButtons[confirmButtons.length - 1])
 
     expect(await screen.findByText('No dishes yet')).toBeInTheDocument()
   })
 
-  it('{ archived: true } keeps the row but flips its badge to ARCHIVED', async () => {
+  it('{ archived: true } keeps the card but flips its badge to ARCHIVED, since it is referenced by past orders', async () => {
     mockDeleteDish.mockResolvedValue({ archived: true })
     const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish]} inventory={[rice]} />)
 
-    await user.click(screen.getByRole('button', { name: /delete/i }))
+    await user.click(screen.getByTitle('Delete dish'))
     const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
     await user.click(confirmButtons[confirmButtons.length - 1])
 
