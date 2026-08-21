@@ -5,7 +5,7 @@ import { Menu } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { Sidebar } from "./Sidebar"
+import { AdminSidebar } from "./Sidebar"
 
 /**
  * Owns the mobile nav drawer's open state.
@@ -43,7 +43,7 @@ export function MobileNavTrigger({ userRole }: { userRole?: 'ADMIN' | 'KITCHEN_S
           {/* The drawer's accessible name — visually redundant next to the logo,
               but required for the dialog to announce itself. */}
         <DialogTitle className="sr-only">{userRole === 'KITCHEN_STAFF' ? 'Staff' : userRole === 'DELIVERY_DRIVER' ? 'Driver' : 'Admin'} navigation</DialogTitle>
-          <Sidebar onNavigate={() => setOpen(false)} userRole={userRole} />
+          <AdminSidebar onNavigate={() => setOpen(false)} userRole={userRole} />
         </DialogContent>
       </Dialog>
     </div>

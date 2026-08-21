@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Sidebar } from './Sidebar'
+import { AdminSidebar } from './Sidebar'
 
 interface AdminLayoutProps {
   children: React.ReactNode
@@ -57,7 +57,7 @@ export function AdminLayout({ children, header, userRole = 'ADMIN' }: AdminLayou
           always visible in the viewport without scrolling. overflow-y-auto
           lets the nav scroll independently if there are many items. */}
       <div className="hidden md:block sticky top-0 h-screen overflow-y-auto print:hidden">
-        <Sidebar collapsed={collapsed} onToggleCollapse={toggle} userRole={userRole} />
+        <AdminSidebar collapsed={collapsed} onToggleCollapse={toggle} userRole={userRole} />
       </div>
 
       <div className="flex flex-col min-w-0">

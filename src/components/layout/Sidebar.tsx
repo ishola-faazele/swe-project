@@ -55,7 +55,7 @@ interface SidebarProps {
   userRole?: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUSTOMER'
 }
 
-export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse, userRole = 'ADMIN' }: SidebarProps) {
+export function AdminSidebar({ onNavigate, collapsed = false, onToggleCollapse, userRole = 'ADMIN' }: SidebarProps) {
   const pathname = usePathname()
   const navItems = getNavItems(userRole)
 
