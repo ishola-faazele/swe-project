@@ -58,8 +58,9 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${syne.variable} ${dmMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">
+      <body className="min-h-full flex flex-col bg-background text-foreground" suppressHydrationWarning>
         {/* First focusable element on the page — hidden until focused, then it
             jumps past the nav to the shell's <main id="main-content">. */}
         <a

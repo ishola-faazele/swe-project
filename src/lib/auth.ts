@@ -245,13 +245,21 @@ export async function mintSessionForAuthEmail(authEmail: string): Promise<void> 
   }
 }
 
-export async function requireAdmin(): Promise<User> {
+export async function requireRole(allowedRoles: Role[]): Promise<User> {
   const dbUser = await getCurrentDbUser()
   if (!dbUser) {
     throw new AuthError('You must be signed in to do that.')
   }
-  if (dbUser.role !== Role.ADMIN) {
+  if (!allowedRoles.includes(dbUser.role)) {
     throw new AuthError('You do not have permission to do that.')
   }
   return dbUser
+}
+
+export async function requireAdmin(): Promise<User> {
+  return requireRole([Role.ADMIN])
+}
+
+export async function requireStaffOrAdmin(): Promise<User> {
+  return requireRole([Role.ADMIN, Role.STAFF])
 }

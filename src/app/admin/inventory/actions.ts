@@ -3,7 +3,7 @@
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { Category, type InventoryItem } from '@prisma/client'
-import { requireAdmin } from '@/lib/auth'
+import { requireAdmin, requireStaffOrAdmin } from '@/lib/auth'
 import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { createInventoryItemSchema, idSchema, updateInventoryItemSchema } from '@/lib/validation'
 
@@ -20,7 +20,7 @@ import { createInventoryItemSchema, idSchema, updateInventoryItemSchema } from '
 export async function getInventoryItems(
   options: { includeArchived?: boolean } = {}
 ): Promise<InventoryItem[]> {
-  await requireAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
+  await requireStaffOrAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
   return await prisma.inventoryItem.findMany({
     where: options.includeArchived ? undefined : { isActive: true },
     orderBy: {
@@ -142,7 +142,7 @@ export async function toggleInventoryItemActive(id: string, isActive: boolean): 
 }
 
 export async function submitStockCount(adjustments: { id: string, previousStock: number, newStock: number }[]): Promise<ActionResult<void>> {
-  await requireAdmin()
+  const user = await requireStaffOrAdmin()
 
   try {
     await prisma.$transaction(
@@ -165,6 +165,14 @@ export async function submitStockCount(adjustments: { id: string, previousStock:
   } catch (err) {
     return toErrorResult(err, 'Could not submit stock count. Please try again.')
   }
+
+  await prisma.auditLog.create({
+    data: {
+      userId: user.id,
+      action: 'STOCK_ADJUSTED',
+      details: `Adjusted stock for ${adjustments.length} item(s)`
+    }
+  })
 
   revalidatePath('/admin/inventory')
   return okResult(undefined)

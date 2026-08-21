@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import { getCurrentDbUser } from '@/lib/auth'
 import {
   TrendingUp,
   Users,
@@ -34,6 +35,8 @@ function getRelativeTimeString(date: Date): string {
 }
 
 export default async function AdminDashboardPage() {
+  const user = await getCurrentDbUser()
+  const isAdmin = user?.role === 'ADMIN'
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
@@ -52,9 +55,6 @@ export default async function AdminDashboardPage() {
     prisma.order.count(),
     prisma.user.count({ where: { role: 'CUSTOMER' } }),
     prisma.order.count({ where: { status: { in: ACTIVE_ORDER_STATUSES } } }),
-    // Direct query, deliberately not routed through getInventoryItems() — so it needs its own
-    // isActive filter. An ingredient the business has retired sits at or near zero stock forever
-    // and would otherwise nag the Low Stock Alerts count with a restock that will never happen.
     prisma.inventoryItem.findMany({
       where: { isActive: true },
       select: { id: true, currentStock: true, minimumThreshold: true },
@@ -65,8 +65,6 @@ export default async function AdminDashboardPage() {
       include: { customer: { select: { name: true, email: true, shortId: true } } },
     }),
     prisma.order.groupBy({ by: ['status'], _count: { status: true } }),
-    // Only orders still in the kitchen queue can be late — a COMPLETED order
-    // with a past due date was delivered, not missed.
     prisma.order.findMany({
       where: { status: { in: ACTIVE_ORDER_STATUSES } },
       select: { dueDate: true },
@@ -100,8 +98,6 @@ export default async function AdminDashboardPage() {
     activeLogs.filter(log => lowStockItemIds.has(log.inventoryItemId)).map(log => log.orderId)
   ).size
 
-  // Server-evaluated `now` (the default) is correct here: this is a Server
-  // Component, so there is no client render to disagree with it.
   const dueTodayCount = activeOrdersForDueCheck.filter(o => getDueUrgency(o.dueDate) === 'due-today').length
   const overdueCount = activeOrdersForDueCheck.filter(o => getDueUrgency(o.dueDate) === 'overdue').length
 
@@ -111,9 +107,12 @@ export default async function AdminDashboardPage() {
   // Revenue Calculations
   const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000)
   const startOfDayBefore = new Date(startOfYesterday.getTime() - 24 * 60 * 60 * 1000)
-  const startOfThisWeek = new Date(startOfToday.getTime() - now.getDay() * 24 * 60 * 60 * 1000)
-
-  const [yesterdayOrders, dayBeforeOrders, thisWeekOrders] = await Promise.all([
+  
+  const [todayOrders, yesterdayOrders, dayBeforeOrders] = await Promise.all([
+    prisma.order.findMany({
+      where: { status: 'COMPLETED', updatedAt: { gte: startOfToday } },
+      select: { totalPrice: true }
+    }),
     prisma.order.findMany({
       where: { status: 'COMPLETED', updatedAt: { gte: startOfYesterday, lt: startOfToday } },
       select: { totalPrice: true }
@@ -121,12 +120,16 @@ export default async function AdminDashboardPage() {
     prisma.order.findMany({
       where: { status: 'COMPLETED', updatedAt: { gte: startOfDayBefore, lt: startOfYesterday } },
       select: { totalPrice: true }
-    }),
-    prisma.order.findMany({
-      where: { status: 'COMPLETED', updatedAt: { gte: startOfThisWeek } },
-      select: { totalPrice: true }
     })
   ])
+
+  const todayRevenue = todayOrders.reduce((sum, o) => sum + o.totalPrice, 0)
+  const todayCompletedOrders = todayOrders.length
+  const yesterdayRevenue = yesterdayOrders.reduce((sum, o) => sum + o.totalPrice, 0)
+  const dayBeforeRevenue = dayBeforeOrders.reduce((sum, o) => sum + o.totalPrice, 0)
+
+  const yesterdayTrend = dayBeforeRevenue === 0 ? (yesterdayRevenue > 0 ? 100 : 0) : ((yesterdayRevenue - dayBeforeRevenue) / dayBeforeRevenue) * 100
+  const weekTrend = yesterdayRevenue === 0 ? (todayRevenue > 0 ? 100 : 0) : ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
 
   // Top Revenue Dishes (This Month)
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -135,12 +138,12 @@ export default async function AdminDashboardPage() {
     include: { dishes: true }
   })
 
-  const revenueByDish = new Map<string, { name: string; timesOrdered: number; totalRevenue: number }>()
+  const revenueByDish = new Map<string, { id: string; name: string; timesOrdered: number; totalRevenue: number }>()
   completedOrdersThisMonth.forEach(order => {
     order.dishes.forEach(dish => {
-      const key = dish.dishName // grouping by snapshot name
+      const key = dish.dishName
       if (!revenueByDish.has(key)) {
-        revenueByDish.set(key, { name: dish.dishName, timesOrdered: 0, totalRevenue: 0 })
+        revenueByDish.set(key, { id: dish.dishName, name: dish.dishName, timesOrdered: 0, totalRevenue: 0 })
       }
       const stat = revenueByDish.get(key)!
       stat.timesOrdered += dish.quantity
@@ -148,29 +151,11 @@ export default async function AdminDashboardPage() {
     })
   })
 
-  const topRevenueDishes = Array.from(revenueByDish.values())
+  const topDishes = Array.from(revenueByDish.values())
     .sort((a, b) => b.totalRevenue - a.totalRevenue)
-    .slice(0, 5)
-
-  const yesterdayRevenue = yesterdayOrders.reduce((sum, o) => sum + o.totalPrice, 0)
-  const dayBeforeRevenue = dayBeforeOrders.reduce((sum, o) => sum + o.totalPrice, 0)
-  const thisWeekRevenue = thisWeekOrders.reduce((sum, o) => sum + o.totalPrice, 0)
-
-  const revenueDiff = yesterdayRevenue - dayBeforeRevenue
-  const revenueTrend = revenueDiff > 0 ? 'up' : revenueDiff < 0 ? 'down' : 'flat'
-  const revenueTrendText = dayBeforeRevenue === 0 
-    ? (yesterdayRevenue > 0 ? '+100%' : '0%') 
-    : `${revenueDiff > 0 ? '+' : ''}${Math.round((revenueDiff / dayBeforeRevenue) * 100)}%`
+    .slice(0, 4)
 
   const stats = [
-    {
-      label: 'Revenue (This Week)',
-      value: formatCurrency(thisWeekRevenue),
-      icon: Banknote,
-      sub: 'completed orders since Sunday',
-      tone: 'text-emerald-500',
-      bgTone: 'bg-emerald-500/10',
-    },
     {
       label: 'Active Orders',
       value: activeOrders,
@@ -211,7 +196,7 @@ export default async function AdminDashboardPage() {
       bgTone: lowStockCount > 0 ? 'bg-white/20' : 'bg-muted',
       href: '/admin/inventory'
     },
-    {
+    ...(isAdmin ? [{
       label: 'Customers',
       value: totalCustomers,
       icon: Users,
@@ -219,7 +204,7 @@ export default async function AdminDashboardPage() {
       tone: 'text-purple-500',
       bgTone: 'bg-purple-500/10',
       href: '/admin/customers'
-    },
+    }] : []),
   ]
 
   const pipeline = [
@@ -247,22 +232,50 @@ export default async function AdminDashboardPage() {
       </div>
 
       {/* Hero: Daily Revenue Snapshot */}
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 sm:p-8">
-        <h2 className="text-sm font-semibold tracking-wide text-primary/80 uppercase mb-2">Daily Revenue Snapshot</h2>
-        <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4">
-          <p className="text-4xl sm:text-5xl font-black text-foreground tabular-nums tracking-tight">
-            {formatCurrency(yesterdayRevenue)}
-          </p>
-          <div className="flex items-center gap-1.5 text-sm font-medium">
-            <span className="text-muted-foreground">yesterday</span>
-            <div className={`flex items-center rounded-full px-2 py-0.5 ${revenueTrend === 'up' ? 'bg-primary/20 text-primary' : revenueTrend === 'down' ? 'bg-destructive/20 text-destructive' : 'bg-muted text-muted-foreground'}`}>
-              {revenueTrend === 'up' && <ArrowUpRight className="h-3.5 w-3.5 mr-0.5" />}
-              {revenueTrend === 'down' && <ArrowDownRight className="h-3.5 w-3.5 mr-0.5" />}
-              {revenueTrendText} vs day prior
+      {isAdmin && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 sm:p-8">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-primary">
+                <Banknote className="h-5 w-5" />
+                <h2 className="font-semibold tracking-wide uppercase text-sm">Today's Revenue</h2>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl sm:text-5xl font-black tracking-tight text-foreground">
+                  {formatCurrency(todayRevenue)}
+                </span>
+                <span className="text-muted-foreground font-medium">from {todayCompletedOrders} completed orders</span>
+              </div>
+            </div>
+            
+            {/* Quick Comparisons */}
+            <div className="flex flex-row sm:flex-col gap-4 sm:gap-2">
+              <div className="flex items-center gap-2">
+                <div className={cn("p-1 rounded-full", yesterdayTrend > 0 ? "bg-emerald-500/20 text-emerald-500" : yesterdayTrend < 0 ? "bg-red-500/20 text-red-500" : "bg-muted text-muted-foreground")}>
+                  {yesterdayTrend > 0 ? <ArrowUpRight className="h-3 w-3" /> : yesterdayTrend < 0 ? <ArrowDownRight className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+                </div>
+                <div className="text-sm">
+                  <span className={cn("font-bold", yesterdayTrend > 0 ? "text-emerald-500" : yesterdayTrend < 0 ? "text-red-500" : "text-muted-foreground")}>
+                    {yesterdayTrend === Infinity ? '∞' : Math.abs(Math.round(yesterdayTrend))}%
+                  </span>
+                  <span className="text-muted-foreground ml-1">vs yesterday</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={cn("p-1 rounded-full", weekTrend > 0 ? "bg-emerald-500/20 text-emerald-500" : weekTrend < 0 ? "bg-red-500/20 text-red-500" : "bg-muted text-muted-foreground")}>
+                  {weekTrend > 0 ? <ArrowUpRight className="h-3 w-3" /> : weekTrend < 0 ? <ArrowDownRight className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+                </div>
+                <div className="text-sm">
+                  <span className={cn("font-bold", weekTrend > 0 ? "text-emerald-500" : weekTrend < 0 ? "text-red-500" : "text-muted-foreground")}>
+                    {weekTrend === Infinity ? '∞' : Math.abs(Math.round(weekTrend))}%
+                  </span>
+                  <span className="text-muted-foreground ml-1">vs day before</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Stat cards — 2×3 at lg */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -412,50 +425,28 @@ export default async function AdminDashboardPage() {
 
         <div className="space-y-8">
           {/* Top Revenue Dishes */}
-          <div>
-            <h2 className="eyebrow mb-3">Top Dishes by Revenue (This Month)</h2>
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-popover">
-                    {['Dish', 'Times Ordered', 'Revenue'].map(col => (
-                      <th key={col} className={col === 'Revenue' || col === 'Times Ordered' ? "table-head-cell text-right" : "table-head-cell"}>
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {topRevenueDishes.length === 0 ? (
-                    <tr>
-                      <td colSpan={3}>
-                        <div className="empty-state py-8">
-                          <p className="empty-state-title text-sm">No completed orders this month</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    topRevenueDishes.map((dish, idx) => (
-                      <tr
-                        key={dish.name}
-                        className={`table-row ${idx % 2 === 0 ? 'bg-card/40' : ''}`}
-                      >
-                        <td className="px-4 py-3 text-foreground/90 font-medium">
-                          {dish.name}
-                        </td>
-                        <td className="px-4 py-3 font-mono-data tabular-nums text-muted-foreground text-right">
-                          {dish.timesOrdered}
-                        </td>
-                        <td className="px-4 py-3 font-mono-data tabular-nums font-bold text-primary text-right">
-                          {formatCurrency(dish.totalRevenue)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+          {isAdmin && topDishes.length > 0 && (
+            <div className="pt-4 border-t border-border">
+              <h2 className="eyebrow mb-6">Top Revenue Dishes (This Month)</h2>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {topDishes.map((dish, i) => (
+                  <div key={dish.id} className="p-4 rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-sm">
+                        #{i + 1}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground uppercase font-medium tracking-wide">Revenue</p>
+                        <p className="font-bold text-foreground">{formatCurrency(dish.totalRevenue)}</p>
+                      </div>
+                    </div>
+                    <h3 className="font-semibold text-foreground line-clamp-1 mb-1">{dish.name}</h3>
+                    <p className="text-sm text-muted-foreground">{dish.timesOrdered}x ordered</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Upcoming Due Orders */}
           <div>

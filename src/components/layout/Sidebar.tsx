@@ -15,18 +15,23 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const navItems = [
-  { label: 'OPERATIONS', items: [
-    { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, exact: true },
-    { name: 'Orders',    href: '/admin/orders', icon: ShoppingCart, exact: false },
-  ]},
-  { label: 'MANAGEMENT', items: [
-    { name: 'Inventory', href: '/admin/inventory', icon: Package, exact: false },
-    { name: 'Menu',      href: '/admin/menu', icon: UtensilsCrossed, exact: false },
-    { name: 'Customers', href: '/admin/customers', icon: Users, exact: false },
-    { name: 'Settings', href: '/admin/settings', icon: Settings, exact: false },
-  ]},
-]
+const getNavItems = (role: 'ADMIN' | 'STAFF' | 'CUSTOMER' = 'ADMIN') => {
+  const isStaff = role === 'STAFF'
+  return [
+    { label: 'OPERATIONS', items: [
+      { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, exact: true },
+      { name: 'Orders',    href: '/admin/orders', icon: ShoppingCart, exact: false },
+    ]},
+    { label: 'MANAGEMENT', items: [
+      { name: 'Inventory', href: '/admin/inventory', icon: Package, exact: false },
+      { name: 'Menu',      href: '/admin/menu', icon: UtensilsCrossed, exact: false },
+      ...(!isStaff ? [{ name: 'Customers', href: '/admin/customers', icon: Users, exact: false }] : []),
+      ...(!isStaff ? [{ name: 'Team', href: '/admin/team', icon: Users, exact: false }] : []),
+      ...(!isStaff ? [{ name: 'Audit Logs', href: '/admin/audit', icon: LayoutDashboard, exact: false }] : []),
+      ...(!isStaff ? [{ name: 'Settings', href: '/admin/settings', icon: Settings, exact: false }] : []),
+    ]},
+  ]
+}
 
 interface SidebarProps {
   /** Called by the mobile drawer to close itself when a link is tapped. */
@@ -35,10 +40,12 @@ interface SidebarProps {
   collapsed?: boolean
   /** Callback to toggle the collapsed state. */
   onToggleCollapse?: () => void
+  userRole?: 'ADMIN' | 'STAFF' | 'CUSTOMER'
 }
 
-export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse }: SidebarProps) {
+export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse, userRole = 'ADMIN' }: SidebarProps) {
   const pathname = usePathname()
+  const navItems = getNavItems(userRole)
 
   function isActive(href: string, exact: boolean) {
     return exact ? pathname === href : pathname.startsWith(href)

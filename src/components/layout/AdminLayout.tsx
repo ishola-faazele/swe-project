@@ -7,6 +7,7 @@ interface AdminLayoutProps {
   children: React.ReactNode
   /** Header is passed as a slot so it can stay a Server Component (async). */
   header: React.ReactNode
+  userRole?: 'ADMIN' | 'STAFF' | 'CUSTOMER'
 }
 
 /**
@@ -19,7 +20,7 @@ interface AdminLayoutProps {
  * The collapsed state is persisted to localStorage under `sidebar-collapsed`
  * so it survives page navigations without flashing back to expanded.
  */
-export function AdminLayout({ children, header }: AdminLayoutProps) {
+export function AdminLayout({ children, header, userRole = 'ADMIN' }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -56,7 +57,7 @@ export function AdminLayout({ children, header }: AdminLayoutProps) {
           always visible in the viewport without scrolling. overflow-y-auto
           lets the nav scroll independently if there are many items. */}
       <div className="hidden md:block sticky top-0 h-screen overflow-y-auto">
-        <Sidebar collapsed={collapsed} onToggleCollapse={toggle} />
+        <Sidebar collapsed={collapsed} onToggleCollapse={toggle} userRole={userRole} />
       </div>
 
       <div className="flex flex-col min-w-0">

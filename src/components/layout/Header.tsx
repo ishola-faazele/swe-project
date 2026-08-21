@@ -19,7 +19,7 @@ import {
 
 // Stays an async Server Component — MobileNavTrigger is a Client Component
 // child, which does not pull this file across the boundary.
-export async function Header() {
+export async function Header({ userRole }: { userRole?: 'ADMIN' | 'STAFF' | 'CUSTOMER' }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -34,7 +34,7 @@ export async function Header() {
   return (
     <header className="sticky top-0 z-10 flex h-[60px] w-full items-center justify-between gap-4 border-b border-border bg-card px-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-2">
-        <MobileNavTrigger />
+        <MobileNavTrigger userRole={userRole} />
 
         {/* Below md the sidebar is hidden, so this is the only persistently
             visible brand mark. */}

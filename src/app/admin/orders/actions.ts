@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { OrderStatus, type Order } from '@prisma/client'
 import { notifyOrderStatusChange, notifyLowStock } from '@/lib/notifications'
 import { getNotificationSettings } from '@/lib/settings'
-import { requireAdmin } from '@/lib/auth'
+import { requireStaffOrAdmin } from '@/lib/auth'
 import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { decrementStockOrThrow, restoreStockForOrder } from '@/lib/inventory'
 import { createOrderSchema, idSchema, updateOrderStatusSchema } from '@/lib/validation'
@@ -13,7 +13,7 @@ import { expandDishesToIngredients } from '@/lib/recipe'
 import type { ClientSafeUser } from '@/lib/user'
 
 export async function getOrders() {
-  await requireAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
+  await requireStaffOrAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
   return await prisma.order.findMany({
     include: {
       // authEmail is an internal Supabase-identity detail. This result is passed straight into
@@ -42,7 +42,7 @@ export async function createOrder(data: {
   dishes: { dishId: string; quantity: number }[]
   ingredientOverrides?: { inventoryItemId: string; quantityUsed: number }[]
 }): Promise<ActionResult<Order>> {
-  await requireAdmin() // throws AuthError — uncaught here, rejects the promise for the client
+  const user = await requireStaffOrAdmin() // throws AuthError — uncaught here, rejects the promise for the client
 
   let order: Order
   let ingredientTotals: { inventoryItemId: string; quantityUsed: number }[]
@@ -166,6 +166,14 @@ export async function createOrder(data: {
     }
   }
 
+  await prisma.auditLog.create({
+    data: {
+      userId: user.id,
+      action: 'ORDER_CREATED',
+      details: `Created Order #${order.shortId}`
+    }
+  })
+
   revalidatePath('/admin/orders')
   return okResult(order)
 }
@@ -174,7 +182,7 @@ export async function updateOrderStatus(
   id: string,
   status: OrderStatus
 ): Promise<ActionResult<Order & { customer: ClientSafeUser }>> {
-  await requireAdmin()
+  const user = await requireStaffOrAdmin()
 
   let order: Order & { customer: ClientSafeUser }
   try {
@@ -227,12 +235,20 @@ export async function updateOrderStatus(
     notifyByWhatsapp: order.customer.notifyByWhatsapp,
   }).catch(console.error)
 
+  await prisma.auditLog.create({
+    data: {
+      userId: user.id,
+      action: status === 'CANCELLED' ? 'ORDER_CANCELLED' : 'ORDER_STATUS_UPDATED',
+      details: `Moved Order #${order.shortId} to ${order.status}`
+    }
+  })
+
   revalidatePath('/admin/orders')
   return okResult(order)
 }
 
 export async function deleteOrder(id: string): Promise<ActionResult<void>> {
-  await requireAdmin()
+  const user = await requireStaffOrAdmin()
 
   try {
     const parsedId = idSchema.parse(id)
@@ -261,6 +277,14 @@ export async function deleteOrder(id: string): Promise<ActionResult<void>> {
   } catch (err) {
     return toErrorResult(err, 'Could not delete this order.')
   }
+
+  await prisma.auditLog.create({
+    data: {
+      userId: user.id,
+      action: 'ORDER_DELETED',
+      details: `Deleted an order`
+    }
+  })
 
   revalidatePath('/admin/orders')
   return okResult(undefined)

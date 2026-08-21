@@ -56,10 +56,12 @@ model User {
   updatedAt DateTime @updatedAt
 
   orders    Order[]
+  auditLogs AuditLog[]
 }
 
 enum Role {
   ADMIN
+  STAFF
   CUSTOMER
 }
 
@@ -250,4 +252,16 @@ model StockAdjustmentLog {
   newStock        Float
   reason          String?       // e.g., "STOCK_COUNT", "MANUAL_ADJUSTMENT"
   createdAt       DateTime      @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
 }
