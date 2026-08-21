@@ -15,7 +15,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
   // Route-level half of authorization. Shares getCurrentDbUser() with requireAdmin() so the
   // id-or-email lockout fallback stays defined in exactly one place.
   const dbUser = await getCurrentDbUser()
-  if (!dbUser || (dbUser.role !== 'ADMIN' && dbUser.role !== 'STAFF')) {
+  if (!dbUser || (dbUser.role !== 'ADMIN' && dbUser.role !== 'KITCHEN_STAFF' && dbUser.role !== 'DELIVERY_DRIVER')) {
     redirect('/dashboard')
   }
 

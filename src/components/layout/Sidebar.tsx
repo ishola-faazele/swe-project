@@ -15,8 +15,18 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const getNavItems = (role: 'ADMIN' | 'STAFF' | 'CUSTOMER' = 'ADMIN') => {
-  const isStaff = role === 'STAFF'
+const getNavItems = (role: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUSTOMER' = 'ADMIN') => {
+  const isKitchenStaff = role === 'KITCHEN_STAFF'
+  const isDriver = role === 'DELIVERY_DRIVER'
+  
+  if (isDriver) {
+    return [
+      { label: 'OPERATIONS', items: [
+        { name: 'Deliveries', href: '/admin/driver', icon: LayoutDashboard, exact: true },
+      ]},
+    ]
+  }
+
   return [
     { label: 'OPERATIONS', items: [
       { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, exact: true },
@@ -25,10 +35,10 @@ const getNavItems = (role: 'ADMIN' | 'STAFF' | 'CUSTOMER' = 'ADMIN') => {
     { label: 'MANAGEMENT', items: [
       { name: 'Inventory', href: '/admin/inventory', icon: Package, exact: false },
       { name: 'Menu',      href: '/admin/menu', icon: UtensilsCrossed, exact: false },
-      ...(!isStaff ? [{ name: 'Customers', href: '/admin/customers', icon: Users, exact: false }] : []),
-      ...(!isStaff ? [{ name: 'Team', href: '/admin/team', icon: Users, exact: false }] : []),
-      ...(!isStaff ? [{ name: 'Audit Logs', href: '/admin/audit', icon: LayoutDashboard, exact: false }] : []),
-      ...(!isStaff ? [{ name: 'Settings', href: '/admin/settings', icon: Settings, exact: false }] : []),
+      ...(!isKitchenStaff ? [{ name: 'Customers', href: '/admin/customers', icon: Users, exact: false }] : []),
+      ...(!isKitchenStaff ? [{ name: 'Team', href: '/admin/team', icon: Users, exact: false }] : []),
+      ...(!isKitchenStaff ? [{ name: 'Audit Logs', href: '/admin/audit', icon: LayoutDashboard, exact: false }] : []),
+      ...(!isKitchenStaff ? [{ name: 'Settings', href: '/admin/settings', icon: Settings, exact: false }] : []),
     ]},
   ]
 }
@@ -40,7 +50,7 @@ interface SidebarProps {
   collapsed?: boolean
   /** Callback to toggle the collapsed state. */
   onToggleCollapse?: () => void
-  userRole?: 'ADMIN' | 'STAFF' | 'CUSTOMER'
+  userRole?: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUSTOMER'
 }
 
 export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse, userRole = 'ADMIN' }: SidebarProps) {
@@ -88,7 +98,7 @@ export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse, userR
 
       {/* ── Nav ───────────────────────────────────────────────────────── */}
       <nav
-        aria-label={userRole === 'STAFF' ? 'Staff navigation' : 'Admin navigation'}
+        aria-label={userRole === 'KITCHEN_STAFF' ? 'Staff navigation' : 'Admin navigation'}
         className={cn(
           'flex-1 space-y-6 py-6',
           collapsed ? 'px-2' : 'px-3'

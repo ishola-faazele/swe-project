@@ -200,7 +200,7 @@ export async function verifyPhoneOtp(
 
     const { user, authEmail } = await resolveCustomerForPhoneLogin(phone)
     await mintSessionForAuthEmail(authEmail)
-    return okResult({ redirectTo: (user.role === 'ADMIN' || user.role === 'STAFF') ? '/admin' : '/dashboard' })
+    return okResult({ redirectTo: (user.role === 'ADMIN' || user.role === 'KITCHEN_STAFF') ? '/admin' : '/dashboard' })
   } catch (err) {
     // Covers a missing SUPABASE_SERVICE_ROLE_KEY, a generateLink/verifyOtp failure, and any Prisma
     // error — all surface as an ActionResult the form can render, never an unhandled rejection.

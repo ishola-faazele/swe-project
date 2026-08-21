@@ -11,7 +11,7 @@ export async function getTeam() {
   await requireAdmin()
   return await prisma.user.findMany({
     where: {
-      role: { in: ['ADMIN', 'STAFF'] }
+      role: { in: ['ADMIN', 'KITCHEN_STAFF', 'DELIVERY_DRIVER'] }
     },
     omit: { authEmail: true },
     orderBy: { createdAt: 'desc' }
@@ -21,7 +21,7 @@ export async function getTeam() {
 import { toGhanaE164 } from '@/lib/phone'
 
 export async function addStaff(
-  data: { name: string; email: string; phone: string },
+  data: { name: string; email: string; phone: string; role: 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' },
   confirmPromote: boolean = false
 ): Promise<ActionResult<{ promoted: boolean }>> {
   const admin = await requireAdmin()
@@ -51,7 +51,7 @@ export async function addStaff(
     
     if (targetUser) {
       if (targetUser.role === 'ADMIN') throw new Error('Cannot modify an ADMIN account.')
-      if (targetUser.role === 'STAFF') throw new Error('User is already STAFF.')
+      if (targetUser.role === 'KITCHEN_STAFF' || targetUser.role === 'DELIVERY_DRIVER') throw new Error('User is already STAFF or DRIVER.')
 
       if (!confirmPromote) {
         return toErrorResult(new Error('CUSTOMER_EXISTS'), 'CUSTOMER_EXISTS')
@@ -60,7 +60,7 @@ export async function addStaff(
       await prisma.user.update({
         where: { id: targetUser.id },
         data: { 
-          role: 'STAFF',
+          role: data.role,
           name: name || targetUser.name,
           email: email || targetUser.email,
           phone: phone || targetUser.phone
@@ -71,7 +71,7 @@ export async function addStaff(
         data: {
           userId: admin.id,
           action: 'ROLE_UPDATED',
-          details: `Promoted existing customer ${name} to STAFF`
+          details: `Promoted existing customer ${name} to ${data.role}`
         }
       })
       
@@ -89,8 +89,8 @@ export async function addStaff(
           name,
           email: email || null,
           phone: phone || null,
-          role: 'STAFF',
-          createdAsRole: 'STAFF',
+          role: data.role,
+          createdAsRole: data.role,
           preferredLoginMethod
         }
       })
@@ -99,7 +99,7 @@ export async function addStaff(
         data: {
           userId: admin.id,
           action: 'USER_CREATED',
-          details: `Created new STAFF member ${name}`
+          details: `Created new ${data.role} member ${name}`
         }
       })
       
@@ -124,7 +124,7 @@ export async function demoteToCustomer(id: string): Promise<ActionResult<void>> 
     const targetUser = await prisma.user.findUnique({ where: { id } })
     if (!targetUser) throw new Error('User not found.')
     if (targetUser.role === 'ADMIN') throw new Error('Cannot demote an ADMIN account.')
-    if (targetUser.createdAsRole === 'STAFF') throw new Error('Cannot demote a dedicated STAFF account.')
+    if (targetUser.createdAsRole === 'KITCHEN_STAFF' || targetUser.createdAsRole === 'DELIVERY_DRIVER') throw new Error('Cannot demote a dedicated STAFF/DRIVER account.')
     
     await prisma.user.update({
       where: { id },
@@ -152,7 +152,7 @@ export async function deleteStaff(id: string): Promise<ActionResult<void>> {
     const targetUser = await prisma.user.findUnique({ where: { id } })
     if (!targetUser) throw new Error('User not found.')
     if (targetUser.role === 'ADMIN') throw new Error('Cannot delete an ADMIN account.')
-    if (targetUser.createdAsRole !== 'STAFF') throw new Error('Cannot directly delete a promoted customer.')
+    if (targetUser.createdAsRole !== 'KITCHEN_STAFF' && targetUser.createdAsRole !== 'DELIVERY_DRIVER') throw new Error('Cannot directly delete a promoted customer.')
     
     await prisma.user.delete({
       where: { id }
@@ -162,7 +162,7 @@ export async function deleteStaff(id: string): Promise<ActionResult<void>> {
       data: {
         userId: user.id,
         action: 'USER_DELETED',
-        details: `Deleted STAFF member ${targetUser.name || targetUser.email || targetUser.phone}`
+        details: `Deleted ${targetUser.role} member ${targetUser.name || targetUser.email || targetUser.phone}`
       }
     })
   } catch (err) {

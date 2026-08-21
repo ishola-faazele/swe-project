@@ -62,6 +62,8 @@ export const createOrderSchema = z.object({
   notes: z.string().trim().optional().nullable(),
   totalPrice: z.number('Enter a total price for this order.').nonnegative('Total price cannot be negative.'),
   dueDate: z.date().nullish(),
+  deliveryAddress: z.string().trim().optional().nullable(),
+  deliveryPhone: z.string().trim().optional().nullable(),
   dishes: dishSelectionArraySchema,
   // When the admin reviews and adjusts ingredients at order creation time (bulk orders),
   // these overrides replace the auto-calculated recipe expansion entirely.
@@ -72,6 +74,8 @@ export const updateOrderInfoSchema = z.object({
   id: idSchema,
   description: z.string().trim(),
   notes: z.string().trim().optional().nullable(),
+  deliveryAddress: z.string().trim().optional().nullable(),
+  deliveryPhone: z.string().trim().optional().nullable(),
 })
 
 export const updateOrderStatusSchema = z.object({

@@ -261,5 +261,5 @@ export async function requireAdmin(): Promise<User> {
 }
 
 export async function requireStaffOrAdmin(): Promise<User> {
-  return requireRole([Role.ADMIN, Role.STAFF])
+  return requireRole([Role.ADMIN, Role.KITCHEN_STAFF])
 }

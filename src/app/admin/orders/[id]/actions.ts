@@ -148,19 +148,23 @@ export async function updateOrderItems(orderId: string, data: {
 export async function updateOrderInfo(
   id: string,
   description: string,
-  notes: string | null
+  notes: string | null,
+  deliveryAddress: string | null,
+  deliveryPhone: string | null
 ): Promise<ActionResult<Order>> {
   await requireStaffOrAdmin()
 
   let order: Order
   try {
     const { updateOrderInfoSchema } = await import('@/lib/validation')
-    const input = updateOrderInfoSchema.parse({ id, description, notes })
+    const input = updateOrderInfoSchema.parse({ id, description, notes, deliveryAddress, deliveryPhone })
     order = await prisma.order.update({
       where: { id: input.id },
       data: { 
         description: input.description,
         notes: input.notes ?? null,
+        deliveryAddress: input.deliveryAddress ?? null,
+        deliveryPhone: input.deliveryPhone ?? null,
       },
     })
   } catch (err) {

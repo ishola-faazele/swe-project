@@ -4,13 +4,21 @@ import { getInventoryItems } from '../inventory/actions'
 import { getDishes } from '../menu/actions'
 import { OrderClient } from './OrderClient'
 
+import { getCurrentDbUser } from '@/lib/auth'
+import { redirect } from 'next/navigation'
+
 export default async function OrdersPage() {
-  const [orders, customers, inventory, dishes] = await Promise.all([
+  const [orders, customers, inventory, dishes, user] = await Promise.all([
     getOrders(),
     getCustomers(),
     getInventoryItems(),
-    getDishes()
+    getDishes(),
+    getCurrentDbUser()
   ])
+
+  if (user?.role === 'DELIVERY_DRIVER') {
+    redirect('/admin/driver')
+  }
 
   return (
     <div className="space-y-6">
@@ -20,7 +28,7 @@ export default async function OrdersPage() {
           {orders.length} order{orders.length !== 1 ? 's' : ''} on record
         </p>
       </div>
-      <OrderClient initialData={orders} customers={customers} inventory={inventory} dishes={dishes} />
+      <OrderClient initialData={orders} customers={customers} inventory={inventory} dishes={dishes} userRole={user?.role} />
     </div>
   )
 }

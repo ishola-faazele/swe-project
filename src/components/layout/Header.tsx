@@ -19,7 +19,7 @@ import {
 
 // Stays an async Server Component — MobileNavTrigger is a Client Component
 // child, which does not pull this file across the boundary.
-export async function Header({ userRole }: { userRole?: 'ADMIN' | 'STAFF' | 'CUSTOMER' }) {
+export async function Header({ userRole }: { userRole?: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUSTOMER' }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   let displayLogin = ''
@@ -51,7 +51,7 @@ export async function Header({ userRole }: { userRole?: 'ADMIN' | 'STAFF' | 'CUS
           <Image src="/rosty-logo.jpeg" alt="Chop with Rostty" fill sizes="48px" className="object-contain" />
         </div>
 
-        <span className="eyebrow truncate">{userRole === 'STAFF' ? 'Staff Portal' : 'Admin Portal'}</span>
+        <span className="eyebrow truncate">{userRole === 'KITCHEN_STAFF' ? 'Staff Portal' : userRole === 'DELIVERY_DRIVER' ? 'Driver Portal' : 'Admin Portal'}</span>
       </div>
 
       {/* Right: user + status */}

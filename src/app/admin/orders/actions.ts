@@ -39,6 +39,8 @@ export async function createOrder(data: {
   notes?: string | null
   totalPrice: number
   dueDate?: Date | null
+  deliveryAddress?: string | null
+  deliveryPhone?: string | null
   dishes: { dishId: string; quantity: number }[]
   ingredientOverrides?: { inventoryItemId: string; quantityUsed: number }[]
 }): Promise<ActionResult<Order>> {
@@ -65,6 +67,8 @@ export async function createOrder(data: {
           notes: input.notes ?? null,
           totalPrice: input.totalPrice,
           dueDate: input.dueDate ?? null,
+          deliveryAddress: input.deliveryAddress ?? null,
+          deliveryPhone: input.deliveryPhone ?? null,
           status: 'PENDING'
         }
       })

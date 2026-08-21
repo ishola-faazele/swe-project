@@ -24,7 +24,7 @@ export default async function Home(props: { searchParams: Promise<{ code?: strin
       name: user.user_metadata?.full_name || user.user_metadata?.name,
     })
 
-    if (dbUser.role === 'ADMIN' || dbUser.role === 'STAFF') {
+    if (dbUser.role === 'ADMIN' || dbUser.role === 'KITCHEN_STAFF') {
       redirect('/admin')
     } else {
       redirect('/dashboard')

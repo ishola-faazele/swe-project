@@ -52,7 +52,7 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
   
   const [demoteUser, setDemoteUser] = useState<TeamUser | null>(null)
   const [deleteUser, setDeleteUser] = useState<TeamUser | null>(null)
-  const [pendingPromotion, setPendingPromotion] = useState<{ name: string; email: string; phone: string } | null>(null)
+  const [pendingPromotion, setPendingPromotion] = useState<{ name: string; email: string; phone: string; role: 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' } | null>(null)
 
   const columns = useMemo(
     () => [
@@ -144,7 +144,7 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
           const user = info.row.original
           if (user.role === 'ADMIN') return <div className="px-2 text-right text-muted-foreground text-xs">—</div>
           
-          if (user.createdAsRole === 'STAFF') {
+          if (user.createdAsRole === 'KITCHEN_STAFF') {
             return (
               <div className="flex justify-end gap-1 px-2">
                 <Button
@@ -205,15 +205,17 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
     const email = formData.get("email") as string
     const phone = formData.get("phone") as string
 
+    const role = formData.get("role") as 'KITCHEN_STAFF' | 'DELIVERY_DRIVER'
+
     try {
-      const result = await addStaff({ name, email, phone })
+      const result = await addStaff({ name, email, phone, role })
       if (result.ok) {
         toast.add({ title: "Staff Added", description: "The staff member has been added successfully.", type: "success" })
         setIsAddOpen(false)
         window.location.reload()
       } else {
         if (result.error === 'CUSTOMER_EXISTS') {
-          setPendingPromotion({ name, email, phone })
+          setPendingPromotion({ name, email, phone, role })
         } else {
           toast.add({ title: "Error", description: result.error, type: "error" })
         }
@@ -353,6 +355,19 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
                 placeholder="e.g. +234..."
               />
             </div>
+            <div>
+              <Label htmlFor="role">Role <span className="text-destructive">*</span></Label>
+              <select
+                id="role"
+                name="role"
+                required
+                className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
+                defaultValue="KITCHEN_STAFF"
+              >
+                <option value="KITCHEN_STAFF">Kitchen Staff</option>
+                <option value="DELIVERY_DRIVER">Delivery Driver</option>
+              </select>
+            </div>
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)} disabled={isSubmitting}>
                 Cancel
@@ -370,7 +385,7 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Demote {demoteUser?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will instantly revoke their STAFF privileges. They will only have access to the customer dashboard.
+              This will instantly revoke their KITCHEN_STAFF privileges. They will only have access to the customer dashboard.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -415,19 +430,18 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                if (!pendingPromotion) return
-                setIsSubmitting(true)
-                try {
-                  const result = await addStaff(pendingPromotion, true)
-                  if (result.ok) {
+            <Button type="button" disabled={isSubmitting} onClick={async () => {
+              if (!pendingPromotion) return
+              setIsSubmitting(true)
+              try {
+                const res = await addStaff(pendingPromotion, true)
+                if (res.ok) {
                     toast.add({ title: "Staff Promoted", description: "Customer has been promoted to STAFF.", type: "success" })
                     setPendingPromotion(null)
                     setIsAddOpen(false)
                     window.location.reload()
                   } else {
-                    toast.add({ title: "Error", description: result.error, type: "error" })
+                    toast.add({ title: "Error", description: res.error, type: "error" })
                   }
                 } catch {
                   toast.add({ title: "Error", description: "A network error occurred.", type: "error" })
@@ -437,7 +451,7 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
               }}
             >
               Confirm Promotion
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

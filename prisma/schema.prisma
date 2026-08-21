@@ -62,7 +62,8 @@ model User {
 
 enum Role {
   ADMIN
-  STAFF
+  KITCHEN_STAFF
+  DELIVERY_DRIVER
   CUSTOMER
 }
 
@@ -148,6 +149,8 @@ model Order {
   customer    User     @relation(fields: [customerId], references: [id])
   description String   // e.g., "40 pies, 40 bowls of jollof"
   notes       String?  // Optional bulleted notes
+  deliveryAddress String?
+  deliveryPhone   String?
   status      OrderStatus @default(PENDING)
   totalPrice  Float    @default(0)
   dueDate     DateTime?

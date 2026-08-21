@@ -12,7 +12,8 @@ import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { updateOrderItems, updateOrderDueDate, updateOrderInfo } from "./actions"
 import { updateOrderStatus } from "../actions"
 import { formatCurrency, getCurrencySymbol, BUSINESS_LOCALE } from "@/lib/currency"
-import { Printer, Share2 } from "lucide-react"
+import { Printer, Trash2, XCircle, FileImage, Undo2, Ban } from 'lucide-react'
+import { InvoiceModal } from '@/components/Invoice'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +25,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/toast"
+import dynamic from 'next/dynamic'
+
+const MapComponent = dynamic(() => import('@/app/admin/driver/MapComponent'), { ssr: false })
 
 type FullOrder = Order & {
   customer: ClientSafeUser,
@@ -37,11 +41,13 @@ type DishRow = { dishId: string, quantity: number, internalId: number }
 export function OrderDetailsClient({
   order,
   inventory,
-  dishes
+  dishes,
+  userRole
 }: {
   order: FullOrder,
   inventory: InventoryItem[],
-  dishes: DishWithRecipe[]
+  dishes: DishWithRecipe[],
+  userRole?: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUSTOMER'
 }) {
   const router = useRouter()
 
@@ -67,6 +73,8 @@ export function OrderDetailsClient({
   const [isSaving, setIsSaving] = useState(false)
   const [isEditingInfo, setIsEditingInfo] = useState(false)
   const [descriptionInput, setDescriptionInput] = useState(order.description)
+  const [deliveryAddressInput, setDeliveryAddressInput] = useState(order.deliveryAddress || '')
+  const [deliveryPhoneInput, setDeliveryPhoneInput] = useState(order.deliveryPhone || '')
   const [notesInput, setNotesInput] = useState(order.notes || '')
   const [isSavingInfo, setIsSavingInfo] = useState(false)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
@@ -171,9 +179,9 @@ export function OrderDetailsClient({
           </Button>
           <h2 className="page-title flex items-center gap-4">
             Order #{order.shortId}
-            <Button variant="ghost" size="icon" onClick={() => window.print()} className="print:hidden hover:bg-muted" title="Print Order / Save as PDF">
-              <Printer className="h-5 w-5" />
-            </Button>
+            <div className="print:hidden">
+              <InvoiceModal order={order} />
+            </div>
           </h2>
         </div>
       </div>
@@ -206,6 +214,8 @@ export function OrderDetailsClient({
                 <Button variant="ghost" size="sm" onClick={() => {
                   setIsEditingInfo(false)
                   setDescriptionInput(order.description)
+                  setDeliveryAddressInput(order.deliveryAddress || '')
+                  setDeliveryPhoneInput(order.deliveryPhone || '')
                 }}>Cancel</Button>
                 <Button size="sm" disabled={isSavingInfo} onClick={async () => {
                   if (!navigator.onLine) {
@@ -213,7 +223,7 @@ export function OrderDetailsClient({
                     return
                   }
                   setIsSavingInfo(true)
-                  const res = await updateOrderInfo(order.id, descriptionInput, order.notes || '')
+                  const res = await updateOrderInfo(order.id, descriptionInput, order.notes || '', deliveryAddressInput || null, deliveryPhoneInput || null)
                   if (!res.ok) toast.add({ title: 'Error', description: res.error, type: 'error' })
                   else {
                     setIsEditingInfo(false)
@@ -233,6 +243,25 @@ export function OrderDetailsClient({
                   <span className="font-medium text-muted-foreground">Description:</span>
                   <p className="mt-1">{order.description || "—"}</p>
                 </div>
+                {(order.deliveryAddress || order.deliveryPhone) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                    {order.deliveryAddress && (
+                      <div>
+                        <span className="font-medium text-muted-foreground">Delivery Address:</span>
+                        <p className="mt-1 mb-2">{order.deliveryAddress}</p>
+                        <div className="h-48 w-full">
+                          <MapComponent address={order.deliveryAddress} />
+                        </div>
+                      </div>
+                    )}
+                    {order.deliveryPhone && (
+                      <div>
+                        <span className="font-medium text-muted-foreground">Delivery Phone:</span>
+                        <p className="mt-1">{order.deliveryPhone}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <div className="space-y-3">
@@ -244,10 +273,48 @@ export function OrderDetailsClient({
                     onChange={e => setDescriptionInput(e.target.value)} 
                   />
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-address">Delivery Address (Optional)</Label>
+                    <Input 
+                      id="edit-address" 
+                      value={deliveryAddressInput} 
+                      onChange={e => setDeliveryAddressInput(e.target.value)} 
+                    />
+                    {deliveryAddressInput && (
+                      <div className="h-48 w-full mt-2">
+                        <MapComponent address={deliveryAddressInput} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-phone">Delivery Phone (Optional)</Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        id="edit-phone" 
+                        value={deliveryPhoneInput} 
+                        onChange={e => setDeliveryPhoneInput(e.target.value)} 
+                      />
+                      {order.customer.phone && (
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setDeliveryPhoneInput(order.customer.phone || '')}
+                        >
+                          Same as contact phone
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
             
-            <p className="pt-2"><span className="font-medium text-muted-foreground">Total Price:</span> <span className="table-cell-num">{formatCurrency(order.totalPrice)}</span></p>
+            
+            {userRole !== 'KITCHEN_STAFF' && (
+              <p className="pt-2"><span className="font-medium text-muted-foreground">Total Price:</span> <span className="table-cell-num">{formatCurrency(order.totalPrice)}</span></p>
+            )}
             <div className="flex items-center gap-2 mt-2">
               <Label htmlFor="orderStatus" className="font-medium text-muted-foreground">Status:</Label>
               <select
@@ -282,7 +349,12 @@ export function OrderDetailsClient({
                 }}
                 className="select-field w-auto"
               >
-                {Object.values(OrderStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                {Object.values(OrderStatus).filter(s => {
+                  if (userRole === 'KITCHEN_STAFF') {
+                    return ['PENDING', 'PREPPING', 'COOKING', 'READY'].includes(s) || s === order.status
+                  }
+                  return true
+                }).map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div className="flex items-center gap-2 mt-2">
@@ -351,16 +423,24 @@ export function OrderDetailsClient({
                   <thead className="bg-muted text-muted-foreground">
                     <tr>
                       <th className="px-4 py-2 rounded-l-md font-medium">Dish</th>
-                      <th className="px-4 py-2 font-medium">Unit Price</th>
-                      <th className="px-4 py-2 rounded-r-md font-medium">Line Total</th>
+                      {userRole !== 'KITCHEN_STAFF' && (
+                        <>
+                          <th className="px-4 py-2 font-medium">Unit Price</th>
+                          <th className="px-4 py-2 rounded-r-md font-medium">Line Total</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {order.dishes.map((orderDish) => (
                       <tr key={orderDish.id} className="border-b last:border-0">
                         <td className="px-4 py-3">{orderDish.quantity}× {orderDish.dishName}</td>
-                        <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice)}</td>
-                        <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice * orderDish.quantity)}</td>
+                        {userRole !== 'KITCHEN_STAFF' && (
+                          <>
+                            <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice)}</td>
+                            <td className="px-4 py-3 table-cell-num">{formatCurrency(orderDish.unitPrice * orderDish.quantity)}</td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -421,20 +501,22 @@ export function OrderDetailsClient({
               + Add Dish
             </Button>
 
-            <div className="space-y-2 max-w-xs pt-2">
-              <Label htmlFor="totalPrice">Total Price ({getCurrencySymbol()})</Label>
-              <Input
-                id="totalPrice"
-                type="number"
-                step="any"
-                value={totalPriceInput}
-                onChange={(e) => setTotalPriceInput(e.target.value === '' ? '' : Number(e.target.value))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Recalculated from the dishes above whenever a dish row changes. Type over it to
-                charge something different.
-              </p>
-            </div>
+            {userRole !== 'KITCHEN_STAFF' && (
+              <div className="space-y-2 max-w-xs pt-2">
+                <Label htmlFor="totalPrice">Total Price ({getCurrencySymbol()})</Label>
+                <Input
+                  id="totalPrice"
+                  type="number"
+                  step="any"
+                  value={totalPriceInput}
+                  onChange={(e) => setTotalPriceInput(e.target.value === '' ? '' : Number(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Recalculated from the dishes above whenever a dish row changes. Type over it to
+                  charge something different.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -558,7 +640,7 @@ export function OrderDetailsClient({
                   return
                 }
                 setIsSavingNotes(true)
-                const res = await updateOrderInfo(order.id, order.description, notesInput)
+                const res = await updateOrderInfo(order.id, order.description, notesInput, order.deliveryAddress, order.deliveryPhone)
                 if (!res.ok) toast.add({ title: 'Error', description: res.error, type: 'error' })
                 else {
                   setIsEditingNotes(false)

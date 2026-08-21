@@ -7,7 +7,7 @@ interface AdminLayoutProps {
   children: React.ReactNode
   /** Header is passed as a slot so it can stay a Server Component (async). */
   header: React.ReactNode
-  userRole?: 'ADMIN' | 'STAFF' | 'CUSTOMER'
+  userRole?: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUSTOMER'
 }
 
 /**

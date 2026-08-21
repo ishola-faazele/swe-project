@@ -19,7 +19,7 @@ import { Sidebar } from "./Sidebar"
  * gives the focus trap, body scroll lock, Escape-to-close, and focus-return to
  * the hamburger for free — all of which the manual QA checklist verifies.
  */
-export function MobileNavTrigger({ userRole }: { userRole?: 'ADMIN' | 'STAFF' | 'CUSTOMER' }) {
+export function MobileNavTrigger({ userRole }: { userRole?: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUSTOMER' }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -42,7 +42,7 @@ export function MobileNavTrigger({ userRole }: { userRole?: 'ADMIN' | 'STAFF' | 
         >
           {/* The drawer's accessible name — visually redundant next to the logo,
               but required for the dialog to announce itself. */}
-        <DialogTitle className="sr-only">{userRole === 'STAFF' ? 'Staff' : 'Admin'} navigation</DialogTitle>
+        <DialogTitle className="sr-only">{userRole === 'KITCHEN_STAFF' ? 'Staff' : userRole === 'DELIVERY_DRIVER' ? 'Driver' : 'Admin'} navigation</DialogTitle>
           <Sidebar onNavigate={() => setOpen(false)} userRole={userRole} />
         </DialogContent>
       </Dialog>

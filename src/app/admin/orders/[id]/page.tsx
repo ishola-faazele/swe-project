@@ -3,6 +3,7 @@ import { getInventoryItems } from '../../inventory/actions'
 import { getDishes } from '../../menu/actions'
 import { OrderDetailsClient } from './OrderDetailsClient'
 import { notFound } from 'next/navigation'
+import { getCurrentDbUser } from '@/lib/auth'
 
 export default async function OrderDetailsPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params
@@ -26,14 +27,15 @@ export default async function OrderDetailsPage(props: { params: Promise<{ id: st
   }
 
   // Separate from order.dishes: the full catalog backing the "add a dish" picker.
-  const [inventory, dishes] = await Promise.all([
+  const [inventory, dishes, user] = await Promise.all([
     getInventoryItems(),
-    getDishes()
+    getDishes(),
+    getCurrentDbUser()
   ])
 
   return (
     <div className="flex-1 space-y-4 p-8 pt-6 max-w-4xl mx-auto">
-      <OrderDetailsClient order={order} inventory={inventory} dishes={dishes} />
+      <OrderDetailsClient order={order} inventory={inventory} dishes={dishes} userRole={user?.role} />
     </div>
   )
 }

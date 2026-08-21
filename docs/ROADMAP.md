@@ -14,7 +14,8 @@ this file is the short, update-as-you-go version).
 | Phase 3 | Real Customer Notifications (WhatsApp Business Cloud API + Arkesel SMS) + phone-OTP login, unified account notifications, and an admin Settings page | `feature/whatsapp-arkesel-notifications` → `../swe-project-notifications` | ✅ Merged into `main` — 412 unit / 128 integration tests |
 | Phase 4 | High Impact, Low Effort (Daily Revenue Snapshot, Quick Shopping List, Top Revenue Dishes, Analytics, Cost Per Plate, Order Calendar) | `feature/phase-456` | ✅ Completed |
 | Phase 5 | High Impact, Medium Effort (WhatsApp Notifications, Stock Count Mode, Smart Low-Stock Alerts, Customer Repeat Orders) | `feature/phase-456` | ✅ Completed |
-| Phase 6 | Medium Impact, Higher Effort (Offline First, WhatsApp Order Intake, Kitchen Staff Role) | `feature/phase-456` | ✅ Offline First & Kitchen Staff Role completed. WhatsApp Order Intake deferred. |
+| Phase 6 | Medium Impact, Higher Effort (Offline First, WhatsApp Order Intake, Kitchen Staff Role) | `feature/phase-456` | ✅ Offline First & Kitchen Staff Role completed. WhatsApp Order Intake moved to Phase 7. |
+| Phase 7 | Enterprise Expansion (Driver Mode, Finer RBAC, Real-Time Kitchen Sync, Data Scaling, Invoice Gen, AI WhatsApp Orders) | `feature/delivery-rbac` & `feature/realtime-scaling` | 🚧 In Progress |
 
 **Naming note:** the roadmap's original "Phase 3" was the "compounding-features" bucket, now
 split into **Phase 4, 5, and 6**. Real WhatsApp/SMS notifications took the Phase 3 slot instead because the
@@ -212,7 +213,8 @@ on order cancel/delete, race-safe stock decrement, basic input validation/error 
    (item #3's public `/o/[token]` share-link page is still unbuilt).
 5. **Phase 4 — High Impact, Low Effort:** Daily Revenue Snapshot, Quick Reorder Shopping List, "Which Dish Brings the Most Revenue?" Report, Curated Analytics Dashboard, Cost Per Plate Calculator, and Order Calendar View.
 6. **Phase 5 — High Impact, Medium Effort:** Stock Count Mode + Variance Tracker, Smart Low-Stock Alerts with Context, and Customer Repeat Orders. Also involves tying in the Phase 3 WhatsApp notifications.
-7. **Phase 6 — Medium Impact, Higher Effort:** WhatsApp Order Intake, Kitchen Staff Role, and Offline First architecture.
+7. **Phase 6 — Medium Impact, Higher Effort:** WhatsApp Order Intake (moved to Phase 7), Kitchen Staff Role, and Offline First architecture.
+8. **Phase 7 — Enterprise Expansion (In Progress):** AI-Driven WhatsApp Order Intake, Logistics & Delivery Management (Driver Mode PWA with OpenLeaflet mapping), Finer RBAC (`KITCHEN_STAFF`, `DELIVERY_DRIVER`), Real-Time Kitchen Sync (Supabase WebSockets), Data Scaling (Partitioning OrderIngredientLog), and Payment Invoice Generation. Procurement Automation and FIFO COGS tracking were deliberately rejected as unsuitable for the informal Ghanaian economy.
 
 ## 7. Decisions log
 

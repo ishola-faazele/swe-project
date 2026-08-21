@@ -45,6 +45,9 @@ import { TablePagination } from "@/components/ui/table-pagination"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { AlertTriangle, Clock, ClipboardList, X, Trash2, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, CalendarDays, Copy, Repeat } from "lucide-react"
 import type { ClientSafeUser } from "@/lib/user"
+import dynamic from 'next/dynamic'
+
+const MapComponent = dynamic(() => import('@/app/admin/driver/MapComponent'), { ssr: false })
 
 type OrderWithRelations = Order & {
   customer: ClientSafeUser,
@@ -58,14 +61,16 @@ export function OrderClient({
   initialData,
   customers,
   inventory,
-  dishes
+  dishes,
+  userRole
 }: {
   initialData: OrderWithRelations[],
   customers: ClientSafeUser[],
   // Still fetched and passed by OrdersPage — kept on the props so the page's fetch shape stays
   // aligned with the order-detail flow, which does read it.
   inventory: InventoryItem[],
-  dishes: DishWithRecipe[]
+  dishes: DishWithRecipe[],
+  userRole?: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUSTOMER'
 }) {
   const [data, setData] = useState<OrderWithRelations[]>(initialData)
   const [isOpen, setIsOpen] = useState(false)
@@ -91,6 +96,8 @@ export function OrderClient({
   } | null>(null)
   
   const [notesInput, setNotesInput] = useState('')
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('')
+  const [deliveryPhoneInput, setDeliveryPhoneInput] = useState<string>('')
 
   const activeDishes = dishes.filter(d => d.isActive)
 
@@ -205,7 +212,12 @@ export function OrderClient({
           }}
           className="select-field h-8 w-auto px-2 py-1"
         >
-          {Object.values(OrderStatus).map(s => <option key={s} value={s}>{s}</option>)}
+          {Object.values(OrderStatus).filter(s => {
+            if (userRole === 'KITCHEN_STAFF') {
+              return ['PENDING', 'PREPPING', 'COOKING', 'READY'].includes(s) || s === info.row.original.status
+            }
+            return true
+          }).map(s => <option key={s} value={s}>{s}</option>)}
         </select>
       ),
     }),
@@ -240,11 +252,11 @@ export function OrderClient({
         return <span className="meta-text">{label}</span>
       },
     }),
-    columnHelper.accessor("totalPrice", {
+    ...(userRole !== 'KITCHEN_STAFF' ? [columnHelper.accessor("totalPrice", {
       header: "Total",
       meta: { className: "hidden md:table-cell" },
       cell: (info) => <span className="table-cell-num">{formatCurrency(info.getValue())}</span>,
-    }),
+    })] : []),
     columnHelper.display({
       id: "actions",
       cell: (info) => (
@@ -312,6 +324,9 @@ export function OrderClient({
     const dueDateStr = formData.get("dueDate") as string
     const dueDate = dueDateStr ? new Date(dueDateStr) : null
 
+    const deliveryAddress = formData.get("deliveryAddress") as string
+    const deliveryPhone = formData.get("deliveryPhone") as string
+
     // Only pass rows that actually have a dish selected and a positive quantity
     const orderedDishes = selectedDishes.filter(d => d.dishId && d.quantity > 0)
 
@@ -324,6 +339,7 @@ export function OrderClient({
     try {
       const result = await createOrder({
         customerId, description, notes, totalPrice, dueDate,
+        deliveryAddress, deliveryPhone,
         dishes: orderedDishes,
         ingredientOverrides: overrides,
       })
@@ -341,6 +357,8 @@ export function OrderClient({
       setNotesInput('')
       setShowIngredientPreview(false)
       setIngredientOverrides([])
+      setSelectedCustomerId('')
+      setDeliveryPhoneInput('')
       toast.add({ title: 'Order created', description: `Order #${result.data.shortId} added to the queue.`, type: 'success' })
     } catch (err) {
       toast.add({ title: 'Error', description: err instanceof Error ? err.message : 'Could not create this order.', type: 'error' })
@@ -387,6 +405,8 @@ export function OrderClient({
             setNotesInput('')
             setShowIngredientPreview(false)
             setIngredientOverrides([])
+            setSelectedCustomerId('')
+            setDeliveryPhoneInput('')
             setIsOpen(true)
           }} className="shrink-0">Create Order</Button>
         </div>
@@ -399,7 +419,14 @@ export function OrderClient({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="customerId">Customer</Label>
-                  <select id="customerId" name="customerId" className="select-field" required defaultValue={initialFormState?.customerId ?? ""}>
+                  <select 
+                    id="customerId" 
+                    name="customerId" 
+                    className="select-field" 
+                    required 
+                    value={selectedCustomerId || initialFormState?.customerId || ""}
+                    onChange={e => setSelectedCustomerId(e.target.value)}
+                  >
                     <option value="" disabled>Select customer</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>
@@ -422,9 +449,65 @@ export function OrderClient({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="dueDate">Due Date (Optional)</Label>
-                <Input id="dueDate" name="dueDate" type="date" autoComplete="off" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="dueDate">Due Date (Optional)</Label>
+                  <Input id="dueDate" name="dueDate" type="date" autoComplete="off" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="deliveryAddress">Delivery Address (Optional)</Label>
+                  <Input id="deliveryAddress" name="deliveryAddress" placeholder="123 Example St" onChange={e => {
+                    const el = document.getElementById('map-address-preview')
+                    if (el) el.dataset.address = e.target.value
+                    // Force a re-render for the map component
+                    const btn = document.getElementById('address-updater-btn')
+                    if (btn) btn.click()
+                  }} />
+                  {/* Local state hack to update the map component since we are using a FormData approach for submission */}
+                  <input type="hidden" id="map-address-preview" data-address="" />
+                  <button id="address-updater-btn" type="button" className="hidden" onClick={(e) => {
+                    const address = document.getElementById('map-address-preview')?.dataset.address || ''
+                    // A simple inline state update
+                    setDeliveryPhoneInput(prev => prev)
+                  }} />
+                  {(() => {
+                    const address = typeof document !== 'undefined' ? document.getElementById('map-address-preview')?.dataset.address || '' : ''
+                    if (!address) return null
+                    return (
+                      <div className="h-48 w-full mt-2">
+                        <MapComponent address={address} />
+                      </div>
+                    )
+                  })()}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deliveryPhone">Delivery Phone (Optional)</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      id="deliveryPhone" 
+                      name="deliveryPhone" 
+                      placeholder="+234..." 
+                      value={deliveryPhoneInput}
+                      onChange={e => setDeliveryPhoneInput(e.target.value)}
+                    />
+                    {customers.find(c => c.id === (selectedCustomerId || initialFormState?.customerId))?.phone && (
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          const phone = customers.find(c => c.id === (selectedCustomerId || initialFormState?.customerId))?.phone
+                          if (phone) setDeliveryPhoneInput(phone)
+                        }}
+                      >
+                        Same as contact phone
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -624,8 +707,22 @@ export function OrderClient({
                            <div className="text-xs text-muted-foreground">
                              {order.dishes?.length > 0 ? `${order.dishes.length} items` : 'No dishes'}
                            </div>
-                           <div className="font-mono-data font-bold text-foreground">
-                             {formatCurrency(order.totalPrice)}
+                           <div className="text-right">
+                             {userRole !== 'KITCHEN_STAFF' && (
+                               <div className="font-mono-data font-bold text-foreground">
+                                 {formatCurrency(order.totalPrice)}
+                               </div>
+                             )}
+                             {order.dueDate && (
+                               <div className="mt-1 text-xs text-muted-foreground flex justify-end items-center gap-1">
+                                 <span className="font-medium">Due:</span> {order.dueDate.toLocaleDateString()}
+                               </div>
+                             )}
+                             {order.deliveryAddress && (
+                               <div className="mt-1 text-xs text-muted-foreground flex justify-end items-center gap-1">
+                                 <span className="font-medium">Delivery:</span> {order.deliveryAddress}
+                               </div>
+                             )}
                            </div>
                         </div>
                       </div>
