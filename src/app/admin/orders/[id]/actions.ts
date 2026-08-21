@@ -2,7 +2,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
-import { requireAdmin } from '@/lib/auth'
+import { requireAdmin, requireStaffOrAdmin } from '@/lib/auth'
 import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { decrementStockOrThrow } from '@/lib/inventory'
 import { updateOrderDueDateSchema, updateOrderItemsSchema } from '@/lib/validation'
@@ -21,7 +21,7 @@ export async function updateOrderDueDate(
   id: string,
   dueDate: Date | null
 ): Promise<ActionResult<Order>> {
-  await requireAdmin()
+  await requireStaffOrAdmin()
 
   let order: Order
   try {
@@ -50,7 +50,7 @@ export async function updateOrderItems(orderId: string, data: {
   extraIngredients: { inventoryItemId: string; quantityUsed: number }[]
   totalPrice: number
 }): Promise<ActionResult<void>> {
-  await requireAdmin()
+  await requireStaffOrAdmin()
 
   try {
     const input = updateOrderItemsSchema.parse({ orderId, ...data })
@@ -150,7 +150,7 @@ export async function updateOrderInfo(
   description: string,
   notes: string | null
 ): Promise<ActionResult<Order>> {
-  await requireAdmin()
+  await requireStaffOrAdmin()
 
   let order: Order
   try {

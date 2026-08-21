@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/auth'
 import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
+import { buildAccountMagicLink } from '@/app/admin/customers/actions'
+import { notifyAccountCreated } from '@/lib/notifications'
 
 export async function getTeam() {
   await requireAdmin()
@@ -16,6 +18,8 @@ export async function getTeam() {
   })
 }
 
+import { toGhanaE164 } from '@/lib/phone'
+
 export async function addStaff(
   data: { name: string; email: string; phone: string },
   confirmPromote: boolean = false
@@ -23,8 +27,13 @@ export async function addStaff(
   const admin = await requireAdmin()
   
   const email = data.email.trim()
-  const phone = data.phone.trim()
+  const rawPhone = data.phone.trim()
+  const phone = rawPhone ? toGhanaE164(rawPhone) : null
   const name = data.name.trim()
+
+  if (rawPhone && !phone) {
+    return toErrorResult(new Error('Enter a valid Ghanaian phone number.'), 'Invalid input')
+  }
 
   if (!name || (!email && !phone)) {
     return toErrorResult(new Error('Name and either Email or Phone are required.'), 'Invalid input')
@@ -69,12 +78,20 @@ export async function addStaff(
       revalidatePath('/admin/team')
       return okResult({ promoted: true })
     } else {
+      const preferredLoginMethod = email ? 'EMAIL' : phone ? 'PHONE' : 'EMAIL'
+      let magicLink: string | null = null
+      if (email) {
+        magicLink = await buildAccountMagicLink(email)
+      }
+
       await prisma.user.create({
         data: {
           name,
           email: email || null,
           phone: phone || null,
-          role: 'STAFF'
+          role: 'STAFF',
+          createdAsRole: 'STAFF',
+          preferredLoginMethod
         }
       })
 
@@ -86,6 +103,13 @@ export async function addStaff(
         }
       })
       
+      notifyAccountCreated({
+        customerName: name,
+        customerEmail: email || null,
+        customerPhone: phone || null,
+        magicLink,
+      })
+
       revalidatePath('/admin/team')
       return okResult({ promoted: false })
     }
@@ -100,6 +124,7 @@ export async function demoteToCustomer(id: string): Promise<ActionResult<void>> 
     const targetUser = await prisma.user.findUnique({ where: { id } })
     if (!targetUser) throw new Error('User not found.')
     if (targetUser.role === 'ADMIN') throw new Error('Cannot demote an ADMIN account.')
+    if (targetUser.createdAsRole === 'STAFF') throw new Error('Cannot demote a dedicated STAFF account.')
     
     await prisma.user.update({
       where: { id },
@@ -120,3 +145,31 @@ export async function demoteToCustomer(id: string): Promise<ActionResult<void>> 
   revalidatePath('/admin/team')
   return okResult(undefined)
 }
+
+export async function deleteStaff(id: string): Promise<ActionResult<void>> {
+  const user = await requireAdmin()
+  try {
+    const targetUser = await prisma.user.findUnique({ where: { id } })
+    if (!targetUser) throw new Error('User not found.')
+    if (targetUser.role === 'ADMIN') throw new Error('Cannot delete an ADMIN account.')
+    if (targetUser.createdAsRole !== 'STAFF') throw new Error('Cannot directly delete a promoted customer.')
+    
+    await prisma.user.delete({
+      where: { id }
+    })
+    
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'USER_DELETED',
+        details: `Deleted STAFF member ${targetUser.name || targetUser.email || targetUser.phone}`
+      }
+    })
+  } catch (err) {
+    return toErrorResult(err, 'Could not delete staff.')
+  }
+  
+  revalidatePath('/admin/team')
+  return okResult(undefined)
+}
+

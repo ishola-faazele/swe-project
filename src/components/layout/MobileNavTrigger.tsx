@@ -42,7 +42,7 @@ export function MobileNavTrigger({ userRole }: { userRole?: 'ADMIN' | 'STAFF' | 
         >
           {/* The drawer's accessible name — visually redundant next to the logo,
               but required for the dialog to announce itself. */}
-          <DialogTitle className="sr-only">Admin navigation</DialogTitle>
+        <DialogTitle className="sr-only">{userRole === 'STAFF' ? 'Staff' : 'Admin'} navigation</DialogTitle>
           <Sidebar onNavigate={() => setOpen(false)} userRole={userRole} />
         </DialogContent>
       </Dialog>

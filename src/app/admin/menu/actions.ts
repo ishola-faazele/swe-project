@@ -4,12 +4,12 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { type Dish } from '@prisma/client'
 import { mergeDuplicateIngredients } from '@/lib/recipe'
-import { requireAdmin } from '@/lib/auth'
+import { requireAdmin, requireStaffOrAdmin } from '@/lib/auth'
 import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { createDishSchema, updateDishSchema } from '@/lib/validation'
 
 export async function getDishes() {
-  await requireAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
+  await requireStaffOrAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
   return await prisma.dish.findMany({
     include: {
       ingredients: {

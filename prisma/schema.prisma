@@ -52,6 +52,7 @@ model User {
   // so it is deliberately NOT added to the OMIT_AUTH_EMAIL per-query omit.
   imageUrl  String?
   role      Role     @default(CUSTOMER)
+  createdAsRole Role @default(CUSTOMER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -257,7 +258,7 @@ model StockAdjustmentLog {
 model AuditLog {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   action    String
   details   String?
   createdAt DateTime @default(now())

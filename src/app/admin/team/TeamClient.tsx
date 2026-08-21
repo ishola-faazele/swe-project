@@ -31,8 +31,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/toast"
-import { addStaff, demoteToCustomer } from "./actions"
-import { Plus, User, ArrowUpDown, Shield, UserCog, UserMinus, ShieldAlert } from "lucide-react"
+import { addStaff, demoteToCustomer, deleteStaff } from "./actions"
+import { Plus, User, ArrowUpDown, Shield, UserCog, UserMinus, ShieldAlert, Trash2 } from "lucide-react"
 import { HighlightText } from "@/components/ui/highlight"
 import { TablePagination } from "@/components/ui/table-pagination"
 import type { User as PrismaUser } from "@prisma/client"
@@ -51,6 +51,7 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   const [demoteUser, setDemoteUser] = useState<TeamUser | null>(null)
+  const [deleteUser, setDeleteUser] = useState<TeamUser | null>(null)
   const [pendingPromotion, setPendingPromotion] = useState<{ name: string; email: string; phone: string } | null>(null)
 
   const columns = useMemo(
@@ -70,9 +71,10 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
         cell: (info) => (
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <User className="h-4 w-4" />
             </div>
-            <HighlightText text={info.getValue()} query={globalFilter} className="font-medium text-foreground" />
+            <span className="font-medium text-foreground">
+              <HighlightText text={info.getValue()} query={globalFilter} />
+            </span>
           </div>
         ),
       }),
@@ -141,6 +143,24 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
         cell: (info) => {
           const user = info.row.original
           if (user.role === 'ADMIN') return <div className="px-2 text-right text-muted-foreground text-xs">—</div>
+          
+          if (user.createdAsRole === 'STAFF') {
+            return (
+              <div className="flex justify-end gap-1 px-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setDeleteUser(user)}
+                  title="Delete Staff"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span className="sr-only">Delete</span>
+                </Button>
+              </div>
+            )
+          }
+
           return (
             <div className="flex justify-end gap-1 px-2">
               <Button
@@ -212,6 +232,22 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
       if (result.ok) {
         toast.add({ title: "Staff Demoted", description: "User has been demoted to CUSTOMER.", type: "success" })
         setDemoteUser(null)
+        window.location.reload()
+      } else {
+        toast.add({ title: "Error", description: result.error, type: "error" })
+      }
+    } catch {
+      toast.add({ title: "Error", description: "A network error occurred.", type: "error" })
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteUser) return
+    try {
+      const result = await deleteStaff(deleteUser.id)
+      if (result.ok) {
+        toast.add({ title: "Staff Deleted", description: "User has been permanently deleted.", type: "success" })
+        setDeleteUser(null)
         window.location.reload()
       } else {
         toast.add({ title: "Error", description: result.error, type: "error" })
@@ -344,6 +380,26 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
               onClick={handleDemote}
             >
               Demote to Customer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteUser} onOpenChange={(open) => !open && setDeleteUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteUser?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete their account and remove their access entirely. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDelete}
+            >
+              Delete Staff
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

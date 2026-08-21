@@ -13,7 +13,10 @@ import {
 } from "@tanstack/react-table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { ArrowUpDown, ShieldAlert, Shield, User, Clock } from "lucide-react"
+import { 
+  ArrowUpDown, ShieldAlert, Shield, User, Clock,
+  PlusCircle, UserPlus, UserMinus, XCircle, Trash2, ArrowRightCircle, Package, Info
+} from "lucide-react"
 import { HighlightText } from "@/components/ui/highlight"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { cn } from "@/lib/utils"
@@ -34,8 +37,18 @@ type AuditLogWithUser = {
   }
 }
 
-const columnHelper = createColumnHelper<AuditLogWithUser>()
+function getActionStyle(action: string) {
+  if (action.includes('DELETED')) return { icon: Trash2, color: 'text-destructive', bg: 'bg-destructive/10' }
+  if (action.includes('CANCELLED')) return { icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10' }
+  if (action === 'USER_CREATED') return { icon: UserPlus, color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
+  if (action === 'ORDER_CREATED') return { icon: PlusCircle, color: 'text-emerald-500', bg: 'bg-emerald-500/10' }
+  if (action === 'ORDER_STATUS_UPDATED') return { icon: ArrowRightCircle, color: 'text-blue-500', bg: 'bg-blue-500/10' }
+  if (action === 'STOCK_ADJUSTED') return { icon: Package, color: 'text-amber-500', bg: 'bg-amber-500/10' }
+  
+  return { icon: Info, color: 'text-muted-foreground', bg: 'bg-muted' }
+}
 
+const columnHelper = createColumnHelper<AuditLogWithUser>()
 export function AuditClient({ initialData }: { initialData: AuditLogWithUser[] }) {
   const [data] = useState<AuditLogWithUser[]>(initialData)
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }])
@@ -100,11 +113,19 @@ export function AuditClient({ initialData }: { initialData: AuditLogWithUser[] }
             Action
           </div>
         ),
-        cell: (info) => (
-          <div className="px-2 text-sm font-bold text-foreground">
-            <HighlightText text={info.getValue().replace(/_/g, ' ')} query={globalFilter} />
-          </div>
-        ),
+        cell: (info) => {
+          const { icon: Icon, color, bg } = getActionStyle(info.getValue())
+          return (
+            <div className="flex items-center gap-2 px-2">
+              <div className={cn("flex h-6 w-6 items-center justify-center rounded-md shrink-0", bg, color)}>
+                <Icon className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-sm font-bold text-foreground">
+                <HighlightText text={info.getValue().replace(/_/g, ' ')} query={globalFilter} />
+              </span>
+            </div>
+          )
+        },
       }),
       columnHelper.accessor("details", {
         header: () => (

@@ -3,7 +3,7 @@
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { type LoginMethod } from '@prisma/client'
-import { requireAdmin } from '@/lib/auth'
+import { requireAdmin, requireStaffOrAdmin } from '@/lib/auth'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { notifyAccountCreated } from '@/lib/notifications'
 import { ActionError, okResult, toErrorResult, type ActionResult } from '@/lib/errors'
@@ -17,7 +17,7 @@ import type { ClientSafeUser } from '@/lib/user'
 const OMIT_AUTH_EMAIL = { authEmail: true } as const
 
 export async function getCustomers() {
-  await requireAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
+  await requireStaffOrAdmin() // throws AuthError — no ActionResult wrapping; reads have no expected-error case
   return await prisma.user.findMany({
     where: {
       role: 'CUSTOMER'
@@ -49,7 +49,7 @@ export async function getCustomers() {
  * Returns null rather than throwing on any failure: a customer must still be created successfully
  * even if their welcome link could not be minted.
  */
-async function buildAccountMagicLink(email: string): Promise<string | null> {
+export async function buildAccountMagicLink(email: string): Promise<string | null> {
   try {
     const admin = createAdminClient()
     const { data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email })

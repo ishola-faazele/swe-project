@@ -72,6 +72,7 @@ export function OrderClient({
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
+  const [showSettledOrders, setShowSettledOrders] = useState(false)
   const [selectedDishes, setSelectedDishes] = useState<DishSelection[]>([])
   const [totalPriceInput, setTotalPriceInput] = useState<number | ''>('')
   const [deletingOrder, setDeletingOrder] = useState<OrderWithRelations | null>(null)
@@ -122,10 +123,14 @@ export function OrderClient({
     setIsOpen(true)
   }
 
+  const visibleData = React.useMemo(() => {
+    return data.filter(order => showSettledOrders || (order.status !== 'COMPLETED' && order.status !== 'CANCELLED'))
+  }, [data, showSettledOrders])
+
   // Calculate grouped orders for Calendar View
   const groupedOrders = React.useMemo(() => {
     const groups: Record<string, OrderWithRelations[]> = {}
-    data.forEach(order => {
+    visibleData.forEach(order => {
       if (!order.dueDate) return
       // Use YYYY-MM-DD string to group safely by UTC midnight date
       const key = order.dueDate.toISOString().split('T')[0]
@@ -144,7 +149,7 @@ export function OrderClient({
         orders: groups[key].sort((a, b) => a.shortId - b.shortId)
       }
     })
-  }, [data])
+  }, [visibleData])
 
   const columns = [
     columnHelper.accessor("shortId", {
@@ -276,7 +281,7 @@ export function OrderClient({
   ]
 
   const table = useReactTable({
-    data,
+    data: visibleData,
     columns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
@@ -360,6 +365,15 @@ export function OrderClient({
               Calendar
             </button>
           </div>
+          <label className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground cursor-pointer whitespace-nowrap bg-muted/50 px-3 py-1.5 rounded-md border border-border">
+            <input
+              type="checkbox"
+              className="rounded border-input text-primary focus:ring-primary h-4 w-4"
+              checked={showSettledOrders}
+              onChange={(e) => setShowSettledOrders(e.target.checked)}
+            />
+            Show Settled
+          </label>
           <Input
             placeholder="Search orders..."
             value={globalFilter ?? ''}

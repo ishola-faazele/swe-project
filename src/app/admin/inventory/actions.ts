@@ -30,7 +30,7 @@ export async function getInventoryItems(
 }
 
 export async function createInventoryItem(data: { name: string, currentStock: number, unit: string, minimumThreshold?: number | null, category: Category }): Promise<ActionResult<InventoryItem>> {
-  await requireAdmin()
+  await requireStaffOrAdmin()
 
   let item: InventoryItem
   try {
@@ -54,7 +54,7 @@ export async function createInventoryItem(data: { name: string, currentStock: nu
 }
 
 export async function updateInventoryItem(id: string, data: { name?: string, currentStock?: number, unit?: string, minimumThreshold?: number, category?: Category }): Promise<ActionResult<InventoryItem>> {
-  await requireAdmin()
+  await requireStaffOrAdmin()
 
   let item: InventoryItem
   try {
@@ -76,7 +76,7 @@ export async function updateInventoryItem(id: string, data: { name?: string, cur
 }
 
 export async function deleteInventoryItem(id: string): Promise<ActionResult<{ archived: boolean }>> {
-  await requireAdmin()
+  await requireStaffOrAdmin()
 
   try {
     const parsedId = idSchema.parse(id)
@@ -123,7 +123,7 @@ export async function deleteInventoryItem(id: string): Promise<ActionResult<{ ar
  * Restoring is unconditional: bringing an item back into the pickers references nothing.
  */
 export async function toggleInventoryItemActive(id: string, isActive: boolean): Promise<ActionResult<InventoryItem>> {
-  await requireAdmin()
+  await requireStaffOrAdmin()
 
   let item: InventoryItem
   try {

@@ -43,6 +43,12 @@ export type SmsData = {
 }
 
 export async function sendSms(data: SmsData) {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`\n[SMS] DEV MODE: Sending SMS to ${data.to}`)
+    console.log(`[SMS] DEV MODE: Body: "${data.message}"\n`)
+    return { success: true, reason: 'dev_mode_console' }
+  }
+
   // "enabled" (database) and "configured" (env) are two INDEPENDENT checks with distinct no-op
   // reasons: a channel can hold valid credentials but be deliberately switched off, or be
   // switched on before any credentials have been entered in .env.

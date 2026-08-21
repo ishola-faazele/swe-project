@@ -42,7 +42,7 @@ export async function Header({ userRole }: { userRole?: 'ADMIN' | 'STAFF' | 'CUS
           <Image src="/rosty-logo.jpeg" alt="Chop with Rostty" fill sizes="48px" className="object-contain" />
         </div>
 
-        <span className="eyebrow truncate">Admin Portal</span>
+        <span className="eyebrow truncate">{userRole === 'STAFF' ? 'Staff Portal' : 'Admin Portal'}</span>
       </div>
 
       {/* Right: user + status */}
@@ -59,7 +59,7 @@ export async function Header({ userRole }: { userRole?: 'ADMIN' | 'STAFF' | 'CUS
                   <User className="h-4 w-4" />
                 </div>
                 <div className="hidden text-left sm:block">
-                  <p className="text-sm font-medium leading-none text-foreground">{user.user_metadata?.name || 'Admin'}</p>
+                  <p className="text-sm font-medium leading-none text-foreground">{user.user_metadata?.name || (userRole === 'STAFF' ? 'Staff' : 'Admin')}</p>
                 </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">

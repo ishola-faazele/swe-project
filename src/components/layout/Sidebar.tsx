@@ -88,7 +88,7 @@ export function Sidebar({ onNavigate, collapsed = false, onToggleCollapse, userR
 
       {/* ── Nav ───────────────────────────────────────────────────────── */}
       <nav
-        aria-label="Admin navigation"
+        aria-label={userRole === 'STAFF' ? 'Staff navigation' : 'Admin navigation'}
         className={cn(
           'flex-1 space-y-6 py-6',
           collapsed ? 'px-2' : 'px-3'
