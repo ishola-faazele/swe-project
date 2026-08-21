@@ -5,6 +5,7 @@ import { BUSINESS_LOCALE, formatCurrency } from '@/lib/currency'
 import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus'
 import { AddContactForm } from './AddContactForm'
 import { NotificationPreferences } from './NotificationPreferences'
+import { ProfilePhoto } from './ProfilePhoto'
 import { Inbox } from 'lucide-react'
 
 export default async function CustomerDashboardPage() {
@@ -33,6 +34,10 @@ export default async function CustomerDashboardPage() {
         <h1 className="page-title">Your Orders</h1>
         <p className="text-muted-foreground mt-1">Track the status of all your orders below.</p>
       </div>
+
+      {/* Unconditional, deliberately NOT gated the way AddContactForm is below — a photo is always
+          optional and always changeable, never a one-time fill-in-the-blank. */}
+      <ProfilePhoto initialImageUrl={customer.imageUrl} />
 
       {missingChannel && (
         <div className="rounded-xl border bg-card p-6">

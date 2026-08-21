@@ -46,6 +46,10 @@ model User {
   alertEmail    String?
   alertPhone    String?
   alertWhatsapp String?
+  // Stable public MinIO URL, or null. Technically available on every User row (admin included),
+  // but only ever set/read via the Customer screens today. Not sensitive the way authEmail is,
+  // so it is deliberately NOT added to the OMIT_AUTH_EMAIL per-query omit.
+  imageUrl  String?
   role      Role     @default(CUSTOMER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -181,6 +185,36 @@ model Dish {
 
   ingredients DishIngredient[]
   orderDishes OrderDish[]
+  media       DishMedia[]
+}
+
+// A dish's photos and videos, ordered by `position`. Replaces the single `Dish.imageUrl` scalar
+// this model used to carry — a dish can now hold any number of media items.
+// No onDelete clause on `dish`, matching this schema's established "zero onDelete anywhere, clean
+// up explicitly in application code" convention — see deleteDish in src/app/admin/menu/actions.ts,
+// which deletes these rows inside its own transaction before deleting the Dish.
+model DishMedia {
+  id        String    @id @default(uuid())
+  dishId    String
+  dish      Dish      @relation(fields: [dishId], references: [id])
+  // Stable public MinIO URL (never a presigned/expiring one — it is rendered indefinitely).
+  // See src/lib/storage/client.ts's buildPublicUrl.
+  url       String
+  type      MediaType
+  // Display order, ascending; the lowest position is this dish's "cover". Deliberately NOT
+  // @@unique per (dishId, position): reorderDishMedia swaps two rows' positions inside one
+  // transaction, which a non-deferrable unique constraint would reject on the transient duplicate,
+  // and nothing ever looks a row up BY position — only `ORDER BY position ASC` matters. Positions
+  // are also never renumbered on removal, so gaps ([0, 2]) are expected, not a bug.
+  position  Int
+  createdAt DateTime  @default(now())
+
+  @@index([dishId, position]) // query efficiency for the ordered read, NOT a uniqueness guarantee
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
 }
 
 model DishIngredient {

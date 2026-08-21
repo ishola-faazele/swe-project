@@ -18,6 +18,10 @@ const eslintConfig = defineConfig([
     ".claude/**",
     ".agents/**",
     "supabase/.temp/**",
+    // Serwist-generated service worker (src/app/sw.ts -> public/sw.js) — gitignored, rebuilt on
+    // every `next build`, a minified single-line file that blows up lint output with bogus
+    // "line 1" errors at huge column offsets when picked up. Same bug class as 6cab9f5.
+    "public/sw.js",
   ]),
 ]);
 

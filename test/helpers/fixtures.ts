@@ -79,6 +79,7 @@ export async function cleanupFixtures(ids: {
   }
   if (dishIds.length) {
     await prisma.dishIngredient.deleteMany({ where: { dishId: { in: dishIds } } })
+    await prisma.dishMedia.deleteMany({ where: { dishId: { in: dishIds } } })
     await prisma.dish.deleteMany({ where: { id: { in: dishIds } } })
   }
   if (userIds.length) {

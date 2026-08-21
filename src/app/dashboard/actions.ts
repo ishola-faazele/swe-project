@@ -5,7 +5,11 @@ import { prisma } from '@/lib/prisma'
 import { getCurrentDbUser } from '@/lib/auth'
 import { okResult, toErrorResult, type ActionResult } from '@/lib/errors'
 import { toGhanaE164 } from '@/lib/phone'
-import { addEmailSchema, updateNotificationPreferencesSchema } from '@/lib/validation'
+import {
+  addEmailSchema,
+  updateNotificationPreferencesSchema,
+  updateProfilePhotoSchema,
+} from '@/lib/validation'
 import { sendSms } from '@/lib/notifications/sms'
 import { sendVerificationEmail } from '@/lib/notifications/email'
 import type { User } from '@prisma/client'
@@ -261,5 +265,40 @@ export async function updateNotificationPreferences(
     return okResult(updated)
   } catch (err) {
     return toErrorResult(err, 'Could not save your notification preferences. Please try again.')
+  }
+}
+
+/**
+ * Sets, replaces, or clears the CURRENTLY authenticated customer's own profile photo. This is the
+ * ONLY write path to User.imageUrl anywhere in the app — the admin's createCustomer/updateCustomer
+ * deliberately cannot touch it (see the PRD's Non-Goals); they keep read access only.
+ *
+ * Deliberately no OTP/verification step, unlike requestAddEmail/requestAddPhone above: a photo
+ * neither establishes identity nor becomes a delivery destination, so there is nothing to prove
+ * ownership of before writing it, and no uniqueness constraint to collide with.
+ *
+ * An explicit `null` clears an existing photo — the `.nullish()` on updateProfilePhotoSchema's
+ * imageUrl is what makes "clear it" expressible at all, distinct from "leave it alone".
+ */
+export async function updateProfilePhoto(
+  imageUrl: string | null
+): Promise<ActionResult<{ imageUrl: string | null }>> {
+  try {
+    const user = await getCurrentDbUser()
+    if (!user) return { ok: false, error: NOT_SIGNED_IN, code: 'VALIDATION' }
+
+    const input = updateProfilePhotoSchema.parse({ imageUrl })
+    const updated = await prisma.user.update({
+      // NEVER a client-supplied id — this clause is the entire authorization model for this
+      // action, mirroring verifyAddContact's own applyValue(user.id, value) above.
+      where: { id: user.id },
+      data: { imageUrl: input.imageUrl },
+      select: { imageUrl: true },
+    })
+
+    revalidatePath('/dashboard')
+    return okResult(updated)
+  } catch (err) {
+    return toErrorResult(err, 'Could not save your photo. Please try again.')
   }
 }

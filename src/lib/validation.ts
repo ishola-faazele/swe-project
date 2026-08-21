@@ -124,6 +124,127 @@ export const updateInventoryItemSchema = z.object({
 })
 
 /**
+ * Media uploads (MinIO). The image allowlist deliberately excludes image/heic and image/heif — the
+ * default capture format on recent iPhones — because nothing in this app transcodes them and a
+ * stored HEIC would not render in most desktop browsers. iOS Safari's file picker commonly
+ * re-encodes camera photos to JPEG before handing them to <input type="file">, which is what
+ * makes this allowlist workable on a phone-first admin device (flagged for manual QA).
+ *
+ * This is the SERVER-side gate on which content types may be presigned at all; the actual PUT is
+ * then bound to the signed content type byte-for-byte (see storage/client.ts's signableHeaders).
+ */
+const IMAGE_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
+
+/** Dish media only — video is never valid for a customer photo. See the .refine() below. */
+const DISH_VIDEO_CONTENT_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'] as const
+
+const ALL_MEDIA_CONTENT_TYPES = [...IMAGE_CONTENT_TYPES, ...DISH_VIDEO_CONTENT_TYPES] as const
+
+/**
+ * Renamed from imageUploadRequestSchema — "image" stopped being accurate the moment dish uploads
+ * can be video/mp4.
+ *
+ * The .refine() below is the REAL, server-side gate on video: a plain z.enum() can't express
+ * "video/* is only valid when entityType is 'dish'", so customer uploads are additionally
+ * constrained here, not just by the client's accept= attribute (which is only ever a UX hint —
+ * see media-upload.tsx's MEDIA_CONFIG).
+ */
+export const mediaUploadRequestSchema = z
+  .object({
+    entityType: z.enum(['dish', 'customer']),
+    contentType: z.enum(ALL_MEDIA_CONTENT_TYPES, 'Unsupported file type.'),
+  })
+  .refine(
+    (val) =>
+      val.entityType === 'dish' ||
+      IMAGE_CONTENT_TYPES.includes(val.contentType as (typeof IMAGE_CONTENT_TYPES)[number]),
+    { message: 'Customer photos must be JPEG, PNG, or WebP.', path: ['contentType'] }
+  )
+
+/**
+ * Used by updateProfilePhotoSchema below — the ONLY remaining consumer. The dish and customer
+ * admin schemas no longer carry an imageUrl field at all: Dish's scalar was replaced by the
+ * DishMedia relation, and a customer's photo is now written exclusively by the customer
+ * themselves (src/app/dashboard/actions.ts's updateProfilePhoto), never by the admin.
+ *
+ * `.nullish()` — not `.optional()` alone — is load-bearing, and the two states are NOT
+ * interchangeable at the Prisma call site: `undefined` means "field not sent, leave the column
+ * exactly as it is" while an explicit `null` means "clear the photo". Prisma applies precisely
+ * that distinction to an `imageUrl: input.imageUrl` property, which is why the write can pass the
+ * value through unconditionally with no branching. Dropping `.nullable()` here would make
+ * clearing a photo impossible to express.
+ */
+const imageUrlField = z.url("That image URL doesn't look valid.").nullish()
+
+/** The customer's own self-service photo write — dashboard/actions.ts's updateProfilePhoto. */
+export const updateProfilePhotoSchema = z.object({ imageUrl: imageUrlField })
+
+/** admin/menu/[id]/actions.ts's addDishMedia. */
+export const addDishMediaSchema = z.object({
+  dishId: idSchema,
+  url: z.url('That media URL does not look valid.'),
+  type: z.enum(['IMAGE', 'VIDEO']),
+})
+
+/** admin/menu/[id]/actions.ts's reorderDishMedia. */
+export const reorderDishMediaSchema = z.object({
+  dishId: idSchema,
+  mediaId: idSchema,
+  direction: z.enum(['up', 'down']),
+})
+
+/**
+ * A line in a DISH's recipe — how much of an InventoryItem one unit of the dish consumes.
+ * Deliberately separate from ingredientInputSchema above, which is a line on an ORDER
+ * (quantityUsed, non-negative). A recipe quantity must be strictly positive: a zero-quantity
+ * recipe line is meaningless, unlike a zero-quantity order line, which updateOrderItems skips.
+ */
+export const dishIngredientInputSchema = z.object({
+  inventoryItemId: z.uuid('Select a valid inventory item.'),
+  quantityPerDish: z
+    .number('Enter a quantity for each ingredient.')
+    .positive('Ingredient quantity must be greater than zero.'),
+})
+
+const dishIngredientArraySchema = z
+  .array(dishIngredientInputSchema)
+  .max(MAX_INGREDIENT_LINES, 'A dish cannot list more than 50 distinct ingredient lines.')
+
+/**
+ * createDish/updateDish had ZERO input validation before the MinIO image-upload feature — a
+ * negative price or an empty name reached Prisma unchecked. These schemas close that gap as part
+ * of migrating both actions onto this codebase's newer zod + ActionResult convention.
+ *
+ * `ingredients` is `.optional()` here even though the TS param type and every real call site
+ * (MenuClient's recipePayload) always supply an array, possibly empty. That looseness is
+ * intentional, not an oversight: mergeDuplicateIngredients(input.ingredients ?? []) already
+ * handles the undefined case, and it keeps a name/price-only payload valid.
+ */
+export const createDishSchema = z.object({
+  name: z.string().trim().min(1, 'A dish name is required.'),
+  price: z.number('Enter a price for this dish.').nonnegative('Price cannot be negative.'),
+  servingSize: z
+    .number('Enter a serving size.')
+    .int('Serving size must be a whole number.')
+    .positive('Serving size must be greater than zero.')
+    .optional(),
+  ingredients: dishIngredientArraySchema.optional(),
+})
+
+/** Mirrors createDishSchema with every field optional except `id`. */
+export const updateDishSchema = z.object({
+  id: idSchema,
+  name: z.string().trim().min(1, 'A dish name is required.').optional(),
+  price: z.number('Enter a price for this dish.').nonnegative('Price cannot be negative.').optional(),
+  servingSize: z
+    .number('Enter a serving size.')
+    .int('Serving size must be a whole number.')
+    .positive('Serving size must be greater than zero.')
+    .optional(),
+  ingredients: dishIngredientArraySchema.optional(),
+})
+
+/**
  * A customer must not prefer a login channel they have no contact info for — an EMAIL preference
  * with no email on file would produce an account-creation notification with nowhere to send it,
  * and a phone-login attempt that can never resolve.
@@ -157,7 +278,11 @@ export const createCustomerSchema = z
  * updateCustomer deliberately does NOT accept email or phone — once the admin sets a contact
  * method at creation, it's write-once. Only the customer themselves, logged in, can fill a
  * missing slot (see src/app/dashboard/actions.ts), and never change one that's already set. Only
- * `name` and `preferredLoginMethod` are genuinely editable here.
+ * `name` and `preferredLoginMethod` are editable here.
+ *
+ * `imageUrl` is deliberately absent: a customer's photo is self-service only. The admin keeps
+ * read access (the customer table's avatar column) but has no write path to it at all — see the
+ * PRD's Non-Goals. updateProfilePhoto is the column's sole writer.
  *
  * `preferredLoginMethod` still can't be validated against "a contact field that's actually
  * filled in" at the schema level, since the payload no longer carries email/phone at all — that

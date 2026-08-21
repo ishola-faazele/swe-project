@@ -36,6 +36,7 @@ import {
   verifyAddEmail,
   verifyAddPhone,
   updateNotificationPreferences,
+  updateProfilePhoto,
 } from './actions'
 
 const userFindUnique = vi.mocked(prisma.user.findUnique)
@@ -357,6 +358,61 @@ describe('updateNotificationPreferences', () => {
     expect(result.ok).toBe(true)
     expect(userUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ alertPhone: null }) })
+    )
+  })
+})
+
+describe('updateProfilePhoto', () => {
+  const NEW_PHOTO_URL = 'https://minio.local/customers/new-photo.jpg'
+
+  beforeEach(() => {
+    stubCustomer()
+    userUpdate.mockResolvedValue({ imageUrl: NEW_PHOTO_URL } as never)
+  })
+
+  it('rejects with VALIDATION when not signed in, writing nothing', async () => {
+    getCurrentDbUserMock.mockResolvedValue(null)
+
+    const result = await updateProfilePhoto(NEW_PHOTO_URL)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.code).toBe('VALIDATION')
+    expect(userUpdate).not.toHaveBeenCalled()
+  })
+
+  // This is the test that proves the "own row only" authorization claim, not just that the
+  // action returns ok:true — asserted directly against the mock's `where` clause, sourced from
+  // getCurrentDbUser()'s own resolved id, never a hypothetical second id.
+  it('writes only to the caller\'s own row, scoped by getCurrentDbUser()\'s resolved id', async () => {
+    await updateProfilePhoto(NEW_PHOTO_URL)
+
+    expect(userUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'user-1' } })
+    )
+  })
+
+  it('persists the new photo URL and returns it', async () => {
+    const result = await updateProfilePhoto(NEW_PHOTO_URL)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data.imageUrl).toBe(NEW_PHOTO_URL)
+    expect(userUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { imageUrl: NEW_PHOTO_URL } })
+    )
+  })
+
+  it('accepts an explicit null to clear an existing photo', async () => {
+    userUpdate.mockResolvedValue({ imageUrl: null } as never)
+
+    const result = await updateProfilePhoto(null)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data.imageUrl).toBeNull()
+    expect(userUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { imageUrl: null } })
     )
   })
 })

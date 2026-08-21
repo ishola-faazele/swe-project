@@ -42,6 +42,7 @@ const customer: ClientSafeUser = {
   alertPhone: null,
   notifyByWhatsapp: true,
   alertWhatsapp: null,
+  imageUrl: null,
   role: 'CUSTOMER',
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),

@@ -273,7 +273,16 @@ npx prisma db push
 # 3. Seed realistic fixture data (10 customers, 20 inventory items, 15 orders)
 npx prisma db seed
 
-# 4. Run dev server
+# 4. Start MinIO (object storage for dish media + customer photos)
+#    Deliberately a SEPARATE lifecycle from Supabase — its own root docker-compose.yml, not
+#    managed by the Supabase CLI. Skip it only if you are not touching uploads; without it,
+#    presigning still succeeds (it is pure local crypto) and the failure surfaces only at the
+#    browser's actual PUT.
+npm run minio:up          # npm run minio:down to stop
+# → http://127.0.0.1:9000       (S3 API — both the server and the browser hit this)
+# → http://127.0.0.1:9001       (MinIO console, minioadmin/minioadmin)
+
+# 5. Run dev server
 npm run dev
 # → http://127.0.0.1:3000       (use 127.0.0.1, NOT localhost — cookies are origin-scoped)
 # → http://127.0.0.1:54324      (Inbucket — catches magic-link emails locally)
