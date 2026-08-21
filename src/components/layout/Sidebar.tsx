@@ -12,6 +12,7 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
+  Truck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -22,7 +23,7 @@ const getNavItems = (role: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUST
   if (isDriver) {
     return [
       { label: 'OPERATIONS', items: [
-        { name: 'Deliveries', href: '/admin/driver', icon: LayoutDashboard, exact: true },
+        { name: 'Deliveries', href: '/admin/driver', icon: Truck, exact: true },
       ]},
     ]
   }
@@ -31,6 +32,7 @@ const getNavItems = (role: 'ADMIN' | 'KITCHEN_STAFF' | 'DELIVERY_DRIVER' | 'CUST
     { label: 'OPERATIONS', items: [
       { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, exact: true },
       { name: 'Orders',    href: '/admin/orders', icon: ShoppingCart, exact: false },
+      ...(!isKitchenStaff ? [{ name: 'Deliveries', href: '/admin/driver', icon: Truck, exact: false }] : []),
     ]},
     { label: 'MANAGEMENT', items: [
       { name: 'Inventory', href: '/admin/inventory', icon: Package, exact: false },
