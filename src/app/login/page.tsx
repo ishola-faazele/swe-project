@@ -34,7 +34,7 @@ export default async function LoginPage({
           id="email"
           name="email"
           type="email"
-          autoComplete="email"
+          autoComplete="username email"
           spellCheck={false}
           placeholder="you@example.com"
           required

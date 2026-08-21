@@ -46,7 +46,7 @@ export function AdminLayout({ children, header, userRole = 'ADMIN' }: AdminLayou
 
   return (
     <div
-      className="grid min-h-screen w-full transition-[grid-template-columns] duration-200 ease-in-out md:grid-cols-[var(--sidebar-width)_1fr]"
+      className="grid min-h-screen w-full transition-[grid-template-columns] duration-200 ease-in-out md:grid-cols-[var(--sidebar-width)_1fr] print:block"
       style={
         {
           '--sidebar-width': mounted ? sidebarWidth : '280px',
@@ -56,7 +56,7 @@ export function AdminLayout({ children, header, userRole = 'ADMIN' }: AdminLayou
       {/* Desktop sidebar — hidden below md, sticky so the toggle button is
           always visible in the viewport without scrolling. overflow-y-auto
           lets the nav scroll independently if there are many items. */}
-      <div className="hidden md:block sticky top-0 h-screen overflow-y-auto">
+      <div className="hidden md:block sticky top-0 h-screen overflow-y-auto print:hidden">
         <Sidebar collapsed={collapsed} onToggleCollapse={toggle} userRole={userRole} />
       </div>
 

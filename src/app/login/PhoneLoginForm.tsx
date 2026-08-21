@@ -107,7 +107,7 @@ export function PhoneLoginForm() {
               name="phone"
               type="tel"
               inputMode="tel"
-              autoComplete="tel"
+              autoComplete="username tel"
               spellCheck={false}
               placeholder="024 123 4567"
               required
@@ -142,6 +142,7 @@ export function PhoneLoginForm() {
                   key={i}
                   autoFocus={i === 0}
                   aria-label={`Digit ${i + 1} of ${OTP_LENGTH}`}
+                  autoComplete="one-time-code"
                   className={cn(
                     "h-11 w-full min-w-0 rounded-lg border border-input bg-transparent text-center font-mono-data text-base transition-colors outline-none",
                     "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",

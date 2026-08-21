@@ -12,7 +12,7 @@ import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { updateOrderItems, updateOrderDueDate, updateOrderInfo } from "./actions"
 import { updateOrderStatus } from "../actions"
 import { formatCurrency, getCurrencySymbol, BUSINESS_LOCALE } from "@/lib/currency"
-import { Share2 } from "lucide-react"
+import { Printer, Share2 } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -164,12 +164,17 @@ export function OrderDetailsClient({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => router.push('/admin/orders')}>
+          <Button variant="outline" onClick={() => router.push('/admin/orders')} className="print:hidden">
             &larr; Back to Orders
           </Button>
-          <h2 className="page-title">Order #{order.shortId}</h2>
+          <h2 className="page-title flex items-center gap-4">
+            Order #{order.shortId}
+            <Button variant="ghost" size="icon" onClick={() => window.print()} className="print:hidden hover:bg-muted" title="Print Order / Save as PDF">
+              <Printer className="h-5 w-5" />
+            </Button>
+          </h2>
         </div>
       </div>
 
@@ -193,7 +198,7 @@ export function OrderDetailsClient({
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
             <h3 className="text-xl font-semibold">Order Details</h3>
             {!isEditingInfo ? (
-              <Button variant="ghost" size="sm" onClick={() => setIsEditingInfo(true)}>
+              <Button variant="ghost" size="sm" onClick={() => setIsEditingInfo(true)} className="print:hidden">
                 Edit Details
               </Button>
             ) : (
@@ -320,7 +325,7 @@ export function OrderDetailsClient({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <h3 className="text-xl font-semibold">Dishes Ordered</h3>
           {!isEditing ? (
-            <Button variant="outline" onClick={() => setIsEditing(true)}>Edit Order Items</Button>
+            <Button variant="outline" onClick={() => setIsEditing(true)} className="print:hidden">Edit Order Items</Button>
           ) : (
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => {
@@ -438,7 +443,7 @@ export function OrderDetailsClient({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <h3 className="text-xl font-semibold">{isEditing ? "Extra Ingredients" : "Ingredients Used"}</h3>
           {!isEditing && (
-            <Button variant="outline" onClick={() => setIsEditing(true)}>Edit Order Items</Button>
+            <Button variant="outline" onClick={() => setIsEditing(true)} className="print:hidden">Edit Order Items</Button>
           )}
         </div>
 
@@ -538,7 +543,7 @@ export function OrderDetailsClient({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-semibold">Additional Notes</h3>
           {!isEditingNotes ? (
-            <Button variant="ghost" size="sm" onClick={() => setIsEditingNotes(true)}>
+            <Button variant="ghost" size="sm" onClick={() => setIsEditingNotes(true)} className="print:hidden">
               Edit Notes
             </Button>
           ) : (

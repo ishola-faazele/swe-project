@@ -181,7 +181,11 @@ export function MediaUpload({
       // A successful getMediaUploadUrl does NOT imply MinIO is up: presigning is pure local
       // crypto with no network call, so an unreachable server only ever surfaces right here.
       if (generation !== uploadGenerationRef.current) return
-      applyStatus('error', err instanceof Error ? err.message : 'Could not upload this file. Please try again.')
+      let msg = err instanceof Error ? err.message : 'Could not upload this file.'
+      if (msg === 'Failed to fetch') {
+        msg = 'Failed to connect to the media server. If you are accessing this app from a phone or another device, ensure MINIO_ENDPOINT in .env is set to your computer\'s network IP, and MINIO_API_CORS_ALLOW_ORIGIN in docker-compose.yml allows your Next.js origin.'
+      }
+      applyStatus('error', msg + ' Please try again.')
     }
   }
 
