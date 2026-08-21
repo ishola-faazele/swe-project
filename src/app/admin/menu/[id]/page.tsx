@@ -2,8 +2,11 @@ import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import { getInventoryItems } from '../../inventory/actions'
 import { DishDetailsClient } from './DishDetailsClient'
+import { authorizePage } from '@/lib/auth'
+import { Role } from '@prisma/client'
 
 export default async function DishDetailsPage(props: { params: Promise<{ id: string }> }) {
+  await authorizePage([Role.ADMIN])
   const params = await props.params
 
   // A route-specific direct fetch rather than reusing getDishes(), matching the

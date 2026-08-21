@@ -1,7 +1,10 @@
 import { getInventoryItems } from './actions'
 import { InventoryClient } from './InventoryClient'
+import { authorizePage } from '@/lib/auth'
+import { Role } from '@prisma/client'
 
 export default async function InventoryPage() {
+  await authorizePage([Role.ADMIN, Role.KITCHEN_STAFF])
   // The one call site that opts into archived rows, so InventoryClient's "Show Archived" toggle
   // has data to reveal and restore. Every other caller keeps the active-only default.
   const items = await getInventoryItems({ includeArchived: true })

@@ -3,9 +3,11 @@ import { getInventoryItems } from '../../inventory/actions'
 import { getDishes } from '../../menu/actions'
 import { OrderDetailsClient } from './OrderDetailsClient'
 import { notFound } from 'next/navigation'
-import { getCurrentDbUser } from '@/lib/auth'
+import { authorizePage } from '@/lib/auth'
+import { Role } from '@prisma/client'
 
 export default async function OrderDetailsPage(props: { params: Promise<{ id: string }> }) {
+  const user = await authorizePage([Role.ADMIN, Role.KITCHEN_STAFF])
   const params = await props.params
   const order = await prisma.order.findUnique({
     where: { id: params.id },
@@ -27,10 +29,9 @@ export default async function OrderDetailsPage(props: { params: Promise<{ id: st
   }
 
   // Separate from order.dishes: the full catalog backing the "add a dish" picker.
-  const [inventory, dishes, user] = await Promise.all([
+  const [inventory, dishes] = await Promise.all([
     getInventoryItems(),
     getDishes(),
-    getCurrentDbUser()
   ])
 
   return (

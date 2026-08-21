@@ -1,7 +1,10 @@
 import { getAuditLogs } from './actions'
 import { AuditClient } from './AuditClient'
+import { authorizePage } from '@/lib/auth'
+import { Role } from '@prisma/client'
 
 export default async function AuditPage() {
+  await authorizePage([Role.ADMIN])
   const logs = await getAuditLogs()
 
   return (

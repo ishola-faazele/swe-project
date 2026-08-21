@@ -1,8 +1,11 @@
 import { getDishes } from './actions'
 import { getInventoryItems } from '../inventory/actions'
 import { MenuClient } from './MenuClient'
+import { authorizePage } from '@/lib/auth'
+import { Role } from '@prisma/client'
 
 export default async function MenuPage() {
+  await authorizePage([Role.ADMIN, Role.KITCHEN_STAFF])
   const [dishes, inventory] = await Promise.all([
     getDishes(),
     getInventoryItems()

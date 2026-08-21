@@ -3,6 +3,7 @@ import { createAdminClient } from '@/utils/supabase/admin'
 import { prisma } from '@/lib/prisma'
 import { toGhanaE164 } from '@/lib/phone'
 import { Prisma, Role, type User } from '@prisma/client'
+import { redirect } from 'next/navigation'
 
 export class AuthError extends Error {}
 
@@ -262,4 +263,22 @@ export async function requireAdmin(): Promise<User> {
 
 export async function requireStaffOrAdmin(): Promise<User> {
   return requireRole([Role.ADMIN, Role.KITCHEN_STAFF])
+}
+
+export function getRoleRedirect(role?: Role): string {
+  if (role === 'DELIVERY_DRIVER') return '/admin/driver'
+  if (role === 'KITCHEN_STAFF') return '/admin/orders'
+  if (role === 'CUSTOMER') return '/dashboard'
+  return '/login'
+}
+
+export async function authorizePage(allowedRoles: Role[]): Promise<User> {
+  const dbUser = await getCurrentDbUser()
+  if (!dbUser) {
+    redirect('/login')
+  }
+  if (!allowedRoles.includes(dbUser.role)) {
+    redirect(getRoleRedirect(dbUser.role))
+  }
+  return dbUser
 }

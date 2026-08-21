@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
-import { getCurrentDbUser } from '@/lib/auth'
+import { authorizePage } from '@/lib/auth'
+import { Role } from '@prisma/client'
 import {
   TrendingUp,
   Users,
@@ -35,7 +36,7 @@ function getRelativeTimeString(date: Date): string {
 }
 
 export default async function AdminDashboardPage() {
-  const user = await getCurrentDbUser()
+  const user = await authorizePage([Role.ADMIN])
   const isAdmin = user?.role === 'ADMIN'
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())

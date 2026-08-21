@@ -1,4 +1,5 @@
-import { requireAdmin } from '@/lib/auth'
+import { authorizePage } from '@/lib/auth'
+import { Role } from '@prisma/client'
 import { getNotificationSettings } from '@/lib/settings'
 import { SettingsClient } from './SettingsClient'
 import type { AuthDisplay } from './actions'
@@ -6,7 +7,7 @@ import type { AuthDisplay } from './actions'
 export default async function SettingsPage() {
   // Intentionally redundant with admin/layout.tsx's own route-level gate. Every Settings mutation
   // re-verifies rather than trusting the layout alone, and the read path gets the same treatment.
-  await requireAdmin()
+  await authorizePage([Role.ADMIN])
 
   const notifications = await getNotificationSettings()
   // Computed server-side and passed down: a client component has no access to non-NEXT_PUBLIC

@@ -1,7 +1,10 @@
 import { getCustomers } from './actions'
 import { CustomerClient } from './CustomerClient'
+import { authorizePage } from '@/lib/auth'
+import { Role } from '@prisma/client'
 
 export default async function CustomersPage() {
+  await authorizePage([Role.ADMIN])
   const customers = await getCustomers()
 
   return (

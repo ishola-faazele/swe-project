@@ -1,17 +1,14 @@
 import { getDriverOrders } from './actions'
 import { DriverClient } from './DriverClient'
-import { getCurrentDbUser } from '@/lib/auth'
-import { redirect } from 'next/navigation'
+import { authorizePage } from '@/lib/auth'
+import { Role } from '@prisma/client'
 
 export const metadata = {
   title: 'Deliveries | Chop with Rostty',
 }
 
 export default async function DriverPage() {
-  const user = await getCurrentDbUser()
-  if (!user || (user.role !== 'ADMIN' && user.role !== 'DELIVERY_DRIVER')) {
-    redirect('/dashboard')
-  }
+  const user = await authorizePage([Role.ADMIN, Role.DELIVERY_DRIVER])
 
   const orders = await getDriverOrders()
 
