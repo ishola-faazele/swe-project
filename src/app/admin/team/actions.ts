@@ -16,7 +16,10 @@ export async function getTeam() {
   })
 }
 
-export async function addStaff(data: { name: string; email: string; phone: string }): Promise<ActionResult<void>> {
+export async function addStaff(
+  data: { name: string; email: string; phone: string },
+  confirmPromote: boolean = false
+): Promise<ActionResult<{ promoted: boolean }>> {
   const admin = await requireAdmin()
   
   const email = data.email.trim()
@@ -41,6 +44,10 @@ export async function addStaff(data: { name: string; email: string; phone: strin
       if (targetUser.role === 'ADMIN') throw new Error('Cannot modify an ADMIN account.')
       if (targetUser.role === 'STAFF') throw new Error('User is already STAFF.')
 
+      if (!confirmPromote) {
+        return toErrorResult(new Error('CUSTOMER_EXISTS'), 'CUSTOMER_EXISTS')
+      }
+
       await prisma.user.update({
         where: { id: targetUser.id },
         data: { 
@@ -58,6 +65,9 @@ export async function addStaff(data: { name: string; email: string; phone: strin
           details: `Promoted existing customer ${name} to STAFF`
         }
       })
+      
+      revalidatePath('/admin/team')
+      return okResult({ promoted: true })
     } else {
       await prisma.user.create({
         data: {
@@ -75,13 +85,13 @@ export async function addStaff(data: { name: string; email: string; phone: strin
           details: `Created new STAFF member ${name}`
         }
       })
+      
+      revalidatePath('/admin/team')
+      return okResult({ promoted: false })
     }
   } catch (err) {
     return toErrorResult(err, 'Could not add staff.')
   }
-  
-  revalidatePath('/admin/team')
-  return okResult(undefined)
 }
 
 export async function demoteToCustomer(id: string): Promise<ActionResult<void>> {

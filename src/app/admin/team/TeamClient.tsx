@@ -51,6 +51,7 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   const [demoteUser, setDemoteUser] = useState<TeamUser | null>(null)
+  const [pendingPromotion, setPendingPromotion] = useState<{ name: string; email: string; phone: string } | null>(null)
 
   const columns = useMemo(
     () => [
@@ -187,14 +188,18 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
     try {
       const result = await addStaff({ name, email, phone })
       if (result.ok) {
-        toast({ title: "Staff Added", description: "The staff member has been added successfully.", variant: "default" })
+        toast.add({ title: "Staff Added", description: "The staff member has been added successfully.", type: "success" })
         setIsAddOpen(false)
         window.location.reload()
       } else {
-        toast({ title: "Error", description: result.error, variant: "destructive" })
+        if (result.error === 'CUSTOMER_EXISTS') {
+          setPendingPromotion({ name, email, phone })
+        } else {
+          toast.add({ title: "Error", description: result.error, type: "error" })
+        }
       }
     } catch {
-      toast({ title: "Error", description: "A network error occurred.", variant: "destructive" })
+      toast.add({ title: "Error", description: "A network error occurred.", type: "error" })
     } finally {
       setIsSubmitting(false)
     }
@@ -205,14 +210,14 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
     try {
       const result = await demoteToCustomer(demoteUser.id)
       if (result.ok) {
-        toast({ title: "Staff Demoted", description: "User has been demoted to CUSTOMER.", variant: "default" })
+        toast.add({ title: "Staff Demoted", description: "User has been demoted to CUSTOMER.", type: "success" })
         setDemoteUser(null)
         window.location.reload()
       } else {
-        toast({ title: "Error", description: result.error, variant: "destructive" })
+        toast.add({ title: "Error", description: result.error, type: "error" })
       }
     } catch {
-      toast({ title: "Error", description: "A network error occurred.", variant: "destructive" })
+      toast.add({ title: "Error", description: "A network error occurred.", type: "error" })
     }
   }
 
@@ -312,9 +317,6 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
                 placeholder="e.g. +234..."
               />
             </div>
-            <p className="text-xs text-muted-foreground pt-2">
-              If an account with this email/phone already exists, they will be instantly promoted to STAFF. Otherwise, a new account will be created.
-            </p>
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)} disabled={isSubmitting}>
                 Cancel
@@ -342,6 +344,43 @@ export function TeamClient({ initialData }: { initialData: TeamUser[] }) {
               onClick={handleDemote}
             >
               Demote to Customer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingPromotion} onOpenChange={(open) => !open && setPendingPromotion(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Customer Account Found</AlertDialogTitle>
+            <AlertDialogDescription>
+              A customer account with this email or phone number already exists. Are you sure you want to promote them to STAFF?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!pendingPromotion) return
+                setIsSubmitting(true)
+                try {
+                  const result = await addStaff(pendingPromotion, true)
+                  if (result.ok) {
+                    toast.add({ title: "Staff Promoted", description: "Customer has been promoted to STAFF.", type: "success" })
+                    setPendingPromotion(null)
+                    setIsAddOpen(false)
+                    window.location.reload()
+                  } else {
+                    toast.add({ title: "Error", description: result.error, type: "error" })
+                  }
+                } catch {
+                  toast.add({ title: "Error", description: "A network error occurred.", type: "error" })
+                } finally {
+                  setIsSubmitting(false)
+                }
+              }}
+            >
+              Confirm Promotion
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
