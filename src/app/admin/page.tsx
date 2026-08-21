@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import {
   TrendingUp,
@@ -19,7 +20,23 @@ import { ORDER_STATUS_CONFIG } from '@/lib/orderStatus'
 import { BUSINESS_LOCALE, formatCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
+function getRelativeTimeString(date: Date): string {
+  const diffInMinutes = Math.round((date.getTime() - Date.now()) / (1000 * 60))
+  if (diffInMinutes < 0) {
+    const past = Math.abs(diffInMinutes)
+    if (past < 60) return `due ${past} min ago`
+    return `due ${Math.floor(past / 60)}h ${past % 60}m ago`
+  }
+  if (diffInMinutes < 60) return `in ${diffInMinutes} min`
+  const hours = Math.floor(diffInMinutes / 60)
+  const mins = diffInMinutes % 60
+  return `in ${hours}h ${mins > 0 ? `${mins}m` : ''}`
+}
+
 export default async function AdminDashboardPage() {
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
   // Fetch real data from DB
   const [
     totalOrders,
@@ -31,6 +48,8 @@ export default async function AdminDashboardPage() {
     activeOrdersForDueCheck,
     activeLogs,
     upcomingOrders,
+    todayTotalOrders,
+    todayCompletedOrders,
   ] = await Promise.all([
     prisma.order.count(),
     prisma.user.count({ where: { role: 'CUSTOMER' } }),
@@ -68,6 +87,12 @@ export default async function AdminDashboardPage() {
       take: 5,
       orderBy: { dueDate: 'asc' },
       include: { customer: { select: { name: true, email: true, shortId: true } } },
+    }),
+    prisma.order.count({
+      where: { createdAt: { gte: startOfToday } }
+    }),
+    prisma.order.count({
+      where: { status: 'COMPLETED', updatedAt: { gte: startOfToday } }
     })
   ])
 
@@ -88,9 +113,9 @@ export default async function AdminDashboardPage() {
   const dueTodayCount = activeOrdersForDueCheck.filter(o => getDueUrgency(o.dueDate) === 'due-today').length
   const overdueCount = activeOrdersForDueCheck.filter(o => getDueUrgency(o.dueDate) === 'overdue').length
 
+  const completionRate = todayTotalOrders > 0 ? Math.round((todayCompletedOrders / todayTotalOrders) * 100) : 0
+
   // Revenue Calculations
-  const now = new Date()
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000)
   const startOfDayBefore = new Date(startOfYesterday.getTime() - 24 * 60 * 60 * 1000)
   const startOfThisWeek = new Date(startOfToday.getTime() - now.getDay() * 24 * 60 * 60 * 1000)
@@ -150,18 +175,26 @@ export default async function AdminDashboardPage() {
       value: formatCurrency(thisWeekRevenue),
       icon: Banknote,
       sub: 'completed orders since Sunday',
+      tone: 'text-emerald-500',
+      bgTone: 'bg-emerald-500/10',
     },
     {
       label: 'Active Orders',
       value: activeOrders,
       icon: ChefHat,
       sub: 'in kitchen',
+      tone: 'text-blue-500',
+      bgTone: 'bg-blue-500/10',
+      href: '/admin/orders'
     },
     {
       label: 'Due Today',
       value: dueTodayCount,
       icon: CalendarClock,
       sub: 'active orders due today',
+      tone: dueTodayCount > 0 ? 'text-amber-500' : 'text-muted-foreground',
+      bgTone: dueTodayCount > 0 ? 'bg-amber-500/10' : 'bg-muted',
+      href: '/admin/orders?status=PENDING,PREPPING,COOKING,READY'
     },
     {
       label: 'Overdue',
@@ -169,6 +202,9 @@ export default async function AdminDashboardPage() {
       icon: CalendarX,
       sub: 'past their due date',
       alert: overdueCount > 0,
+      tone: overdueCount > 0 ? 'text-destructive-foreground' : 'text-muted-foreground',
+      bgTone: overdueCount > 0 ? 'bg-white/20' : 'bg-muted',
+      href: '/admin/orders?status=PENDING,PREPPING,COOKING,READY'
     },
     {
       label: 'Low Stock Alerts',
@@ -178,20 +214,26 @@ export default async function AdminDashboardPage() {
         ? `needed by ${uniqueActiveOrdersWithLowStock} active order${uniqueActiveOrdersWithLowStock === 1 ? '' : 's'}`
         : 'items need restocking',
       alert: lowStockCount > 0,
+      tone: lowStockCount > 0 ? 'text-destructive-foreground' : 'text-muted-foreground',
+      bgTone: lowStockCount > 0 ? 'bg-white/20' : 'bg-muted',
+      href: '/admin/inventory'
     },
     {
       label: 'Customers',
       value: totalCustomers,
       icon: Users,
       sub: 'registered accounts',
+      tone: 'text-purple-500',
+      bgTone: 'bg-purple-500/10',
+      href: '/admin/customers'
     },
   ]
 
   const pipeline = [
-    { key: 'PENDING', label: 'PENDING', icon: Clock, tone: 'text-muted-foreground' },
-    { key: 'PREPPING', label: 'PREPPING', icon: TrendingUp, tone: 'text-chart-4' },
-    { key: 'COOKING', label: 'COOKING', icon: ChefHat, tone: 'text-primary' },
-    { key: 'READY', label: 'READY', icon: CheckCircle, tone: 'text-chart-3' },
+    { key: 'PENDING', label: 'PENDING', icon: Clock, tone: 'text-slate-500', bgTone: 'bg-slate-500/10', borderTone: 'border-slate-500/20' },
+    { key: 'PREPPING', label: 'PREPPING', icon: TrendingUp, tone: 'text-blue-500', bgTone: 'bg-blue-500/10', borderTone: 'border-blue-500/30' },
+    { key: 'COOKING', label: 'COOKING', icon: ChefHat, tone: 'text-amber-500', bgTone: 'bg-amber-500/10', borderTone: 'border-amber-500/30' },
+    { key: 'READY', label: 'READY', icon: CheckCircle, tone: 'text-emerald-500', bgTone: 'bg-emerald-500/10', borderTone: 'border-emerald-500/30' },
   ]
 
   return (
@@ -229,45 +271,84 @@ export default async function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Stat cards — 2×3 at lg, since the due-date pair grew this from 4 to 6 */}
+      {/* Stat cards — 2×3 at lg */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {stats.map((stat) => (
-          <div key={stat.label} className="stat-card">
+        {stats.map((stat) => {
+          const content = (
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="eyebrow">{stat.label}</p>
-                <p className={`stat-value mt-2 ${stat.alert ? 'text-destructive' : 'text-primary'}`}>
+                <p className={`stat-value mt-2 ${stat.tone}`}>
                   {stat.value}
                 </p>
-                <p className="meta-text mt-1.5">{stat.sub}</p>
+                <p className={`meta-text mt-1.5 ${stat.alert ? 'text-destructive-foreground/80' : ''}`}>{stat.sub}</p>
               </div>
               <div
-                className={`shrink-0 rounded p-2 ${
-                  stat.alert ? 'bg-destructive/12 text-destructive' : 'bg-primary/10 text-primary'
-                }`}
+                className={`shrink-0 rounded p-2 ${stat.bgTone} ${stat.tone}`}
               >
                 <stat.icon className="h-5 w-5" aria-hidden="true" />
               </div>
             </div>
-          </div>
-        ))}
+          )
+
+          const className = `stat-card block relative overflow-hidden transition-all ${
+            stat.alert 
+              ? 'bg-destructive text-destructive-foreground ring-1 ring-destructive hover:bg-destructive/90 hover:shadow-lg' 
+              : 'hover:border-primary/30 hover:shadow-md'
+          }`
+
+          if (stat.href) {
+            return (
+              <Link key={stat.label} href={stat.href} className={className}>
+                {content}
+              </Link>
+            )
+          }
+
+          return (
+            <div key={stat.label} className={className}>
+              {content}
+            </div>
+          )
+        })}
       </div>
 
       {/* Order pipeline */}
       <div>
-        <h2 className="eyebrow mb-3">Order Pipeline</h2>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-4">
+          <div>
+            <h2 className="eyebrow mb-1">Kitchen Load & Pipeline</h2>
+            <p className="text-sm text-muted-foreground font-medium">
+              {todayTotalOrders > 0 ? (
+                <>
+                  <span className="text-foreground font-bold">{todayCompletedOrders}</span> of <span className="text-foreground font-bold">{todayTotalOrders}</span> today's orders completed
+                </>
+              ) : (
+                "No orders yet today"
+              )}
+            </p>
+          </div>
+          <div className="w-full sm:max-w-[200px] h-3 bg-muted rounded-full overflow-hidden shrink-0 mt-2 sm:mt-0">
+            <div 
+              className="h-full bg-emerald-500 transition-all duration-1000 ease-out" 
+              style={{ width: `${completionRate}%` }} 
+            />
+          </div>
+        </div>
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-          {pipeline.map(({ key, label, icon: Icon, tone }) => (
+          {pipeline.map(({ key, label, icon: Icon, tone, bgTone, borderTone }) => (
             <div
               key={key}
-              className="flex items-center gap-3 rounded-lg border border-border bg-card p-4"
+              className={`flex items-center gap-4 rounded-xl border ${borderTone} bg-card p-5 shadow-sm transition-all hover:shadow-md`}
             >
-              <Icon className={`h-4 w-4 shrink-0 ${tone}`} aria-hidden="true" />
+              <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${bgTone}`}>
+                <Icon className={`h-6 w-6 ${tone}`} aria-hidden="true" />
+              </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold tracking-wider font-mono-data text-muted-foreground">
                   {label}
                 </p>
-                <p className="mt-0.5 text-2xl font-bold leading-none font-mono-data tabular-nums text-foreground">
+                <p className={`mt-1 text-3xl font-black leading-none font-mono-data tabular-nums ${tone}`}>
                   {statusCounts[key] || 0}
                 </p>
               </div>

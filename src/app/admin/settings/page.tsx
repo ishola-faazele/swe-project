@@ -21,8 +21,7 @@ export default async function SettingsPage() {
       <div>
         <h1 className="page-title">Settings</h1>
         <p className="meta-text mt-0.5">
-          Notification channels and where your own alerts go. Login identity is fixed by the
-          server environment; provider credentials (API keys, tokens) live there too, not here.
+          Manage your notification channels and owner login details.
         </p>
       </div>
       <SettingsClient initialNotifications={notifications} auth={auth} />
