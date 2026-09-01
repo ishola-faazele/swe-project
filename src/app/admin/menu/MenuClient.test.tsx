@@ -101,14 +101,19 @@ beforeEach(() => {
 })
 
 describe('MenuClient — card gallery', () => {
-  it('renders a card per dish with shortId, name, price, serving size, and status badge', () => {
+  it('renders a card per dish with shortId, name, price, serving size, and status badge', async () => {
+    const user = userEvent.setup()
     render(<MenuClient initialData={[activeDish, archivedDish]} inventory={[rice, chicken]} />)
 
     expect(screen.getByText('#1')).toBeInTheDocument()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()
     expect(screen.getByText('GH₵1,200.00')).toBeInTheDocument()
-    expect(screen.getByText('Recipe serves 2')).toBeInTheDocument()
+    expect(screen.getByText(/Serves 2/)).toBeInTheDocument()
     expect(screen.getByText('ACTIVE')).toBeInTheDocument()
+
+    // Archived dishes are hidden by default (same pattern as CustomerClient/InventoryClient) —
+    // need "Show Archived" toggled on before the second card is in the DOM at all.
+    await user.click(screen.getByRole('button', { name: /show archived/i }))
 
     expect(screen.getByText('#2')).toBeInTheDocument()
     expect(screen.getByText('Discontinued Special')).toBeInTheDocument()
@@ -150,7 +155,8 @@ describe('MenuClient — card gallery', () => {
     })
     const { container } = render(<MenuClient initialData={[videoOnly]} inventory={[]} />)
 
-    expect(screen.getByText('Video')).toBeInTheDocument()
+    // MediaCarousel (not MenuClient itself) owns the video indicator, rendered in caps.
+    expect(screen.getByText('VIDEO')).toBeInTheDocument()
     // No cover — a video has no poster frame here, so the placeholder still renders.
     expect(container.querySelector('img')).not.toBeInTheDocument()
   })
@@ -159,6 +165,8 @@ describe('MenuClient — card gallery', () => {
     const user = userEvent.setup()
     const { container } = render(<MenuClient initialData={[activeDish, archivedDish]} inventory={[]} />)
 
+    // archivedDish is hidden by default — toggle it on so it's part of what search can match.
+    await user.click(screen.getByRole('button', { name: /show archived/i }))
     await user.type(screen.getByPlaceholderText('Search menu...'), 'Discontinued')
 
     // HighlightText splits the matched substring into its own <mark>, so the name is no longer a
@@ -219,13 +227,20 @@ describe('MenuClient — create dialog', () => {
 
   it('does not offer an archived ingredient on a brand-new recipe row', async () => {
     const user = userEvent.setup()
+    // Ingredient picking uses a custom SearchableSelect (plain divs, no native <option>s, name and
+    // unit rendered as separate sibling spans) — not a native <select>. Assert via textContent,
+    // same reasoning as the HighlightText-split-text workaround elsewhere in this file.
+    // document.body, not the render() container: the Dialog renders through a portal appended to
+    // <body>, outside the container's own subtree.
     render(<MenuClient initialData={[]} inventory={[chicken]} />)
 
     await user.click(screen.getByRole('button', { name: /add dish/i }))
     await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
+    await user.click(screen.getByText('Select item...'))
 
-    expect(screen.getByRole('option', { name: 'Chicken (kg)' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: /archived/ })).not.toBeInTheDocument()
+    expect(document.body.textContent).toContain('Chicken')
+    expect(document.body.textContent).toContain('(kg)')
+    expect(document.body.textContent).not.toContain('archived')
   })
 
   it('submitting calls createDish with deduped ingredients and NO imageUrl, then optimistically appends the result with an empty media array', async () => {
@@ -250,7 +265,10 @@ describe('MenuClient — create dialog', () => {
     await user.type(screen.getByLabelText('Dish Name'), 'Fried Rice')
     await user.type(screen.getByLabelText(/Price/), '1300')
     await user.click(screen.getByRole('button', { name: 'Add Ingredient' }))
-    await user.selectOptions(screen.getByRole('combobox'), rice.id)
+    // SearchableSelect: open the picker, then click the ingredient's name (its own span, but the
+    // click bubbles to the option div's handler) — not a native <select>, selectOptions won't work.
+    await user.click(screen.getByText('Select item...'))
+    await user.click(screen.getByText(rice.name))
     await user.type(screen.getByPlaceholderText('Qty'), '0.25')
 
     await user.click(screen.getByRole('button', { name: 'Save Dish' }))
@@ -260,6 +278,7 @@ describe('MenuClient — create dialog', () => {
       price: 1300,
       servingSize: 1,
       ingredients: [{ inventoryItemId: rice.id, quantityPerDish: 0.25 }],
+      media: [],
     })
     expect(mockCreateDish.mock.calls[0][0]).not.toHaveProperty('imageUrl')
     expect(screen.queryByRole('heading', { name: 'Add Dish' })).not.toBeInTheDocument()
@@ -277,6 +296,8 @@ describe('MenuClient — archive/restore', () => {
     await user.click(screen.getByTitle('Archive dish'))
 
     expect(mockToggleDishActive).toHaveBeenCalledWith('dish-active', false)
+    // Archived hides by default — the card (and its badge) only stays visible with the toggle on.
+    await user.click(screen.getByRole('button', { name: /show archived/i }))
     expect(await screen.findByText('ARCHIVED')).toBeInTheDocument()
   })
 
@@ -285,6 +306,8 @@ describe('MenuClient — archive/restore', () => {
     mockToggleDishActive.mockResolvedValue({ ...archivedDish, isActive: true })
     render(<MenuClient initialData={[archivedDish]} inventory={[rice]} />)
 
+    // archivedDish starts hidden by default — toggle it on to reach its "Restore dish" button.
+    await user.click(screen.getByRole('button', { name: /show archived/i }))
     await user.click(screen.getByTitle('Restore dish'))
 
     expect(mockToggleDishActive).toHaveBeenCalledWith('dish-archived', true)
@@ -325,6 +348,8 @@ describe('MenuClient — delete', () => {
     const confirmButtons = await screen.findAllByRole('button', { name: 'Delete' })
     await user.click(confirmButtons[confirmButtons.length - 1])
 
+    // The dish is now archived, which hides by default — toggle on to see its card again.
+    await user.click(await screen.findByRole('button', { name: /show archived/i }))
     expect(await screen.findByText('ARCHIVED')).toBeInTheDocument()
     expect(screen.getByText('Jollof Rice')).toBeInTheDocument()
   })

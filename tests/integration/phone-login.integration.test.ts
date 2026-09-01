@@ -33,7 +33,7 @@ import {
   hashOtpCode,
 } from '@/lib/otp'
 import { requestPhoneOtp, verifyPhoneOtp } from '@/app/login/actions'
-import { cleanupRegistry, newRegistry, type TestRegistry } from './helpers'
+import { cleanupRegistry, createTestCustomer, newRegistry, type TestRegistry } from './helpers'
 
 const sendSmsMock = vi.mocked(sendSms)
 const createClientMock = vi.mocked(createClient)
@@ -167,6 +167,9 @@ describe('OtpCode lifecycle against the real database', () => {
   test('requestPhoneOtp persists a row whose stored hash is not the code that was sent', async () => {
     const phone = uniquePhone()
     createdOtpPhones.push(phone)
+    // requestPhoneOtp only issues a code to a recognized identity — a real User row with this
+    // phone, or the admin identity. See src/app/login/actions.ts's isAuthorized guard.
+    await createTestCustomer(reg, { phone })
 
     const result = await requestPhoneOtp(phone)
     expect(result.ok).toBe(true)
@@ -185,6 +188,7 @@ describe('OtpCode lifecycle against the real database', () => {
   test('a second request inside the cooldown is rejected and writes no new row', async () => {
     const phone = uniquePhone()
     createdOtpPhones.push(phone)
+    await createTestCustomer(reg, { phone })
 
     await requestPhoneOtp(phone)
     const second = await requestPhoneOtp(phone)

@@ -148,7 +148,7 @@ export async function sendOrderStatusEmail(data: OrderStatusEmailData) {
     })
 
     console.log('[Email] Sent successfully:', result)
-    return { success: true, data: result }
+    return result
   } catch (error) {
     console.error('[Email] Failed to send:', error)
     return { success: false, error }
@@ -181,7 +181,7 @@ export async function sendLowStockAlert(itemName: string, currentStock: number, 
       `),
     })
 
-    return { success: true, data: result }
+    return result
   } catch (error) {
     console.error('[Email] Failed to send low stock alert:', error)
     return { success: false, error }
@@ -245,7 +245,7 @@ export async function sendAccountCreatedEmail(data: {
     })
 
     console.log('[Email] Account-created email sent successfully')
-    return { success: true, data: result }
+    return result
   } catch (error) {
     console.error('[Email] Failed to send account-created email:', error)
     return { success: false, error }
@@ -289,7 +289,7 @@ export async function sendVerificationEmail(to: string, code: string) {
     })
 
     console.log('[Email] Verification email sent successfully')
-    return { success: true, data: result }
+    return result
   } catch (error) {
     console.error('[Email] Failed to send verification email:', error)
     return { success: false, error }

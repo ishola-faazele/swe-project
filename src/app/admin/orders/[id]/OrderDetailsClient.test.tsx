@@ -41,6 +41,7 @@ const customer: ClientSafeUser = {
   imageUrl: null,
   notes: null,
   role: 'CUSTOMER',
+  createdAsRole: 'CUSTOMER',
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 }
@@ -89,6 +90,8 @@ function baseOrder(overrides: Partial<Order & { dishes: OrderDish[]; ingredientL
     customer,
     description: 'test order',
     notes: null,
+    deliveryAddress: null,
+    deliveryPhone: null,
     status: 'PENDING' as const,
     totalPrice: 1200,
     dueDate: null,

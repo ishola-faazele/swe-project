@@ -239,9 +239,9 @@ export default async function AdminDashboardPage() {
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-primary">
                 <Banknote className="h-5 w-5" />
-                <h2 className="font-semibold tracking-wide uppercase text-sm">Today's Revenue</h2>
+                <h2 className="font-semibold tracking-wide uppercase text-sm">Today&apos;s Revenue</h2>
               </div>
-              <div className="flex items-baseline gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
                 <span className="text-4xl sm:text-5xl font-black tracking-tight text-foreground">
                   {formatCurrency(todayRevenue)}
                 </span>

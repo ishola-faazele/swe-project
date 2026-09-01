@@ -62,7 +62,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   stubSettings()
   stubResendEnv()
-  sendMock.mockResolvedValue({ id: 'email-id' })
+  sendMock.mockResolvedValue({ data: { id: 'email-id' }, error: null })
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })

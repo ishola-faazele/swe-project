@@ -4,6 +4,12 @@ import { useEffect, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
+import { geocodeAddress } from '@/lib/geocode'
+
+// Address changes fire on every keystroke (deliveryAddressInput's onChange in OrderClient.tsx /
+// OrderDetailsClient.tsx) — without this delay, typing a full address fires a geocode lookup per
+// character. Also gives Nominatim's server-side rate limiter (see geocode.ts) far less to do.
+const GEOCODE_DEBOUNCE_MS = 600
 
 // Fix for default Leaflet icon missing in Next.js
 const DefaultIcon = L.icon({
@@ -32,36 +38,43 @@ export default function MapComponent({ address }: { address: string }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // No setLoading(false) here: the `!address` render branch below returns before `loading` is
+    // ever read, so resetting it would be a no-op state update purely for its own sake.
     if (!address) {
-      setLoading(false)
       return
     }
 
     let isMounted = true
-    setLoading(true)
-    setError(null)
 
-    // Append a hint for Accra/Ghana to improve local geocoding accuracy if it's not present
-    const searchQuery = address.toLowerCase().includes('ghana') ? address : `${address}, Ghana`
+    // Debounced: fires once typing pauses, not on every keystroke — see GEOCODE_DEBOUNCE_MS above.
+    // loading/error reset happens inside the timeout (not synchronously here) so the map keeps
+    // showing the last resolved pin while the user keeps typing, rather than flashing
+    // "Locating..." on every keystroke.
+    const timer = setTimeout(() => {
+      if (!isMounted) return
+      setLoading(true)
+      setError(null)
+      geocodeAddress(address)
+        .then(result => {
+          if (!isMounted) return
+          if (result.ok) {
+            setCoordinates([result.data.lat, result.data.lon])
+          } else {
+            setError(result.error)
+          }
+          setLoading(false)
+        })
+        .catch(() => {
+          if (!isMounted) return
+          setError('Geocoding failed')
+          setLoading(false)
+        })
+    }, GEOCODE_DEBOUNCE_MS)
 
-    fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(searchQuery)}`)
-      .then(res => res.json())
-      .then(data => {
-        if (!isMounted) return
-        if (data && data.length > 0) {
-          setCoordinates([parseFloat(data[0].lat), parseFloat(data[0].lon)])
-        } else {
-          setError('Location not found')
-        }
-        setLoading(false)
-      })
-      .catch(err => {
-        if (!isMounted) return
-        setError('Geocoding failed')
-        setLoading(false)
-      })
-
-    return () => { isMounted = false }
+    return () => {
+      isMounted = false
+      clearTimeout(timer)
+    }
   }, [address])
 
   if (!address) {
@@ -98,7 +111,7 @@ export default function MapComponent({ address }: { address: string }) {
   }
 
   return (
-    <div className="w-full h-full relative rounded-lg overflow-hidden border border-border">
+    <div className="w-full h-full min-h-100 relative rounded-lg overflow-hidden border border-border">
       <MapContainer 
         center={coordinates} 
         zoom={15} 
@@ -125,7 +138,7 @@ export default function MapComponent({ address }: { address: string }) {
         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="absolute bottom-4 right-4 z-[400] bg-background/90 backdrop-blur-sm shadow-md border border-border rounded-full px-4 py-2 text-xs font-semibold hover:bg-background transition-colors"
+        className="absolute bottom-4 right-4 z-400 bg-background/90 backdrop-blur-sm shadow-md border border-border rounded-full px-4 py-2 text-xs font-semibold hover:bg-background transition-colors"
       >
         Directions
       </a>

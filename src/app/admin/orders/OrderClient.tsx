@@ -45,9 +45,7 @@ import { TablePagination } from "@/components/ui/table-pagination"
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { AlertTriangle, Clock, ClipboardList, X, Trash2, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, CalendarDays, Copy, Repeat } from "lucide-react"
 import type { ClientSafeUser } from "@/lib/user"
-import dynamic from 'next/dynamic'
-
-const MapComponent = dynamic(() => import('@/app/admin/driver/MapComponent'), { ssr: false })
+import { DeliveryAddressField } from "@/components/DeliveryAddressField"
 
 type OrderWithRelations = Order & {
   customer: ClientSafeUser,
@@ -457,48 +455,33 @@ export function OrderClient({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="deliveryAddress">Delivery Address (Optional)</Label>
-                  <Input 
-                    id="deliveryAddress" 
-                    name="deliveryAddress" 
-                    placeholder="123 Example St" 
-                    value={deliveryAddressInput}
-                    onChange={e => setDeliveryAddressInput(e.target.value)} 
+              <DeliveryAddressField value={deliveryAddressInput} onChange={setDeliveryAddressInput} />
+
+              <div className="space-y-2">
+                <Label htmlFor="deliveryPhone">Delivery Phone (Optional)</Label>
+                <div className="flex flex-wrap gap-2 items-start">
+                  <Input
+                    id="deliveryPhone"
+                    name="deliveryPhone"
+                    placeholder="+234..."
+                    value={deliveryPhoneInput}
+                    onChange={e => setDeliveryPhoneInput(e.target.value)}
+                    className="w-full sm:w-auto sm:flex-1"
                   />
-                  {deliveryAddressInput && (
-                    <div className="h-48 w-full mt-2">
-                      <MapComponent address={deliveryAddressInput} />
-                    </div>
+                  {customers.find(c => c.id === (selectedCustomerId || initialFormState?.customerId))?.phone && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full sm:w-auto h-10 px-3 whitespace-nowrap"
+                      onClick={() => {
+                        const phone = customers.find(c => c.id === (selectedCustomerId || initialFormState?.customerId))?.phone
+                        if (phone) setDeliveryPhoneInput(phone)
+                      }}
+                    >
+                      Same as contact phone
+                    </Button>
                   )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="deliveryPhone">Delivery Phone (Optional)</Label>
-                  <div className="flex flex-wrap gap-2 items-start">
-                    <Input 
-                      id="deliveryPhone" 
-                      name="deliveryPhone" 
-                      placeholder="+234..." 
-                      value={deliveryPhoneInput}
-                      onChange={e => setDeliveryPhoneInput(e.target.value)}
-                      className="w-full"
-                    />
-                    {customers.find(c => c.id === (selectedCustomerId || initialFormState?.customerId))?.phone && (
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        size="sm"
-                        className="w-full sm:w-auto h-10 px-3 whitespace-nowrap"
-                        onClick={() => {
-                          const phone = customers.find(c => c.id === (selectedCustomerId || initialFormState?.customerId))?.phone
-                          if (phone) setDeliveryPhoneInput(phone)
-                        }}
-                      >
-                        Same as contact phone
-                      </Button>
-                    )}
-                  </div>
                 </div>
               </div>
 
@@ -542,7 +525,9 @@ export function OrderClient({
                     >
                       <option value="" disabled>Select dish...</option>
                       {activeDishes.map(dish => (
-                        <option key={dish.id} value={dish.id}>{dish.name} ({formatCurrency(dish.price)})</option>
+                        <option key={dish.id} value={dish.id}>
+                          {dish.name} ({formatCurrency(dish.price)} / {dish.servingSize} {dish.servingSize === 1 ? 'serving' : 'servings'})
+                        </option>
                       ))}
                     </select>
                     <Input

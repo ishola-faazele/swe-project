@@ -7,8 +7,11 @@ export function OfflineIndicator() {
   const [isOffline, setIsOffline] = useState(false);
 
   useEffect(() => {
-    // Initial check
-    setIsOffline(!navigator.onLine);
+    // Initial check. Deferred via queueMicrotask (not called synchronously in the effect body) —
+    // still resolves before paint, but this component must render `false` on both the server
+    // pass and the client's first render to avoid a hydration mismatch (navigator is unavailable
+    // during SSR), so the real value can only be read once mounted, not from useState's initializer.
+    queueMicrotask(() => setIsOffline(!navigator.onLine));
 
     const handleOffline = () => setIsOffline(true);
     const handleOnline = () => setIsOffline(false);

@@ -1,20 +1,25 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { Prisma } from "@prisma/client"
 import { UtensilsCrossed, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { MediaCarousel } from "@/components/ui/media-carousel"
 import { formatCurrency } from "@/lib/currency"
 
-type CustomerDish = any // I will use any or infer it, wait, let's type it properly.
+type CustomerDish = Prisma.DishGetPayload<{
+  include: { ingredients: { include: { inventoryItem: true } }, media: true }
+}>
 
-export function CustomerMenuClient({ initialData }: { initialData: any[] }) {
+type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc'
+
+export function CustomerMenuClient({ initialData }: { initialData: CustomerDish[] }) {
   const [globalFilter, setGlobalFilter] = useState('')
-  const [sort, setSort] = useState<'name-asc' | 'name-desc' | 'price-asc' | 'price-desc'>('name-asc')
+  const [sort, setSort] = useState<SortOption>('name-asc')
 
   const filtered = useMemo(() => {
-    let result = initialData.filter(d => d.name.toLowerCase().includes(globalFilter.toLowerCase()))
-    
+    const result = initialData.filter(d => d.name.toLowerCase().includes(globalFilter.toLowerCase()))
+
     result.sort((a, b) => {
       switch (sort) {
         case 'name-asc': return a.name.localeCompare(b.name)
@@ -51,7 +56,7 @@ export function CustomerMenuClient({ initialData }: { initialData: any[] }) {
           <select
             className="select-field h-9 text-sm min-w-[160px]"
             value={sort}
-            onChange={(e) => setSort(e.target.value as any)}
+            onChange={(e) => setSort(e.target.value as SortOption)}
           >
             <option value="name-asc">Name (A-Z)</option>
             <option value="name-desc">Name (Z-A)</option>
@@ -95,7 +100,7 @@ export function CustomerMenuClient({ initialData }: { initialData: any[] }) {
                   <div className="mt-3">
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Contains</p>
                     <p className="text-xs text-foreground/80 line-clamp-2 leading-relaxed">
-                      {dish.ingredients.map((i: any) => i.inventoryItem.name).join(', ')}
+                      {dish.ingredients.map((i) => i.inventoryItem.name).join(', ')}
                     </p>
                   </div>
                 )}

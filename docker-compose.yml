@@ -19,7 +19,7 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
       # Local-dev-only, well-known credential — same "safe to share, never used in production"
       # precedent as Supabase's local demo service-role key in .env.example.
-      MINIO_API_CORS_ALLOW_ORIGIN: "http://127.0.0.1:3000"
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
       # Needed for the browser's direct cross-origin PUT (127.0.0.1:3000 → 127.0.0.1:9000) to
       # pass a CORS preflight. Pinned to this repo's hard-required dev origin (AGENTS.md's
       # 127.0.0.1-not-localhost rule). If dev is ever run on a different port, this must be

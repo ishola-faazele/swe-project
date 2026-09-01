@@ -18,18 +18,7 @@ async function main() {
   await prisma.inventoryItem.deleteMany()
 
   console.log('Seeding Customers...')
-  const customerData = [
-    { name: 'Kwame Mensah', email: 'kwame.mensah@gmail.com', phone: '+233241234567' },
-    { name: 'Ama Osei', email: 'ama.osei@gmail.com', phone: '+233241234568' },
-    { name: 'Kojo Appiah', email: 'kojo.appiah@gmail.com', phone: '+233241234569' },
-    { name: 'Abena Owusu', email: 'abena.owusu@gmail.com', phone: '+233241234570' },
-    { name: 'Yaw Asare', email: 'yaw.asare@gmail.com', phone: '+233241234571' },
-    { name: 'Yaa Boateng', email: 'yaa.boateng@gmail.com', phone: '+233241234572' },
-    { name: 'Kofi Yeboah', email: 'kofi.yeboah@gmail.com', phone: '+233241234573' },
-    { name: 'Akua Addo', email: 'akua.addo@gmail.com', phone: '+233241234574' },
-    { name: 'Kwasi Frimpong', email: 'kwasi.frimpong@gmail.com', phone: '+233241234575' },
-    { name: 'Akosua Boakye', email: 'akosua.boakye@gmail.com', phone: '+233241234576' },
-  ]
+  const customerData: { name: string, email: string, phone: string }[] = []
 
   const customers = []
   for (const data of customerData) {
@@ -53,7 +42,7 @@ async function main() {
       { name: 'Corn Dough', category: 'INGREDIENT', unit: 'kg', currentStock: 50, minimumThreshold: 15 },
       { name: 'Beans (Red)', category: 'INGREDIENT', unit: 'kg', currentStock: 40, minimumThreshold: 10 },
       { name: 'Shito (Black Pepper Sauce)', category: 'INGREDIENT', unit: 'litres', currentStock: 10, minimumThreshold: 3 },
-      { name: 'Maggi Seasoning', category: 'INGREDIENT', unit: 'packs', currentStock: 80, minimumThreshold: 20 },
+      { name: 'Maggi Seasoning', category: 'INGREDIENT', unit: 'cubes', currentStock: 400, minimumThreshold: 50 },
       { name: 'Plantain', category: 'INGREDIENT', unit: 'bunches', currentStock: 25, minimumThreshold: 8 },
       
       { name: 'Chilled Water', category: 'DRINK', unit: 'crates', currentStock: 20, minimumThreshold: 5 },
@@ -79,14 +68,14 @@ async function main() {
   const dishData = [
     {
       name: 'Ghana Jollof',
-      price: 1500,
+      price: 60,
       ingredients: [
         recipeLine('Long Grain Rice', 0.25),
         recipeLine('Tomatoes', 0.15),
         recipeLine('Red Pepper', 0.05),
         recipeLine('Groundnut Oil', 0.05),
         recipeLine('Onions', 0.05),
-        recipeLine('Maggi Seasoning', 1),
+        recipeLine('Maggi Seasoning', 2),
         recipeLine('Food Packs', 1),
       ],
       media: [
@@ -96,11 +85,11 @@ async function main() {
     },
     {
       name: 'Banku & Tilapia',
-      price: 3500,
+      price: 80,
       ingredients: [
         recipeLine('Corn Dough', 0.3),
         recipeLine('Cassava Dough', 0.15),
-        recipeLine('Tilapia', 0.5),
+        recipeLine('Tilapia', 0.3),
         recipeLine('Tomatoes', 0.1),
         recipeLine('Scotch Bonnet (Kpakposhito)', 0.02),
         recipeLine('Onions', 0.05),
@@ -113,11 +102,11 @@ async function main() {
     },
     {
       name: 'Red Red (Gob3)',
-      price: 1200,
+      price: 40,
       ingredients: [
         recipeLine('Beans (Red)', 0.2),
         recipeLine('Palm Oil', 0.08),
-        recipeLine('Plantain', 0.5),
+        recipeLine('Plantain', 0.1),
         recipeLine('Tomatoes', 0.05),
         recipeLine('Onions', 0.05),
         recipeLine('Food Packs', 1),
@@ -128,12 +117,12 @@ async function main() {
     },
     {
       name: 'Waakye',
-      price: 1800,
+      price: 45,
       ingredients: [
         recipeLine('Long Grain Rice', 0.2),
         recipeLine('Beans (Red)', 0.1),
         recipeLine('Shito (Black Pepper Sauce)', 0.05),
-        recipeLine('Plantain', 0.2),
+        recipeLine('Plantain', 0.1),
         recipeLine('Food Packs', 1),
       ],
       media: [
@@ -142,9 +131,9 @@ async function main() {
     },
     {
       name: 'Kelewele',
-      price: 800,
+      price: 30,
       ingredients: [
-        recipeLine('Plantain', 0.6),
+        recipeLine('Plantain', 0.2),
         recipeLine('Groundnut Oil', 0.05),
         recipeLine('Takeaway Bags', 1),
       ],
@@ -154,7 +143,7 @@ async function main() {
     },
     {
       name: 'Grilled Chicken',
-      price: 1200,
+      price: 35,
       ingredients: [
         recipeLine('Chicken', 0.3),
         recipeLine('Red Pepper', 0.02),
@@ -182,23 +171,7 @@ async function main() {
   }
 
   console.log('Seeding Orders...')
-  const orderData = [
-    { customerIndex: 0, description: '5 large Ghana Jollof packs + 10 fried chicken', status: 'PENDING', totalPrice: 3500 },
-    { customerIndex: 1, description: '3 family-size Banku & Tilapia', status: 'PENDING', totalPrice: 10500 },
-    { customerIndex: 2, description: '20 small packs Jollof + 20 grilled chicken thighs', status: 'PENDING', totalPrice: 15000 },
-    { customerIndex: 3, description: '2 large bowls Waakye', status: 'PREPPING', totalPrice: 3600 },
-    { customerIndex: 4, description: '10 plates Red Red', status: 'PREPPING', totalPrice: 12000 },
-    { customerIndex: 5, description: '15 soft drinks and 15 Kelewele', status: 'COOKING', totalPrice: 5500 },
-    { customerIndex: 6, description: 'Office lunch: 10 Jollof, 10 chicken, 10 water', status: 'COOKING', totalPrice: 12000 },
-    { customerIndex: 7, description: 'Birthday party: 50 packs assorted rice and chicken', status: 'READY', totalPrice: 45000 },
-    { customerIndex: 8, description: '1 large tray Banku, 1 large tray grilled tilapia', status: 'READY', totalPrice: 18000 },
-    { customerIndex: 9, description: 'Family dinner: 4 plates of Waakye, 4 drinks', status: 'COMPLETED', totalPrice: 8000 },
-    { customerIndex: 0, description: '2 portions Red Red', status: 'COMPLETED', totalPrice: 2400 },
-    { customerIndex: 1, description: '3 Jollof rice packs with extra chicken', status: 'COMPLETED', totalPrice: 6000 },
-    { customerIndex: 2, description: '5 malt drinks, 5 chilled water', status: 'COMPLETED', totalPrice: 1500 },
-    { customerIndex: 3, description: '10 takeaway bags of Kelewele', status: 'CANCELLED', totalPrice: 8000 },
-    { customerIndex: 4, description: '1 pot of party Jollof', status: 'CANCELLED', totalPrice: 20000 },
-  ]
+  const orderData: { customerIndex: number, description: string, status: string, totalPrice: number }[] = []
 
   // Only a subset of orders carries structured dish line items. The rest deliberately keep zero
   // OrderDish rows so a fresh local database exercises BOTH the new dish-based rendering path and

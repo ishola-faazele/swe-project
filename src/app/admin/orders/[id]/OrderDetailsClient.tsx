@@ -25,8 +25,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/toast"
+import { DeliveryAddressField } from "@/components/DeliveryAddressField"
 import dynamic from 'next/dynamic'
 
+// Read-only display only (see the !isEditingInfo branch below) — the editable form below it uses
+// DeliveryAddressField instead, which owns its own MapComponent import for the autocomplete case.
 const MapComponent = dynamic(() => import('@/app/admin/driver/MapComponent'), { ssr: false })
 
 type FullOrder = Order & {
@@ -92,7 +95,7 @@ export function OrderDetailsClient({
   // A dish archived after this order was placed is no longer in the "add a dish" list, so the row
   // holding it would render blank. Offer it explicitly, falling back to the OrderDish snapshot.
   function optionsForRow(row: DishRow) {
-    const options = activeDishes.map(dish => ({ id: dish.id, name: dish.name, price: dish.price }))
+    const options = activeDishes.map(dish => ({ id: dish.id, name: dish.name, price: dish.price, servingSize: dish.servingSize }))
     if (row.dishId && !options.some(option => option.id === row.dishId)) {
       const catalogDish = dishes.find(d => d.id === row.dishId)
       const snapshot = order.dishes.find(od => od.dishId === row.dishId)
@@ -100,6 +103,7 @@ export function OrderDetailsClient({
         id: row.dishId,
         name: `${catalogDish?.name ?? snapshot?.dishName ?? 'Unknown dish'} (archived)`,
         price: catalogDish?.price ?? snapshot?.unitPrice ?? 0,
+        servingSize: catalogDish?.servingSize ?? 1,
       })
     }
     return options
@@ -243,23 +247,22 @@ export function OrderDetailsClient({
                   <span className="font-medium text-muted-foreground">Description:</span>
                   <p className="mt-1">{order.description || "—"}</p>
                 </div>
-                {(order.deliveryAddress || order.deliveryPhone) && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                    {order.deliveryAddress && (
-                      <div>
-                        <span className="font-medium text-muted-foreground">Delivery Address:</span>
-                        <p className="mt-1 mb-2">{order.deliveryAddress}</p>
-                        <div className="h-48 w-full">
-                          <MapComponent address={order.deliveryAddress} />
-                        </div>
-                      </div>
-                    )}
-                    {order.deliveryPhone && (
-                      <div>
-                        <span className="font-medium text-muted-foreground">Delivery Phone:</span>
-                        <p className="mt-1">{order.deliveryPhone}</p>
-                      </div>
-                    )}
+                {order.deliveryAddress && (
+                  <div className="mt-2">
+                    <span className="font-medium text-muted-foreground">Delivery Address:</span>
+                    <p className="mt-1 mb-2">{order.deliveryAddress}</p>
+                    {/* h-100: see DeliveryAddressField.tsx's comment — Leaflet's inner
+                        .leaflet-container needs a parent with a DEFINITE height, not just
+                        MapComponent's own min-height floor, or it renders blank. */}
+                    <div className="w-full h-100">
+                      <MapComponent address={order.deliveryAddress} />
+                    </div>
+                  </div>
+                )}
+                {order.deliveryPhone && (
+                  <div className="mt-2">
+                    <span className="font-medium text-muted-foreground">Delivery Phone:</span>
+                    <p className="mt-1">{order.deliveryPhone}</p>
                   </div>
                 )}
               </>
@@ -273,30 +276,24 @@ export function OrderDetailsClient({
                     onChange={e => setDescriptionInput(e.target.value)} 
                   />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="edit-address">Delivery Address (Optional)</Label>
-                    <Input 
-                      id="edit-address" 
-                      value={deliveryAddressInput} 
-                      onChange={e => setDeliveryAddressInput(e.target.value)} 
+                <div className="mt-2">
+                  <DeliveryAddressField
+                    id="edit-address"
+                    name="edit-address"
+                    value={deliveryAddressInput}
+                    onChange={setDeliveryAddressInput}
+                  />
+                </div>
+                <div className="space-y-1 mt-4">
+                  <Label htmlFor="edit-phone">Delivery Phone (Optional)</Label>
+                  <div className="flex flex-wrap gap-2 items-start">
+                    <Input
+                      id="edit-phone"
+                      value={deliveryPhoneInput}
+                      onChange={e => setDeliveryPhoneInput(e.target.value)}
+                      className="w-full sm:w-auto sm:flex-1"
                     />
-                    {deliveryAddressInput && (
-                      <div className="h-48 w-full mt-2">
-                        <MapComponent address={deliveryAddressInput} />
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="edit-phone">Delivery Phone (Optional)</Label>
-                    <div className="flex flex-wrap gap-2 items-start">
-                      <Input 
-                        id="edit-phone" 
-                        value={deliveryPhoneInput} 
-                        onChange={e => setDeliveryPhoneInput(e.target.value)} 
-                        className="w-full"
-                      />
-                      {order.customer.phone && (
+                    {order.customer.phone && (
                         <Button 
                           type="button" 
                           variant="outline" 
@@ -307,7 +304,6 @@ export function OrderDetailsClient({
                           Same as contact phone
                         </Button>
                       )}
-                    </div>
                   </div>
                 </div>
               </div>
@@ -465,7 +461,9 @@ export function OrderDetailsClient({
                 >
                   <option value="" disabled>Select dish...</option>
                   {optionsForRow(row).map(option => (
-                    <option key={option.id} value={option.id}>{option.name} ({formatCurrency(option.price)})</option>
+                    <option key={option.id} value={option.id}>
+                      {option.name} ({formatCurrency(option.price)} / {option.servingSize} {option.servingSize === 1 ? 'serving' : 'servings'})
+                    </option>
                   ))}
                 </select>
                 <Input

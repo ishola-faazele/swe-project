@@ -49,6 +49,7 @@ function makeCustomer(overrides: Partial<CustomerWithCount> & { id: string; shor
     imageUrl: null,
     notes: null,
     role: 'CUSTOMER',
+    createdAsRole: 'CUSTOMER',
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     _count: { orders: 0 },

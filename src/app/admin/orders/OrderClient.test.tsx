@@ -45,6 +45,7 @@ const customer: ClientSafeUser = {
   imageUrl: null,
   notes: null,
   role: 'CUSTOMER',
+  createdAsRole: 'CUSTOMER',
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 }
@@ -117,7 +118,7 @@ describe('OrderClient — create dialog', () => {
     const dishSelect = dialogContent().getAllByRole('combobox')[1] // [0] is the customer select
     const optionLabels = within(dishSelect).getAllByRole('option').map((o) => o.textContent)
     expect(optionLabels).toEqual(
-      expect.arrayContaining(['Jollof Rice (GH₵1,200.00)', 'Meat Pie (GH₵350.00)'])
+      expect.arrayContaining(['Jollof Rice (GH₵1,200.00 / 1 serving)', 'Meat Pie (GH₵350.00 / 1 serving)'])
     )
     expect(optionLabels.join(' ')).not.toContain('Retired Special')
   })
@@ -198,6 +199,8 @@ describe('OrderClient — create dialog', () => {
         customerId: customer.id,
         description: '',
         notes: null,
+        deliveryAddress: null,
+        deliveryPhone: null,
         status: 'PENDING',
         totalPrice: 1200,
         dueDate: null,

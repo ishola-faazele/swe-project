@@ -120,7 +120,7 @@ describe('Notifications tab', () => {
   })
 
   describe('"Same as…" shortcut buttons', () => {
-    it('"Use Owner Email" fills the alert email from the env-sourced owner email, without saving', async () => {
+    it('"Use Login Email" fills the alert email from the env-sourced owner email, without saving', async () => {
       const user = userEvent.setup()
       render(
         <SettingsClient
@@ -129,19 +129,19 @@ describe('Notifications tab', () => {
         />
       )
 
-      await user.click(screen.getByRole('button', { name: 'Use Owner Email' }))
+      await user.click(screen.getByRole('button', { name: 'Use Login Email' }))
 
       expect(screen.getByLabelText('Alert Email Address')).toHaveValue('owner@example.com')
       expect(updateNotificationSettingsMock).not.toHaveBeenCalled()
     })
 
-    it('"Use Owner Email" is disabled when no owner email is set', () => {
+    it('"Use Login Email" is disabled when no owner email is set', () => {
       render(<SettingsClient initialNotifications={notifications()} auth={auth({ adminEmail: null })} />)
 
-      expect(screen.getByRole('button', { name: 'Use Owner Email' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Use Login Email' })).toBeDisabled()
     })
 
-    it('"Use Owner Phone" fills the alert phone from the env-sourced owner phone', async () => {
+    it('"Use Login Phone" fills the alert phone from the env-sourced owner phone', async () => {
       const user = userEvent.setup()
       render(
         <SettingsClient
@@ -150,7 +150,7 @@ describe('Notifications tab', () => {
         />
       )
 
-      await user.click(screen.getByRole('button', { name: 'Use Owner Phone' }))
+      await user.click(screen.getByRole('button', { name: 'Use Login Phone' }))
 
       expect(screen.getByLabelText('Alert Phone Number')).toHaveValue('233209998888')
     })

@@ -14,6 +14,9 @@ vi.mock('@/lib/prisma', () => ({
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    user: {
+      findFirst: vi.fn(),
+    },
   },
 }))
 vi.mock('@/lib/settings', () => ({
@@ -23,13 +26,14 @@ vi.mock('@/lib/notifications/sms', () => ({ sendSms: vi.fn() }))
 vi.mock('@/lib/auth', () => ({
   resolveCustomerForPhoneLogin: vi.fn(),
   mintSessionForAuthEmail: vi.fn(),
+  isAdminIdentity: vi.fn(),
 }))
 vi.mock('@/utils/supabase/server', () => ({ createClient: vi.fn() }))
 
 import { prisma } from '@/lib/prisma'
 import { isPhoneLoginAvailable } from '@/lib/settings'
 import { sendSms } from '@/lib/notifications/sms'
-import { mintSessionForAuthEmail, resolveCustomerForPhoneLogin } from '@/lib/auth'
+import { isAdminIdentity, mintSessionForAuthEmail, resolveCustomerForPhoneLogin } from '@/lib/auth'
 import { MAX_OTP_ATTEMPTS, hashOtpCode } from '@/lib/otp'
 import { requestPhoneOtp, verifyPhoneOtp } from './actions'
 
@@ -37,10 +41,12 @@ const otpFindFirst = vi.mocked(prisma.otpCode.findFirst)
 const otpCreate = vi.mocked(prisma.otpCode.create)
 const otpUpdate = vi.mocked(prisma.otpCode.update)
 const otpUpdateMany = vi.mocked(prisma.otpCode.updateMany)
+const userFindFirst = vi.mocked(prisma.user.findFirst)
 const phoneLoginAvailableMock = vi.mocked(isPhoneLoginAvailable)
 const sendSmsMock = vi.mocked(sendSms)
 const resolveCustomerMock = vi.mocked(resolveCustomerForPhoneLogin)
 const mintSessionMock = vi.mocked(mintSessionForAuthEmail)
+const isAdminIdentityMock = vi.mocked(isAdminIdentity)
 
 const RAW_PHONE = '0241234567'
 const NORMALIZED_PHONE = '233241234567'
@@ -70,6 +76,12 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.stubEnv('OTP_HASH_SECRET', TEST_SECRET)
   stubAvailable()
+  // Recognized-identity guard: requestPhoneOtp rejects a phone with no matching User row (and
+  // isn't the admin identity). Default to "already a real customer" so the existing tests below
+  // — all written against a normal, registered phone — keep exercising the OTP flow itself.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  userFindFirst.mockResolvedValue({ id: 'user-1', phone: NORMALIZED_PHONE } as any)
+  isAdminIdentityMock.mockReturnValue(false)
   otpFindFirst.mockResolvedValue(null)
   otpCreate.mockResolvedValue(otpRow())
   otpUpdate.mockResolvedValue(otpRow())

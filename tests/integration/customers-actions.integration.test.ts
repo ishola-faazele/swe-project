@@ -21,6 +21,7 @@ import { createAdminClient } from '@/utils/supabase/admin'
 import { notifyAccountCreated } from '@/lib/notifications'
 import { AuthError } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { toGhanaE164 } from '@/lib/phone'
 import {
   createCustomer,
   deleteCustomer,
@@ -148,7 +149,9 @@ describe('customers/actions.ts auth matrix (TEST-009)', () => {
       if (result.ok) reg.userIds.push(result.data.id)
 
       const payload = notifyAccountCreatedMock.mock.calls[0][0]
-      expect(payload.customerPhone).toBe(phone)
+      // createCustomerSchema normalizes phone to E.164 before it's ever stored — the stored (and
+      // notified) value is never the raw local-format input.
+      expect(payload.customerPhone).toBe(toGhanaE164(phone))
       expect(payload.magicLink).toBeNull()
     })
 

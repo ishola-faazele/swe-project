@@ -36,7 +36,7 @@ function SlideToConfirm({ onConfirm, isLoading }: { onConfirm: () => void, isLoa
   }
 
   return (
-    <div className="relative h-14 bg-card border border-border rounded-full overflow-hidden flex items-center shadow-inner">
+    <div className="relative h-14 bg-card border border-border rounded-full overflow-hidden flex items-center shadow-inner @container">
       <div 
         className="absolute left-0 top-0 bottom-0 bg-primary/20 transition-all pointer-events-none" 
         style={{ width: `${sliderValue}%` }} 
@@ -52,7 +52,7 @@ function SlideToConfirm({ onConfirm, isLoading }: { onConfirm: () => void, isLoa
         onChange={handleTouch}
         onMouseUp={handleRelease}
         onTouchEnd={handleRelease}
-        className="absolute inset-0 w-full opacity-0 cursor-ew-resize z-10"
+        className="absolute inset-0 w-full opacity-0 cursor-ew-resize z-10 touch-none"
         disabled={isLoading}
       />
       <div 

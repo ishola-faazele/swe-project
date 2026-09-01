@@ -22,7 +22,7 @@ import {
   type DishWithMedia,
   type RecipeRow,
 } from "./RecipeBuilder"
-import { Plus, UtensilsCrossed, Pencil, Archive, RotateCcw, Trash2, Film, ImageIcon, X } from "lucide-react"
+import { Plus, UtensilsCrossed, Pencil, Archive, RotateCcw, Trash2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { HighlightText } from "@/components/ui/highlight"
 import { MediaUpload } from "@/components/ui/media-upload"
@@ -41,23 +41,6 @@ import {
 // Badge styling lives in globals.css (.dish-active/.dish-archived).
 
 const PAGE_SIZE = 12
-
-/**
- * The card's cover is the lowest-position IMAGE, deliberately NOT simply media[0].
- *
- * "Cover" for ordering purposes on the detail page is type-agnostic, but a compact grid thumbnail
- * is not: a video has no poster frame here, and generating one would need either server-side video
- * processing (a PRD non-goal) or loading the whole video client-side just to grab a frame. A dish
- * whose only media is video therefore shows the same placeholder as one with no media at all,
- * plus a film badge so the admin still knows video exists.
- */
-function coverImageUrl(dish: DishWithMedia): string | null {
-  return dish.media.find(m => m.type === 'IMAGE')?.url ?? null
-}
-
-function hasVideo(dish: DishWithMedia): boolean {
-  return dish.media.some(m => m.type === 'VIDEO')
-}
 
 export function MenuClient({
   initialData,
@@ -135,7 +118,7 @@ export function MenuClient({
       ...newDish,
       ingredients: buildIngredients(newDish.id, newRecipe, null, inventory),
       media: newMedia.map((m, i) => ({
-        id: crypto.randomUUID(), // Temp ID for the local state array
+        id: Math.random().toString(36).slice(2), // Temp ID for the local state array
         dishId: newDish.id,
         url: m.url,
         type: m.type,
@@ -154,7 +137,7 @@ export function MenuClient({
   async function handleMediaUploaded(url: string | null, contentType?: string) {
     if (!url || !contentType) return
     const type = contentType.startsWith('video/') ? 'VIDEO' : 'IMAGE'
-    setNewMedia(prev => [...prev, { url, type, id: crypto.randomUUID() }])
+    setNewMedia(prev => [...prev, { url, type, id: Math.random().toString(36).slice(2) }])
     setMediaUploadKey(k => k + 1)
   }
 
@@ -218,7 +201,7 @@ export function MenuClient({
           <select
             className="select-field h-9 text-sm w-[160px]"
             value={sort}
-            onChange={(e) => setSort(e.target.value as any)}
+            onChange={(e) => setSort(e.target.value as 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc')}
           >
             <option value="name-asc">Name (A-Z)</option>
             <option value="name-desc">Name (Z-A)</option>
@@ -254,7 +237,7 @@ export function MenuClient({
           <form action={handleAdd} className="space-y-6">
             <div className="space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {newMedia.map((item, index) => (
+                {newMedia.map((item) => (
                   <div key={item.id} className="relative aspect-square overflow-hidden rounded-md border border-border bg-muted">
                     {item.type === 'VIDEO' ? (
                       <video className="h-full w-full object-cover" src={item.url} muted playsInline />
@@ -320,7 +303,6 @@ export function MenuClient({
       {visible.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {visible.map(dish => {
-            const cover = coverImageUrl(dish)
             return (
               <div
                 key={dish.id}

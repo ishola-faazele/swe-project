@@ -136,9 +136,9 @@ export async function syncPrismaUser(authUser: {
   return prisma.user.create({
     data: {
       id: authUser.id,
-      email: authUser.email ?? null,
-      authEmail: authUser.email ?? null,
-      phone: authUser.phone ?? null,
+      email: authUser.email || null,
+      authEmail: authUser.email || null,
+      phone: authUser.phone || null,
       name: authUser.name || 'New User',
       role: isAdmin ? Role.ADMIN : Role.CUSTOMER,
     },
